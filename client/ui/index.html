@@ -1,0 +1,224 @@
+<!DOCTYPE html>
+<html lang="zh-Hant">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>MyClash</title>
+<link rel="stylesheet" href="style.css">
+</head>
+<body>
+<div id="app">
+  <aside class="sidebar">
+    <div class="brand">
+      <img src="icon.png" alt="MyClash" class="brand-icon">
+      <div>
+        <div class="brand-name">MyClash</div>
+        <div class="brand-ver" id="app-version">v0.1.0</div>
+      </div>
+    </div>
+
+    <nav class="nav">
+      <button class="nav-item active" data-page="overview">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><rect x="3" y="3" width="7.5" height="7.5" rx="1.8"/><rect x="13.5" y="3" width="7.5" height="7.5" rx="1.8"/><rect x="3" y="13.5" width="7.5" height="7.5" rx="1.8"/><rect x="13.5" y="13.5" width="7.5" height="7.5" rx="1.8"/></svg>
+        <span>概覽</span>
+      </button>
+      <button class="nav-item" data-page="proxies">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M12 3l9 5-9 5-9-5 9-5z"/><path d="M3 12l9 5 9-5"/><path d="M3 16l9 5 9-5"/></svg>
+        <span>代理</span>
+      </button>
+      <button class="nav-item" data-page="profiles">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M4 19.5V5a2 2 0 012-2h14v18H6.5a2.5 2.5 0 010-5H20"/></svg>
+        <span>訂閱</span>
+      </button>
+      <button class="nav-item" data-page="logs">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><rect x="2.5" y="4" width="19" height="16" rx="2.5"/><path d="M7 9l3 3-3 3"/><path d="M13.5 15H17"/></svg>
+        <span>日誌</span>
+      </button>
+      <button class="nav-item" data-page="settings">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><circle cx="12" cy="12" r="3.2"/><path d="M19.4 15a1.7 1.7 0 00.34 1.87l.06.06a2 2 0 11-2.83 2.83l-.06-.06a1.7 1.7 0 00-1.87-.34 1.7 1.7 0 00-1 1.55V21a2 2 0 11-4 0v-.09a1.7 1.7 0 00-1-1.55 1.7 1.7 0 00-1.87.34l-.06.06a2 2 0 11-2.83-2.83l.06-.06a1.7 1.7 0 00.34-1.87 1.7 1.7 0 00-1.55-1H3a2 2 0 110-4h.09a1.7 1.7 0 001.55-1 1.7 1.7 0 00-.34-1.87l-.06-.06a2 2 0 112.83-2.83l.06.06a1.7 1.7 0 001.87.34h0a1.7 1.7 0 001-1.55V3a2 2 0 114 0v.09a1.7 1.7 0 001 1.55h0a1.7 1.7 0 001.87-.34l.06-.06a2 2 0 112.83 2.83l-.06.06a1.7 1.7 0 00-.34 1.87v0a1.7 1.7 0 001.55 1H21a2 2 0 110 4h-.09a1.7 1.7 0 00-1.55 1z"/></svg>
+        <span>設置</span>
+      </button>
+    </nav>
+
+    <div class="sidebar-foot">
+      <div class="foot-line"><span class="dot" id="foot-dot"></span><span id="foot-core">核心未啟動</span></div>
+      <div class="foot-line muted" id="foot-proxy">系統代理：關</div>
+    </div>
+  </aside>
+
+  <main>
+    <div id="demo-banner" class="demo-banner hidden">DEMO 模式：瀏覽器預覽，未連接客戶端後端</div>
+
+    <section id="page-overview" class="page active">
+      <header class="page-head">
+        <h1>概覽</h1>
+        <p>一鍵接管系統流量，規則、全局、直連自由切換。</p>
+      </header>
+
+      <div class="grid overview-grid">
+        <div class="card status-card">
+          <div class="status-line">
+            <span class="dot big" id="st-dot"></span>
+            <span id="st-text">正在檢查核心狀態…</span>
+            <span class="pill" id="st-version">mihomo —</span>
+          </div>
+          <div class="power-row">
+            <button class="btn primary big" id="btn-toggle-core">啟動 MyClash</button>
+            <div class="proxy-toggle">
+              <div>
+                <div class="label">系統代理</div>
+                <div class="hint">接管 Windows 系統流量</div>
+              </div>
+              <label class="switch">
+                <input type="checkbox" id="sw-sysproxy">
+                <span class="slider"></span>
+              </label>
+            </div>
+          </div>
+          <div class="mode-row">
+            <span class="label">代理模式</span>
+            <div class="segmented" id="mode-seg">
+              <button data-mode="rule">規則</button>
+              <button data-mode="global">全局</button>
+              <button data-mode="direct">直連</button>
+            </div>
+          </div>
+        </div>
+
+        <div class="card speed-card">
+          <div class="speed-grid">
+            <div class="speed-item">
+              <div class="speed-label">下載</div>
+              <div class="speed-val down" id="sp-down">0 B/s</div>
+            </div>
+            <div class="speed-item">
+              <div class="speed-label">上傳</div>
+              <div class="speed-val up" id="sp-up">0 B/s</div>
+            </div>
+            <div class="speed-item">
+              <div class="speed-label">連線數</div>
+              <div class="speed-val" id="sp-count">0</div>
+            </div>
+          </div>
+          <canvas id="spark" height="64"></canvas>
+          <div class="totals muted">
+            累計下載 <span id="sp-down-total">0 B</span> · 累計上傳 <span id="sp-up-total">0 B</span>
+          </div>
+        </div>
+
+        <div class="card profile-card">
+          <div class="card-title">當前配置</div>
+          <div class="profile-line">
+            <div>
+              <div class="profile-name" id="cur-profile">—</div>
+              <div class="hint" id="cur-profile-kind">—</div>
+            </div>
+            <button class="btn ghost" id="btn-update-profile">更新訂閱</button>
+          </div>
+          <div class="hint tip" id="cur-profile-tip"></div>
+        </div>
+
+        <div class="card tip-card">
+          <div class="card-title">快速上手</div>
+          <ol class="steps">
+            <li>到「訂閱」貼上你的 Clash 訂閱連結（或匯入本機 YAML）。</li>
+            <li>回到概覽，打開「系統代理」。瀏覽器、桌面程式即走代理。</li>
+            <li>需要換節點時，到「代理」分組裡點選即可。</li>
+          </ol>
+        </div>
+      </div>
+    </section>
+
+    <section id="page-proxies" class="page">
+      <header class="page-head">
+        <h1>代理</h1>
+        <p>選擇策略組中的節點；測速使用 <code id="test-url-label">https://cp.cloudflare.com/generate_204</code>。</p>
+      </header>
+      <div id="groups" class="groups"></div>
+      <div id="proxies-empty" class="empty hidden">核心未啟動或配置中沒有策略組。</div>
+    </section>
+
+    <section id="page-profiles" class="page">
+      <header class="page-head">
+        <h1>訂閱</h1>
+        <p>支援 Clash / mihomo YAML 訂閱連結，或匯入本機配置文件。</p>
+      </header>
+
+      <div class="card add-card">
+        <div class="card-title">新增訂閱</div>
+        <form id="sub-form" class="sub-form">
+          <input type="text" id="sub-url" placeholder="https://example.com/api/v1/client/subscribe?token=…" spellcheck="false">
+          <input type="text" id="sub-name" placeholder="名稱（可留空）" spellcheck="false">
+          <button type="submit" class="btn primary" id="btn-add-sub">新增</button>
+        </form>
+        <div class="form-error hidden" id="sub-error"></div>
+        <div class="add-foot">
+          <button class="btn ghost" id="btn-import-file">匯入本機 YAML…</button>
+          <span class="hint">Base64 節點清單不支援，請先轉成 Clash 格式。</span>
+        </div>
+      </div>
+
+      <div class="card">
+        <div class="card-title">已新增的配置</div>
+        <div id="profile-list" class="profile-list"></div>
+      </div>
+    </section>
+
+    <section id="page-logs" class="page">
+      <header class="page-head">
+        <h1>日誌</h1>
+        <p>mihomo 核心輸出（最近 300 行）。</p>
+      </header>
+      <div class="card log-card">
+        <div class="log-toolbar">
+          <label class="check"><input type="checkbox" id="log-autoscroll" checked> 自動滾動到底部</label>
+          <button class="btn ghost small" id="btn-copy-logs">複製全部</button>
+        </div>
+        <pre id="logbox" class="logbox">（尚無日誌）</pre>
+      </div>
+    </section>
+
+    <section id="page-settings" class="page">
+      <header class="page-head">
+        <h1>設置</h1>
+        <p>連接埠修改後會自動重啟核心。</p>
+      </header>
+
+      <div class="card">
+        <div class="card-title">連接埠</div>
+        <div class="settings-grid">
+          <label class="field">
+            <span>混合代理埠（HTTP/SOCKS）</span>
+            <input type="number" id="in-mixed-port" min="1024" max="65535">
+          </label>
+          <label class="field">
+            <span>控制 API 埠</span>
+            <input type="number" id="in-ctl-port" min="1024" max="65535">
+          </label>
+        </div>
+        <div class="row-actions">
+          <button class="btn primary" id="btn-save-ports">保存並重啟核心</button>
+          <button class="btn ghost" id="btn-open-data">開啟資料資料夾</button>
+        </div>
+      </div>
+
+      <div class="card">
+        <div class="card-title">關於</div>
+        <div class="about-row"><span class="muted">客戶端版本</span><span id="about-appver">—</span></div>
+        <div class="about-row"><span class="muted">核心版本</span><span id="about-corever">—</span></div>
+        <div class="about-row"><span class="muted">資料目錄</span><span id="about-datadir" class="mono">—</span></div>
+        <div class="row-actions">
+          <button class="btn ghost small" data-open-url="https://github.com/MetaCubeX/mihomo">mihomo 專案（GPL-3.0）</button>
+          <button class="btn ghost small" data-open-url="https://github.com/clash-verge-rev/clash-verge-rev">Clash Verge Rev</button>
+        </div>
+        <p class="hint disclaimer">MyClash 僅提供代理工具的圖形化管理，不包含、不販售任何節點或訂閱服務。
+        請自行準備合法的代理配置，並遵守所在國家與地區的法律法規。</p>
+      </div>
+    </section>
+  </main>
+
+  <div id="toast" class="toast hidden"></div>
+</div>
+<script src="app.js"></script>
+</body>
+</html>

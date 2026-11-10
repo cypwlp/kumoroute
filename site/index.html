@@ -1,0 +1,190 @@
+<!DOCTYPE html>
+<html lang="zh-Hant">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>MyClash — 輕量的 Clash 桌面客戶端（Windows）</title>
+<meta name="description" content="MyClash 是基於 mihomo 核心的 Windows 桌面 Clash 客戶端：訂閱管理、節點切換、一鍵系統代理、即時流量，開源免費。">
+<link rel="icon" href="assets/icon.png">
+<link rel="stylesheet" href="style.css">
+</head>
+<body>
+
+<header class="nav">
+  <div class="nav-inner">
+    <a class="brand" href="#top">
+      <img src="assets/icon.png" alt="MyClash">
+      <span>MyClash</span>
+    </a>
+    <nav class="nav-links">
+      <a href="#features">功能</a>
+      <a href="#screens">介面</a>
+      <a href="#clients">其他客戶端</a>
+      <a href="#faq">常見問題</a>
+    </nav>
+    <a class="btn ghost small" id="github-top" href="#" target="_blank" rel="noopener">GitHub</a>
+  </div>
+</header>
+
+<main>
+  <section class="hero" id="top">
+    <div class="hero-inner">
+      <div class="hero-copy">
+        <div class="badge">v0.1.0 · Windows 10/11 x64 · 免安裝可攜版</div>
+        <h1>輕量的 Clash 桌面客戶端<br><span class="grad">一鍵接管系統流量</span></h1>
+        <p class="lead">MyClash 把 mihomo 核心裝進一個乾淨的圖形介面：訂閱管理、節點切換、模式切換、即時速度，一屏搞定。</p>
+        <div class="cta">
+          <a class="btn primary big" id="download-btn" href="#" target="_blank" rel="noopener">
+            下載 Windows 版
+            <span class="sub">ZIP · 36 MB</span>
+          </a>
+          <a class="btn ghost big" id="github-btn" href="#" target="_blank" rel="noopener">在 GitHub 查看</a>
+        </div>
+        <div class="hero-meta">開源免費 · 無廣告 · 不收集任何資料</div>
+      </div>
+      <div class="hero-shot">
+        <div class="glow"></div>
+        <div class="frame">
+          <div class="frame-bar"><span></span><span></span><span></span></div>
+          <img src="assets/screenshot-overview.png" alt="MyClash 概覽介面">
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <section class="section" id="features">
+    <h2>為什麼選 MyClash</h2>
+    <p class="section-sub">一個殼，只做殼該做的事——核心交給成熟的 mihomo。</p>
+    <div class="features">
+      <div class="feature">
+        <div class="ficon">⚡</div>
+        <h3>一鍵系統代理</h3>
+        <p>開關即接管 Windows 流量；退出時自動還原你原本的代理設定，不留尾巴。</p>
+      </div>
+      <div class="feature">
+        <div class="ficon">📚</div>
+        <h3>訂閱管理</h3>
+        <p>貼上 Clash 訂閱連結即可使用；支援一鍵更新、多配置切換、本機 YAML 匯入。</p>
+      </div>
+      <div class="feature">
+        <div class="ficon">🧩</div>
+        <h3>節點選擇與測速</h3>
+        <p>策略組可視化，點一下即切換節點；支援整組延遲測試，好壞一眼看清。</p>
+      </div>
+      <div class="feature">
+        <div class="ficon">📈</div>
+        <h3>即時流量</h3>
+        <p>上下行速度、連線數、累計流量一覽，30 秒趨勢圖幫你判斷線路狀況。</p>
+      </div>
+      <div class="feature">
+        <div class="ficon">🧷</div>
+        <h3>托盤常駐</h3>
+        <p>關閉視窗不退出，托盤快捷開關系統代理與核心，不佔工作列。</p>
+      </div>
+      <div class="feature">
+        <div class="ficon">🪶</div>
+        <h3>輕量透明</h3>
+        <p>無帳號、無節點、無後台服務；設定只存在本機 %APPDATA%\MyClash。基於 mihomo（GPL-3.0）。</p>
+      </div>
+    </div>
+  </section>
+
+  <section class="section" id="screens">
+    <h2>介面預覽</h2>
+    <p class="section-sub">深色、克制、沒有多餘的東西。</p>
+    <div class="shots">
+      <figure>
+        <img src="assets/screenshot-proxies.png" alt="代理分組與測速">
+        <figcaption>代理分組：點選節點即切換，支援整組測速</figcaption>
+      </figure>
+      <figure>
+        <img src="assets/screenshot-profiles.png" alt="訂閱管理">
+        <figcaption>訂閱管理：貼上連結、一鍵更新、多配置切換</figcaption>
+      </figure>
+    </div>
+  </section>
+
+  <section class="section" id="clients">
+    <h2>其他開源客戶端</h2>
+    <p class="section-sub">MyClash 目前僅支援 Windows。其他平台可以選這些成熟專案（皆為第三方開源，版權歸原作者）。</p>
+    <div class="clients">
+      <a class="client" href="https://github.com/clash-verge-rev/clash-verge-rev" target="_blank" rel="noopener">
+        <h3>Clash Verge Rev</h3>
+        <p>Windows / macOS / Linux · Tauri 圖形客戶端</p>
+      </a>
+      <a class="client" href="https://github.com/chen08209/FlClash" target="_blank" rel="noopener">
+        <h3>FlClash</h3>
+        <p>Windows / macOS / Linux / Android · Flutter 多平台</p>
+      </a>
+      <a class="client" href="https://github.com/2dust/v2rayN" target="_blank" rel="noopener">
+        <h3>v2rayN</h3>
+        <p>Windows · 老牌多協議客戶端</p>
+      </a>
+      <a class="client" href="https://github.com/MetaCubeX/ClashMetaForAndroid" target="_blank" rel="noopener">
+        <h3>Clash Meta for Android</h3>
+        <p>Android · mihomo 官方行動端</p>
+      </a>
+      <a class="client" href="https://github.com/KaringX/karing" target="_blank" rel="noopener">
+        <h3>Karing</h3>
+        <p>iOS / macOS / Windows · 多核心圖形客戶端</p>
+      </a>
+      <a class="client" href="https://github.com/getsurfboard/surfboard/releases" target="_blank" rel="noopener">
+        <h3>Surfboard</h3>
+        <p>Android · 相容 Surge 配置的代理工具</p>
+      </a>
+    </div>
+  </section>
+
+  <section class="section" id="faq">
+    <h2>常見問題</h2>
+    <div class="faq">
+      <details>
+        <summary>Windows 說「已保護您的電腦」，怎麼辦？</summary>
+        <p>這是 SmartScreen 對未簽名程式的提示。點「更多資訊」→「仍要執行」即可。MyClash 完全開源，你可以自行檢視並從原始碼建置。</p>
+      </details>
+      <details>
+        <summary>需要自己準備訂閱或節點嗎？</summary>
+        <p>是。MyClash 只提供客戶端，不包含、不販售任何節點或訂閱服務。你需要自備 Clash 格式的訂閱連結或設定檔。</p>
+      </details>
+      <details>
+        <summary>支援哪些配置格式？</summary>
+        <p>Clash / mihomo 的 YAML 配置與訂閱連結。Base64 節點清單不支援，請先透過訂閱轉換服務轉成 Clash 格式。</p>
+      </details>
+      <details>
+        <summary>系統代理開了但沒生效？</summary>
+        <p>部分安全軟體或網路加速器會「守護」系統代理設定，把它們改回去。MyClash 開代理後會自動複核並提示。請在該軟體中關閉代理守護，或改用其白名單。</p>
+      </details>
+      <details>
+        <summary>資料會上傳到哪裡嗎？</summary>
+        <p>不會。設定、訂閱、日誌只存在你的電腦（%APPDATA%\MyClash），沒有任何統計或上報。</p>
+      </details>
+      <details>
+        <summary>支援 macOS / Linux / 手機嗎？</summary>
+        <p>v0.1 僅支援 Windows 10/11 x64。其他平台請參考上方的開源客戶端推薦。</p>
+      </details>
+    </div>
+  </section>
+</main>
+
+<footer>
+  <div class="foot-inner">
+    <div class="foot-brand">
+      <img src="assets/icon.png" alt="">
+      <span>MyClash</span>
+    </div>
+    <p class="disclaimer">
+      本站僅提供 MyClash 的下載與其他開源專案的連結索引，不提供、不銷售任何代理節點或訂閱服務。<br>
+      請自行準備合法的網路配置，並遵守所在國家與地區的法律法規。<br>
+      客戶端程式碼以 MIT 授權；內含的 mihomo 核心以 GPL-3.0 授權，版權歸 MetaCubeX 所有。
+    </p>
+    <p class="foot-links">
+      <a id="github-foot" href="#" target="_blank" rel="noopener">GitHub</a>
+      <a href="https://github.com/MetaCubeX/mihomo" target="_blank" rel="noopener">mihomo</a>
+      <a href="https://github.com/MetaCubeX/mihomo/blob/Meta/LICENSE" target="_blank" rel="noopener">GPL-3.0</a>
+    </p>
+  </div>
+</footer>
+
+<script src="app.js"></script>
+</body>
+</html>

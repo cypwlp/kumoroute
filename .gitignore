@@ -1,0 +1,11 @@
+.tmp/
+build/
+dist/
+__pycache__/
+*.pyc
+*.pyo
+*.spec
+client/core/*.exe
+client/core/mihomo.exe
+.DS_Store
+Thumbs.db
