@@ -40,6 +40,7 @@ function toast(msg, type = "") {
 async function waitBridge() {
   return new Promise((resolve) => {
     if (window.pywebview && window.pywebview.api) return resolve();
+    if (window.__TAURI__ && window.__TAURI__.core) return resolve();
     let timer = null;
     const done = () => {
       clearTimeout(timer);
@@ -51,8 +52,28 @@ async function waitBridge() {
   });
 }
 
+// Tauri invoke 需要 named（camelCase）參數；pywebview 用 positional。
+const TAURI_SIG = {
+  set_mode: ["mode"],
+  set_system_proxy: ["enabled"],
+  select_proxy: ["group", "name"],
+  test_group_delay: ["group"],
+  add_subscription: ["url", "name"],
+  update_profile: ["pid"],
+  delete_profile: ["pid"],
+  set_active_profile: ["pid"],
+  save_settings: ["mixedPort", "controllerPort"],
+  open_url: ["url"],
+};
+
 async function api(fn, ...args) {
   if (demo) return demoApi(fn, ...args);
+  if (window.__TAURI__ && window.__TAURI__.core) {
+    const names = TAURI_SIG[fn] || [];
+    const payload = {};
+    names.forEach((n, i) => (payload[n] = args[i]));
+    return await window.__TAURI__.core.invoke(fn, payload);
+  }
   return await window.pywebview.api[fn](...args);
 }
 
@@ -603,7 +624,7 @@ document.addEventListener("DOMContentLoaded", async () => {
   bindNav();
   bindActions();
   await waitBridge();
-  demo = !(window.pywebview && window.pywebview.api);
+  demo = !((window.pywebview && window.pywebview.api) || (window.__TAURI__ && window.__TAURI__.core));
   if (demo) {
     if (!new URLSearchParams(location.search).has("preview")) {
       $("#demo-banner").classList.remove("hidden");
