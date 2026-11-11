@@ -1,7 +1,7 @@
 "use strict";
 
-// TODO: 部署前替換成你的 GitHub repo 位址
-const REPO_URL = "https://github.com/OWNER/REPO";
+// GitHub repo（部署前如需更換，改這裡）
+const REPO_URL = "https://github.com/cypwlp/myclash";
 const DOWNLOAD_URL = REPO_URL + "/releases/latest/download/MyClash-win-x64.zip";
 
 document.getElementById("github-top").href = REPO_URL;
