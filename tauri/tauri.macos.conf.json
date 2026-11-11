@@ -1,0 +1,15 @@
+{
+  "bundle": {
+    "targets": ["dmg"],
+    "resources": {
+      "../client/core/mihomo-arm64": "core/mihomo-arm64",
+      "../client/core/mihomo-x64": "core/mihomo-x64",
+      "../client/core/geoip.metadb": "core/geoip.metadb",
+      "../client/core/geosite.dat": "core/geosite.dat",
+      "../client/core/LICENSE-GPL3.txt": "core/LICENSE-GPL3.txt"
+    },
+    "macOS": {
+      "minimumSystemVersion": "10.15"
+    }
+  }
+}

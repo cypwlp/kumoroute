@@ -3,8 +3,8 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>MyClash — 輕量的 Clash 桌面客戶端（Windows）</title>
-<meta name="description" content="MyClash 是基於 mihomo 核心的 Windows 桌面 Clash 客戶端：訂閱管理、節點切換、一鍵系統代理、即時流量，開源免費。">
+<title>MyClash — 輕量跨平台 Clash 桌面客戶端（Windows / Linux / macOS）</title>
+<meta name="description" content="MyClash 是基於 mihomo 核心的跨平台 Clash 桌面客戶端（Windows / Linux / macOS）：訂閱管理、節點切換、一鍵系統代理、即時流量，開源免費。">
 <link rel="icon" href="assets/icon.png">
 <link rel="stylesheet" href="style.css">
 </head>
@@ -17,6 +17,7 @@
       <span>MyClash</span>
     </a>
     <nav class="nav-links">
+      <a href="#download">下載</a>
       <a href="#features">功能</a>
       <a href="#screens">介面</a>
       <a href="#clients">其他客戶端</a>
@@ -30,17 +31,17 @@
   <section class="hero" id="top">
     <div class="hero-inner">
       <div class="hero-copy">
-        <div class="badge">v0.1.0 · Windows 10/11 x64 · 免安裝可攜版</div>
+        <div class="badge">v0.1.1 · Windows / Linux / macOS · 開源免費</div>
         <h1>輕量的 Clash 桌面客戶端<br><span class="grad">一鍵接管系統流量</span></h1>
         <p class="lead">MyClash 把 mihomo 核心裝進一個乾淨的圖形介面：訂閱管理、節點切換、模式切換、即時速度，一屏搞定。</p>
         <div class="cta">
           <a class="btn primary big" id="download-btn" href="#" target="_blank" rel="noopener">
             下載 Windows 版
-            <span class="sub">ZIP · 29 MB · 內置 GeoIP/GeoSite</span>
+            <span class="sub">EXE 安裝包 · 內置 WebView2 引導</span>
           </a>
           <a class="btn ghost big" id="github-btn" href="#" target="_blank" rel="noopener">在 GitHub 查看</a>
         </div>
-        <div class="hero-meta">開源免費 · 無廣告 · 不收集任何資料</div>
+        <div class="hero-meta">開源免費 · 無廣告 · 不收集任何資料 · <a href="#download" class="link">Linux / macOS 下載 ↓</a></div>
       </div>
       <div class="hero-shot">
         <div class="glow"></div>
@@ -50,6 +51,37 @@
         </div>
       </div>
     </div>
+  </section>
+
+  <section class="section" id="download">
+    <h2>下載</h2>
+    <p class="section-sub">全部為未簽名開源版本，首次執行會有系統安全提示（Windows SmartScreen／macOS Gatekeeper），屬正常現象。</p>
+    <div class="downloads">
+      <div class="dl-card featured">
+        <div class="dl-head"><h3>Windows 10/11 x64</h3><span class="pill">推薦</span></div>
+        <p>安裝版會註冊開始菜單與卸載項（內置 WebView2 引導）；免安裝版解壓即用。</p>
+        <div class="dl-actions">
+          <a class="btn primary" data-dl="win-setup" href="#" target="_blank" rel="noopener">安裝版 .exe</a>
+          <a class="btn ghost small" data-dl="win-zip" href="#" target="_blank" rel="noopener">免安裝 .zip</a>
+        </div>
+      </div>
+      <div class="dl-card">
+        <div class="dl-head"><h3>Linux x86_64</h3></div>
+        <p>AppImage 免安裝直接執行；.deb 適用 Debian / Ubuntu。系統需有 webkit2gtk-4.1。</p>
+        <div class="dl-actions">
+          <a class="btn ghost" data-dl="linux-appimage" href="#" target="_blank" rel="noopener">AppImage</a>
+          <a class="btn ghost small" data-dl="linux-deb" href="#" target="_blank" rel="noopener">.deb</a>
+        </div>
+      </div>
+      <div class="dl-card">
+        <div class="dl-head"><h3>macOS Universal</h3></div>
+        <p>Intel 與 Apple Silicon 通用 .dmg。未簽名：首次請右鍵 →「打開」。</p>
+        <div class="dl-actions">
+          <a class="btn ghost" data-dl="mac-dmg" href="#" target="_blank" rel="noopener">下載 .dmg</a>
+        </div>
+      </div>
+    </div>
+    <p class="dl-note">系統代理自動接管：Windows（登錄檔）、Linux（GNOME gsettings）、macOS（networksetup，可能需要授權，失敗會提示手動設定）。</p>
   </section>
 
   <section class="section" id="features">
@@ -159,8 +191,8 @@
         <p>不會。設定、訂閱、日誌只存在你的電腦（%APPDATA%\MyClash），沒有任何統計或上報。</p>
       </details>
       <details>
-        <summary>支援 macOS / Linux / 手機嗎？</summary>
-        <p>v0.1 僅支援 Windows 10/11 x64。其他平台請參考上方的開源客戶端推薦。</p>
+        <summary>支援哪些平台？手機能用嗎？</summary>
+        <p>v0.1.1 提供 Windows（安裝包／免安裝）、Linux（AppImage／deb）、macOS（Universal dmg）。手機請參考上方的開源客戶端推薦（Android 可用 Clash Meta for Android／FlClash）。</p>
       </details>
     </div>
   </section>

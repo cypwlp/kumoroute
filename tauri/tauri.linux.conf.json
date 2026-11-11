@@ -1,0 +1,16 @@
+{
+  "bundle": {
+    "targets": ["appimage", "deb"],
+    "resources": {
+      "../client/core/mihomo": "core/mihomo",
+      "../client/core/geoip.metadb": "core/geoip.metadb",
+      "../client/core/geosite.dat": "core/geosite.dat",
+      "../client/core/LICENSE-GPL3.txt": "core/LICENSE-GPL3.txt"
+    },
+    "linux": {
+      "deb": {
+        "depends": ["libwebkit2gtk-4.1-0", "libayatana-appindicator3-1"]
+      }
+    }
+  }
+}

@@ -1,10 +1,11 @@
 use std::fs;
 use std::path::PathBuf;
+use std::sync::OnceLock;
 
 use serde::{Deserialize, Serialize};
 
 pub const APP_NAME: &str = "MyClash";
-pub const APP_VERSION: &str = "0.1.0";
+pub const APP_VERSION: &str = "0.1.1";
 pub const SUB_UA: &str = "clash-verge/v2.4.2";
 pub const TEST_URL: &str = "https://cp.cloudflare.com/generate_204";
 
@@ -18,19 +19,56 @@ pub fn data_dir() -> PathBuf {
     d
 }
 
-pub fn core_binary() -> Option<PathBuf> {
-    let exe_dir = std::env::current_exe().ok()?.parent()?.to_path_buf();
-    let bundled = exe_dir.join("core").join("mihomo.exe");
-    if bundled.is_file() {
-        return Some(bundled);
+static RESOURCE_DIR: OnceLock<PathBuf> = OnceLock::new();
+
+pub fn set_resource_dir(p: PathBuf) {
+    let _ = RESOURCE_DIR.set(p);
+}
+
+#[cfg(windows)]
+fn core_name() -> &'static str {
+    "mihomo.exe"
+}
+
+#[cfg(target_os = "linux")]
+fn core_name() -> &'static str {
+    "mihomo"
+}
+
+#[cfg(target_os = "macos")]
+fn core_name() -> &'static str {
+    if cfg!(target_arch = "aarch64") {
+        "mihomo-arm64"
+    } else {
+        "mihomo-x64"
     }
-    let dev = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
-        .parent()?
-        .join("client")
-        .join("core")
-        .join("mihomo.exe");
-    if dev.is_file() {
-        return Some(dev);
+}
+
+#[cfg(not(any(windows, target_os = "linux", target_os = "macos")))]
+fn core_name() -> &'static str {
+    "mihomo"
+}
+
+pub fn core_binary() -> Option<PathBuf> {
+    let name = core_name();
+    let mut dirs: Vec<PathBuf> = Vec::new();
+    if let Some(exe_dir) = std::env::current_exe()
+        .ok()
+        .and_then(|p| p.parent().map(|x| x.to_path_buf()))
+    {
+        dirs.push(exe_dir.join("core"));
+    }
+    if let Some(rd) = RESOURCE_DIR.get() {
+        dirs.push(rd.join("core"));
+    }
+    if let Some(dev) = PathBuf::from(env!("CARGO_MANIFEST_DIR")).parent() {
+        dirs.push(dev.join("client").join("core"));
+    }
+    for d in dirs {
+        let p = d.join(name);
+        if p.is_file() {
+            return Some(p);
+        }
     }
     None
 }

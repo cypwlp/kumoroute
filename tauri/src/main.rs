@@ -14,11 +14,11 @@ use tauri::{Manager, RunEvent, WindowEvent};
 fn main() {
     let mut store = state::Store::load();
     let profiles = state::Profiles::load(&mut store);
-    let mut core = core::Core::new();
-    if let Ok(rt) = profiles.build_runtime(&store) {
-        let _ = core.start(store.data.controller_port, rt);
-    }
-    let app_state = commands::AppState { store, profiles, core };
+    let app_state = commands::AppState {
+        store,
+        profiles,
+        core: core::Core::new(),
+    };
 
     tauri::Builder::default()
         .plugin(tauri_plugin_single_instance::init(|app, _args, _cwd| {
@@ -50,66 +50,18 @@ fn main() {
             commands::quit_app,
         ])
         .setup(|app| {
-            let show = MenuItem::with_id(app, "show", "顯示主視窗", true, None::<&str>)?;
-            let proxy_t = MenuItem::with_id(app, "proxy", "切換系統代理", true, None::<&str>)?;
-            let core_t = MenuItem::with_id(app, "core", "啟動/停止核心", true, None::<&str>)?;
-            let quit = MenuItem::with_id(app, "quit", "退出 MyClash", true, None::<&str>)?;
-            let menu = Menu::with_items(app, &[&show, &proxy_t, &core_t, &quit])?;
-            let icon = app
-                .default_window_icon()
-                .cloned()
-                .unwrap_or_else(|| tauri::image::Image::new_owned(vec![91, 140, 255, 255], 1, 1));
-            let _tray = TrayIconBuilder::with_id("main")
-                .icon(icon)
-                .menu(&menu)
-                .show_menu_on_left_click(false)
-                .on_menu_event(|app, event| {
-                    let state = app.state::<commands::Shared>();
-                    match event.id.as_ref() {
-                        "show" => {
-                            if let Some(w) = app.get_webview_window("main") {
-                                let _ = w.show();
-                                let _ = w.set_focus();
-                            }
-                        }
-                        "proxy" => {
-                            let mut s = state.lock().unwrap();
-                            let port = s.store.data.controller_port;
-                            let on = proxy::is_on(&s.store);
-                            let up = core::is_up(port);
-                            let _ = proxy::set_system_proxy(&mut s.store, !on, up);
-                        }
-                        "core" => {
-                            let mut s = state.lock().unwrap();
-                            let port = s.store.data.controller_port;
-                            if core::is_up(port) {
-                                s.core.stop();
-                            } else if let Ok(rt) = s.profiles.build_runtime(&s.store) {
-                                let _ = s.core.start(port, rt);
-                            }
-                        }
-                        "quit" => {
-                            commands::cleanup(&state);
-                            app.exit(0);
-                        }
-                        _ => {}
-                    }
-                })
-                .on_tray_icon_event(|tray, event| {
-                    if let TrayIconEvent::Click {
-                        button: MouseButton::Left,
-                        button_state: MouseButtonState::Up,
-                        ..
-                    } = event
-                    {
-                        let app = tray.app_handle();
-                        if let Some(w) = app.get_webview_window("main") {
-                            let _ = w.show();
-                            let _ = w.set_focus();
-                        }
-                    }
-                })
-                .build(app)?;
+            if let Ok(rd) = app.path().resource_dir() {
+                state::set_resource_dir(rd);
+            }
+            setup_tray(app);
+            let shared = app.state::<commands::Shared>();
+            let mut s = shared.lock().unwrap();
+            let port = s.store.data.controller_port;
+            if let Ok(rt) = s.profiles.build_runtime(&s.store) {
+                if let Err(e) = s.core.start(port, rt) {
+                    state::app_log(&format!("initial core start failed: {e}"));
+                }
+            }
             Ok(())
         })
         .on_window_event(|window, event| {
@@ -122,8 +74,77 @@ fn main() {
         .expect("error while building tauri application")
         .run(|app, event| {
             if let RunEvent::ExitRequested { .. } = event {
-                let state = app.state::<commands::Shared>();
-                commands::cleanup(&state);
+                let shared = app.state::<commands::Shared>();
+                commands::cleanup(&shared);
             }
         });
+}
+
+fn setup_tray(app: &tauri::App) {
+    let result = (|| -> tauri::Result<()> {
+        let show = MenuItem::with_id(app, "show", "顯示主視窗", true, None::<&str>)?;
+        let proxy_t = MenuItem::with_id(app, "proxy", "切換系統代理", true, None::<&str>)?;
+        let core_t = MenuItem::with_id(app, "core", "啟動/停止核心", true, None::<&str>)?;
+        let quit = MenuItem::with_id(app, "quit", "退出 MyClash", true, None::<&str>)?;
+        let menu = Menu::with_items(app, &[&show, &proxy_t, &core_t, &quit])?;
+        let icon = app
+            .default_window_icon()
+            .cloned()
+            .unwrap_or_else(|| tauri::image::Image::new_owned(vec![91, 140, 255, 255], 1, 1));
+        TrayIconBuilder::with_id("main")
+            .icon(icon)
+            .menu(&menu)
+            .show_menu_on_left_click(false)
+            .on_menu_event(|app, event| {
+                let shared = app.state::<commands::Shared>();
+                match event.id.as_ref() {
+                    "show" => {
+                        if let Some(w) = app.get_webview_window("main") {
+                            let _ = w.show();
+                            let _ = w.set_focus();
+                        }
+                    }
+                    "proxy" => {
+                        let mut s = shared.lock().unwrap();
+                        let port = s.store.data.controller_port;
+                        let on = proxy::is_on(&s.store);
+                        let up = core::is_up(port);
+                        let _ = proxy::set_system_proxy(&mut s.store, !on, up);
+                    }
+                    "core" => {
+                        let mut s = shared.lock().unwrap();
+                        let port = s.store.data.controller_port;
+                        if core::is_up(port) {
+                            s.core.stop();
+                        } else if let Ok(rt) = s.profiles.build_runtime(&s.store) {
+                            let _ = s.core.start(port, rt);
+                        }
+                    }
+                    "quit" => {
+                        commands::cleanup(&shared);
+                        app.exit(0);
+                    }
+                    _ => {}
+                }
+            })
+            .on_tray_icon_event(|tray, event| {
+                if let TrayIconEvent::Click {
+                    button: MouseButton::Left,
+                    button_state: MouseButtonState::Up,
+                    ..
+                } = event
+                {
+                    let app = tray.app_handle();
+                    if let Some(w) = app.get_webview_window("main") {
+                        let _ = w.show();
+                        let _ = w.set_focus();
+                    }
+                }
+            })
+            .build(app)?;
+        Ok(())
+    })();
+    if let Err(e) = result {
+        state::app_log(&format!("tray unavailable: {e}"));
+    }
 }

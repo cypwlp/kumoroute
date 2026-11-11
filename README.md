@@ -1,16 +1,17 @@
 # MyClash
 
-輕量的 Windows 桌面 Clash 客戶端，內建 [mihomo](https://github.com/MetaCubeX/mihomo) 核心。
+輕量的跨平台 Clash 桌面客戶端（Windows / Linux / macOS），內建 [mihomo](https://github.com/MetaCubeX/mihomo) 核心。
 
 正式客戶端為 **Rust / Tauri 2**（`tauri/`），圖形介面與 Python 後備版（`client/`）共用同一套 HTML/CSS/JS。
 
-- 一鍵系統代理（退出自動還原）
+- 一鍵系統代理（退出自動還原；Windows 登錄檔 / GNOME gsettings / macOS networksetup）
 - Clash 訂閱管理（遠端訂閱 / 本機 YAML）
 - 節點選擇、整組測速、模式切換（規則 / 全局 / 直連）
 - 即時上下行速度、連線數、日誌
 - 內置 GeoIP/GeoSite 資料庫，導入訂閱即用（免從 GitHub 下載 geodata）
 - 核心崩潰自動重啟（60 秒內最多 5 次）＋日誌自動輪轉
 - 托盤常駐、關窗不退出、單實例
+- 發佈形態：Windows 安裝包（NSIS）＋免安裝 zip；Linux AppImage＋deb；macOS Universal dmg
 
 > MyClash 只提供客戶端，不包含、不販售任何節點或訂閱服務。
 
@@ -30,15 +31,20 @@ site/                   下載站（GitHub Pages）
 .github/workflows/      Pages 部署工作流
 ```
 
-## 建置 Rust 正式版
+## 建置
 
 ```powershell
 cd tauri
-cargo build --release
-# 產物 target\release\myclash.exe；把 client\core\ 複製到 exe 同層\core\ 即可運行
+cargo build --release          # 快速可執行檔
+# 或產出安裝包（需 Tauri CLI）
+npm i -g @tauri-apps/cli@^2
+tauri build
 ```
 
-Windows 上實測 GNU toolchain 亦可鏈接；若遇連結問題可改用 MSVC（`rustup default stable-x86_64-pc-windows-msvc`＋VS C++ 工作負載）。
+- **Windows**：`tauri build` 產出 NSIS 安裝包（`target/release/bundle/nsis/`）；本機實測 GNU toolchain 也能直接 `cargo build`。
+- **Linux**：需 `libwebkit2gtk-4.1-dev libgtk-3-dev libayatana-appindicator3-dev librsvg2-dev patchelf`，產出 AppImage／deb。
+- **macOS**：`tauri build --target universal-apple-darwin` 產出通用 dmg（未簽名，首次需右鍵開啟）。
+- 核心與 geodata：`python client/tools/fetch_core.py`（依當前平台下載對應 mihomo）。
 
 ## 本機開發（Python 後備）
 

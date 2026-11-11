@@ -9,44 +9,94 @@ permissions:
 
 jobs:
   build:
-    runs-on: windows-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: windows-latest
+            platform: windows
+          - os: ubuntu-22.04
+            platform: linux
+          - os: macos-latest
+            platform: macos
+    runs-on: ${{ matrix.os }}
     steps:
       - uses: actions/checkout@v4
 
-      - name: Show toolchain
-        run: |
-          rustup show
-          rustc -V
-          cargo -V
-          python --version
-
-      - name: Cache cargo registry
-        uses: actions/cache@v4
+      - uses: actions/setup-python@v5
         with:
-          path: |
-            ~/.cargo/registry
-            ~/.cargo/git
-          key: cargo-${{ runner.os }}-${{ hashFiles('tauri/Cargo.lock') }}
-          restore-keys: |
-            cargo-${{ runner.os }}-
+          python-version: "3.12"
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+
+      - name: Install Linux build deps
+        if: matrix.platform == 'linux'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y libwebkit2gtk-4.1-dev libgtk-3-dev libayatana-appindicator3-dev librsvg2-dev patchelf
+
+      - name: Add macOS Rust targets
+        if: matrix.platform == 'macos'
+        run: rustup target add aarch64-apple-darwin x86_64-apple-darwin
+
+      - name: Install Tauri CLI
+        run: npm install -g @tauri-apps/cli@^2
 
       - name: Fetch mihomo core and geodata
         run: python client/tools/fetch_core.py
 
-      - name: Build (cargo release)
+      - name: Build (Tauri bundle)
         working-directory: tauri
-        run: cargo build --release
+        shell: bash
+        run: |
+          if [ "${{ matrix.platform }}" = "macos" ]; then
+            tauri build --target universal-apple-darwin
+          else
+            tauri build
+          fi
 
-      - name: Package
-        run: python packaging/pack.py
+      - name: Collect artifacts
+        shell: bash
+        run: |
+          mkdir -p dist
+          if [ "${{ matrix.platform }}" = "windows" ]; then
+            python packaging/pack.py
+            cp tauri/target/release/bundle/nsis/*-setup.exe dist/MyClash-win-x64-setup.exe
+          elif [ "${{ matrix.platform }}" = "linux" ]; then
+            cp tauri/target/release/bundle/appimage/*.AppImage dist/MyClash-linux-x86_64.AppImage
+            cp tauri/target/release/bundle/deb/*.deb dist/MyClash-linux-amd64.deb
+          elif [ "${{ matrix.platform }}" = "macos" ]; then
+            cp tauri/target/universal-apple-darwin/release/bundle/dmg/*.dmg dist/MyClash-macos-universal.dmg
+          fi
+          ls -la dist
 
-      - name: Create GitHub Release
-        uses: softprops/action-gh-release@v2
+      - uses: actions/upload-artifact@v4
+        with:
+          name: myclash-${{ matrix.platform }}
+          path: dist/*
+          if-no-files-found: error
+
+  release:
+    needs: build
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          path: dist
+          merge-multiple: true
+
+      - name: Checksums
+        run: |
+          cd dist
+          sha256sum * > SHA256SUMS.txt
+          cat SHA256SUMS.txt
+
+      - uses: softprops/action-gh-release@v2
         with:
           name: MyClash ${{ github.ref_name }}
           tag_name: ${{ github.ref_name }}
-          files: |
-            dist/MyClash-win-x64.zip
-            dist/SHA256SUMS.txt
+          files: dist/*
           generate_release_notes: true
           fail_on_unmatched_files: true

@@ -10,9 +10,9 @@ use serde_json::{json, Value};
 
 use crate::state::{app_log, core_binary, data_dir, ensure_geo_files};
 
+#[cfg(windows)]
 const CREATE_NO_WINDOW: u32 = 0x0800_0000;
 const MAX_LOG_BYTES: u64 = 2 * 1024 * 1024;
-
 pub fn base_url(port: u16) -> String {
     format!("http://127.0.0.1:{port}")
 }
@@ -79,6 +79,17 @@ fn spawn_child(args: &SpawnArgs) -> Result<Child, String> {
     {
         use std::os::windows::process::CommandExt;
         cmd.creation_flags(CREATE_NO_WINDOW);
+    }
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::PermissionsExt;
+        if let Ok(md) = std::fs::metadata(&args.bin) {
+            let mut perm = md.permissions();
+            if perm.mode() & 0o111 == 0 {
+                perm.set_mode(0o755);
+                let _ = std::fs::set_permissions(&args.bin, perm);
+            }
+        }
     }
     cmd.spawn().map_err(|e| e.to_string())
 }

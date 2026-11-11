@@ -159,6 +159,19 @@ h1 { font-size: 42px; line-height: 1.22; letter-spacing: 0.3px; font-weight: 750
 .client h3 { font-size: 15px; margin-bottom: 4px; }
 .client p { color: var(--muted); font-size: 12.5px; }
 
+/* ---------- downloads ---------- */
+
+.downloads { display: grid; grid-template-columns: repeat(3, 1fr); gap: 16px; }
+.dl-card { border: 1px solid var(--line); background: var(--bg2); border-radius: 15px; padding: 22px; }
+.dl-card.featured { border-color: rgba(91, 140, 255, 0.5); background: linear-gradient(180deg, rgba(91, 140, 255, 0.10), var(--bg2)); }
+.dl-head { display: flex; align-items: center; gap: 10px; margin-bottom: 8px; }
+.dl-head h3 { font-size: 16px; }
+.dl-card p { color: var(--muted); font-size: 13.5px; min-height: 44px; }
+.dl-actions { display: flex; gap: 10px; flex-wrap: wrap; margin-top: 14px; }
+.pill { font-size: 11px; color: #9fc0ff; border: 1px solid rgba(91, 140, 255, 0.4); border-radius: 999px; padding: 2px 9px; white-space: nowrap; }
+.dl-note { color: #6b7890; font-size: 12.5px; margin-top: 16px; }
+.link { color: #9fc0ff; text-decoration: underline; text-underline-offset: 3px; }
+
 /* ---------- faq ---------- */
 
 .faq { display: flex; flex-direction: column; gap: 10px; }
@@ -203,6 +216,7 @@ footer { border-top: 1px solid var(--line); margin-top: 70px; background: #06091
   h1 { font-size: 33px; }
   .features { grid-template-columns: 1fr 1fr; }
   .clients { grid-template-columns: 1fr 1fr; }
+  .downloads { grid-template-columns: 1fr; }
   .shots { grid-template-columns: 1fr; }
   .nav-links { display: none; }
 }
