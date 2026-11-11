@@ -2,7 +2,9 @@
 
 輕量的跨平台 Mihomo / Clash 桌面客戶端（Windows / Linux / macOS），內建 [mihomo](https://github.com/MetaCubeX/mihomo) 核心。
 
-官方網站：https://cypwlp.github.io/kumoroute/
+官方網站：https://kumoroute.cypilu.online/
+
+GitHub Pages 備援：https://cypwlp.github.io/kumoroute/
 
 > v0.2.0 起由 **MyClash** 更名為 **KumoRoute**；首次啟動會自動把舊資料目錄遷移到 `KumoRoute`。
 
@@ -73,9 +75,10 @@ Pages：Settings → Pages → Source 選「GitHub Actions」，推送後自動�
 
 ## 鏡像（騰訊雲裸 IP）
 
-- 站址：http://129.204.149.106/ （僅 HTTP；域名與 443 被 ICP 攔截）
+- 正式站：https://kumoroute.cypilu.online/ （Tencent Cloud + Let’s Encrypt）
+- IP 備援：http://129.204.149.106/
 - 同步：`bash packaging/deploy-tencent.sh`（SSH 到 `ubuntu@129.204.149.106`，上傳 `site/` 到 `/var/www/kumoroute`）
-- nginx 站點：`/etc/nginx/sites-available/kumoroute`（僅 `server_name 129.204.149.106` 的 80 block，不影響原域名配置）
+- nginx 站點：`/etc/nginx/sites-available/kumoroute`；憑證由 Certbot 自動續期
 
 本機打包（已編譯後）：`python packaging/pack.py`，產物在 `dist/`。
 
