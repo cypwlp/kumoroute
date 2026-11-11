@@ -49,11 +49,19 @@ python tools\fetch_core.py
 python app.py
 ```
 
-## 發佈
+## 發佈（自動）
 
-1. 將 `myclash.exe`＋`core\`（mihomo.exe、GPL-3.0）＋README 壓成 `MyClash-win-x64.zip`。
-2. GitHub Release（如 `v0.1.0`）上傳該 zip；下載站按鈕指向 `releases/latest/download/MyClash-win-x64.zip`（見 `site/app.js`）。
-3. Pages：Settings → Pages → Source 選「GitHub Actions」，推送後自動部署 `site/`。
+推送 `v*` tag 即由 GitHub Actions 自動編譯、打包並建立 Release（含 `MyClash-win-x64.zip` 與 `SHA256SUMS.txt`）：
+
+```powershell
+git tag v0.1.0
+git push origin v0.1.0
+```
+
+下載站按鈕指向 `releases/latest/download/MyClash-win-x64.zip`（見 `site/app.js`）。
+Pages：Settings → Pages → Source 選「GitHub Actions」，推送後自動部署 `site/`。
+
+本機打包（已編譯後）：`python packaging/pack.py`，產物在 `dist/`。
 
 ## 授權
 

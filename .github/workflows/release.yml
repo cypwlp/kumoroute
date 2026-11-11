@@ -1,0 +1,52 @@
+name: Release
+
+on:
+  push:
+    tags: ["v*"]
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Show toolchain
+        run: |
+          rustup show
+          rustc -V
+          cargo -V
+          python --version
+
+      - name: Cache cargo registry
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+          key: cargo-${{ runner.os }}-${{ hashFiles('tauri/Cargo.lock') }}
+          restore-keys: |
+            cargo-${{ runner.os }}-
+
+      - name: Fetch mihomo core and geodata
+        run: python client/tools/fetch_core.py
+
+      - name: Build (cargo release)
+        working-directory: tauri
+        run: cargo build --release
+
+      - name: Package
+        run: python packaging/pack.py
+
+      - name: Create GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          name: MyClash ${{ github.ref_name }}
+          tag_name: ${{ github.ref_name }}
+          files: |
+            dist/MyClash-win-x64.zip
+            dist/SHA256SUMS.txt
+          generate_release_notes: true
+          fail_on_unmatched_files: true
