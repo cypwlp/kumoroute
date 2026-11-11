@@ -5,7 +5,7 @@ use std::sync::OnceLock;
 use serde::{Deserialize, Serialize};
 
 pub const APP_NAME: &str = "MyClash";
-pub const APP_VERSION: &str = "0.1.1";
+pub const APP_VERSION: &str = "0.1.2";
 pub const SUB_UA: &str = "clash-verge/v2.4.2";
 pub const TEST_URL: &str = "https://cp.cloudflare.com/generate_204";
 

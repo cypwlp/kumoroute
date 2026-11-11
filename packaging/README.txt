@@ -1,4 +1,4 @@
-MyClash v0.1.1 — 輕量 Clash 桌面客戶端（Windows x64 免安裝版，Rust/Tauri）
+MyClash v0.1.2 — 輕量 Clash 桌面客戶端（Windows x64 免安裝版，Rust/Tauri）
 
 使用方法
 1. 解壓縮到任意資料夾（請保持 MyClash.exe、core\、與程式同層）
