@@ -1,4 +1,5 @@
 "use strict";
+// trigger deploy
 
 // GitHub repo（部署前如需更換，改這裡）
 const REPO_URL = "https://github.com/cypwlp/myclash";
