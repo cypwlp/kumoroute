@@ -8,6 +8,8 @@
 - Clash 訂閱管理（遠端訂閱 / 本機 YAML）
 - 節點選擇、整組測速、模式切換（規則 / 全局 / 直連）
 - 即時上下行速度、連線數、日誌
+- 內置 GeoIP/GeoSite 資料庫，導入訂閱即用（免從 GitHub 下載 geodata）
+- 核心崩潰自動重啟（60 秒內最多 5 次）＋日誌自動輪轉
 - 托盤常駐、關窗不退出、單實例
 
 > MyClash 只提供客戶端，不包含、不販售任何節點或訂閱服務。
@@ -22,7 +24,7 @@ tauri/                  正式客戶端（Rust / Tauri 2）
 client/                 共用 UI＋Python 後備版
   ui/                   HTML/CSS/JS（pywebview / Tauri / DEMO 三模式）
   app.py                Python 後備後端
-  core/                 mihomo.exe（不提交）與 GPL-3.0 授權文本
+  core/                 mihomo.exe＋geodata（不提交）與 GPL-3.0 授權文本
   tools/                fetch_core / make_icon
 site/                   下載站（GitHub Pages）
 .github/workflows/      Pages 部署工作流

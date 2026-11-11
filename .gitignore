@@ -8,5 +8,7 @@ __pycache__/
 *.spec
 client/core/*.exe
 client/core/mihomo.exe
+client/core/geoip.metadb
+client/core/geosite.dat
 .DS_Store
 Thumbs.db

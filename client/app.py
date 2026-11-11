@@ -4,6 +4,7 @@ import ctypes
 import json
 import os
 import re
+import shutil
 import subprocess
 import sys
 import threading
@@ -69,6 +70,38 @@ def core_binary() -> Path | None:
         if p.is_file():
             return p
     return None
+
+
+MAX_LOG_BYTES = 2 * 1024 * 1024
+GEO_FILES = ("geoip.metadb", "geosite.dat")
+
+
+def ensure_geo_files() -> None:
+    binp = core_binary()
+    if not binp:
+        return
+    src = binp.parent
+    dd = data_dir()
+    for name in GEO_FILES:
+        dst = dd / name
+        if not dst.exists():
+            f = src / name
+            if f.exists():
+                try:
+                    shutil.copyfile(f, dst)
+                except OSError:
+                    pass
+
+
+def rotate_core_log() -> None:
+    p = data_dir() / "logs" / "core.log"
+    try:
+        if p.exists() and p.stat().st_size > MAX_LOG_BYTES:
+            bak = data_dir() / "logs" / "core.1.log"
+            bak.unlink(missing_ok=True)
+            p.replace(bak)
+    except OSError:
+        pass
 
 
 def app_log(msg: str) -> None:
@@ -337,7 +370,9 @@ class Core:
         self._profiles = profiles
         self.proc: subprocess.Popen | None = None
         self.logf = None
-        self.lock = threading.Lock()
+        self.lock = threading.RLock()
+        self._watch = False
+        self._wd_running = False
 
     def base_url(self) -> str:
         return f"http://127.0.0.1:{int(self._store.data['controller_port'])}"
@@ -370,6 +405,8 @@ class Core:
             binary = core_binary()
             if not binary:
                 return False, "找不到 mihomo 核心（core/mihomo.exe）"
+            ensure_geo_files()
+            rotate_core_log()
             runtime = self._profiles.build_runtime()
             self.logf = open(data_dir() / "logs" / "core.log", "ab", buffering=0)
             self.logf.write(f"\n===== {_now()} 啟動核心 =====\n".encode("utf-8"))
@@ -385,6 +422,10 @@ class Core:
                 time.sleep(0.25)
                 if self.is_up():
                     app_log(f"core up, pid={self.proc.pid}")
+                    self._watch = True
+                    if not self._wd_running:
+                        self._wd_running = True
+                        threading.Thread(target=self._watchdog, daemon=True).start()
                     return True, ""
                 if self.proc.poll() is not None:
                     break
@@ -395,6 +436,7 @@ class Core:
 
     def stop(self) -> None:
         with self.lock:
+            self._watch = False
             if self.proc is not None:
                 try:
                     self.proc.terminate()
@@ -411,6 +453,41 @@ class Core:
                 except Exception:
                     pass
                 self.logf = None
+
+    def _watchdog(self) -> None:
+        storms: list[float] = []
+        try:
+            while self._watch:
+                time.sleep(2)
+                if not self._watch:
+                    return
+                with self.lock:
+                    if self.proc is None or self.proc.poll() is None:
+                        continue
+                    self.proc = None
+                now = time.time()
+                storms = [t for t in storms if now - t < 60]
+                storms.append(now)
+                if len(storms) > 5:
+                    app_log("core 重複崩潰超過 5 次/分鐘，停止自動重啟")
+                    self._watch = False
+                    return
+                app_log("core 異常退出，1.5 秒後自動重啟")
+                time.sleep(1.5)
+                if not self._watch:
+                    return
+                try:
+                    ok, msg = self.start()
+                    if ok:
+                        app_log("core 已自動重啟")
+                    else:
+                        app_log(f"core 自動重啟失敗：{msg[:300]}")
+                        self._watch = False
+                except Exception as exc:
+                    app_log(f"core 自動重啟異常：{exc}")
+                    self._watch = False
+        finally:
+            self._wd_running = False
 
     def log_tail(self, max_bytes: int = 8000) -> str:
         p = data_dir() / "logs" / "core.log"

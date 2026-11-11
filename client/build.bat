@@ -18,6 +18,8 @@ python -m PyInstaller --noconfirm --clean --windowed --name MyClash ^
 
 if not exist ..\dist\MyClash\core mkdir ..\dist\MyClash\core
 copy /y core\mihomo.exe ..\dist\MyClash\core\ >nul
+copy /y core\geoip.metadb ..\dist\MyClash\core\ >nul
+copy /y core\geosite.dat ..\dist\MyClash\core\ >nul
 copy /y core\LICENSE-GPL3.txt ..\dist\MyClash\core\ >nul
 echo.
 echo Build OK: ..\dist\MyClash\MyClash.exe

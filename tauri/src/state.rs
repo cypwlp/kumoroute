@@ -39,6 +39,34 @@ pub fn now() -> String {
     chrono::Local::now().format("%Y-%m-%d %H:%M:%S").to_string()
 }
 
+pub fn app_log(msg: &str) {
+    let line = format!("[{}] {msg}\n", chrono::Local::now().format("%Y-%m-%d %H:%M:%S"));
+    if let Ok(mut f) = std::fs::OpenOptions::new()
+        .create(true)
+        .append(true)
+        .open(data_dir().join("logs").join("app.log"))
+    {
+        use std::io::Write;
+        let _ = f.write_all(line.as_bytes());
+    }
+}
+
+/// 把 core 目錄內置的 geodata 種子到資料目錄，避免 mihomo 首次啟動去 GitHub 下載。
+pub fn ensure_geo_files() {
+    let Some(bin) = core_binary() else { return };
+    let Some(src) = bin.parent().map(|p| p.to_path_buf()) else { return };
+    let dd = data_dir();
+    for name in ["geoip.metadb", "geosite.dat"] {
+        let dst = dd.join(name);
+        if !dst.exists() {
+            let f = src.join(name);
+            if f.exists() {
+                let _ = std::fs::copy(&f, &dst);
+            }
+        }
+    }
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize, Default)]
 pub struct ProxySnapshot {
     pub enable: u32,

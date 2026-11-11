@@ -1,4 +1,4 @@
-"""Download the latest mihomo Windows amd64 (compatible) core into client/core/."""
+"""Download the latest mihomo Windows amd64 (compatible) core and geodata into client/core/."""
 
 import io
 import json
@@ -7,6 +7,11 @@ import zipfile
 from pathlib import Path
 
 API = "https://api.github.com/repos/MetaCubeX/mihomo/releases/latest"
+GEO_BASE = "https://github.com/MetaCubeX/meta-rules-dat/releases/download/latest"
+GEO_FILES = {
+    "geoip.metadb": f"{GEO_BASE}/geoip.metadb",
+    "geosite.dat": f"{GEO_BASE}/geosite.dat",
+}
 
 
 def main():
@@ -26,6 +31,16 @@ def main():
     exe = next(n for n in z.namelist() if n.endswith(".exe"))
     (out / "mihomo.exe").write_bytes(z.read(exe))
     print("saved", out / "mihomo.exe")
+    for name, url in GEO_FILES.items():
+        dst = out / name
+        if dst.exists():
+            print("exists, skip", name)
+            continue
+        print("downloading", name)
+        req = urllib.request.Request(url, headers={"User-Agent": "myclash-build"})
+        with urllib.request.urlopen(req, timeout=900) as r:
+            dst.write_bytes(r.read())
+        print("saved", dst)
 
 
 if __name__ == "__main__":
