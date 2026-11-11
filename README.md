@@ -61,6 +61,12 @@ git push origin v0.1.0
 下載站按鈕指向 `releases/latest/download/MyClash-win-x64.zip`（見 `site/app.js`）。
 Pages：Settings → Pages → Source 選「GitHub Actions」，推送後自動部署 `site/`。
 
+## 鏡像（騰訊雲裸 IP）
+
+- 站址：http://129.204.149.106/ （僅 HTTP；域名與 443 被 ICP 攔截）
+- 同步：`bash packaging/deploy-tencent.sh`（SSH 到 `ubuntu@129.204.149.106`，上傳 `site/` 到 `/var/www/myclash`）
+- nginx 站點：`/etc/nginx/sites-available/myclash`（僅 `server_name 129.204.149.106` 的 80 block，不影響原域名配置）
+
 本機打包（已編譯後）：`python packaging/pack.py`，產物在 `dist/`。
 
 ## 授權
