@@ -22,7 +22,7 @@ DOWNLOAD_ATTEMPTS = 3
 
 
 def download(url: str, timeout: int = 900) -> bytes:
-    headers = {"User-Agent": "myclash-build"}
+    headers = {"User-Agent": "kumoroute-build"}
     last_error = None
     for attempt in range(1, DOWNLOAD_ATTEMPTS + 1):
         try:
@@ -47,7 +47,7 @@ def latest_tag() -> str:
     """Resolve the latest tag without using GitHub's rate-limited API."""
     req = urllib.request.Request(
         LATEST_RELEASE,
-        headers={"User-Agent": "myclash-build"},
+        headers={"User-Agent": "kumoroute-build"},
         method="HEAD",
     )
     with urllib.request.urlopen(req, timeout=30) as response:

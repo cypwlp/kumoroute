@@ -68,19 +68,19 @@ jobs:
           mkdir -p dist
           if [ "${{ matrix.platform }}" = "windows" ]; then
             python packaging/pack.py
-            cp tauri/target/release/bundle/nsis/*-setup.exe dist/MyClash-win-x64-setup.exe
+            cp tauri/target/release/bundle/nsis/*-setup.exe dist/KumoRoute-win-x64-setup.exe
           elif [ "${{ matrix.platform }}" = "linux" ]; then
-            cp tauri/target/release/bundle/appimage/*.AppImage dist/MyClash-linux-x86_64.AppImage
-            cp tauri/target/release/bundle/deb/*.deb dist/MyClash-linux-amd64.deb
+            cp tauri/target/release/bundle/appimage/*.AppImage dist/KumoRoute-linux-x86_64.AppImage
+            cp tauri/target/release/bundle/deb/*.deb dist/KumoRoute-linux-amd64.deb
           elif [ "${{ matrix.platform }}" = "macos" ]; then
-            cp tauri/target/universal-apple-darwin/release/bundle/dmg/*.dmg dist/MyClash-macos-universal.dmg
+            cp tauri/target/universal-apple-darwin/release/bundle/dmg/*.dmg dist/KumoRoute-macos-universal.dmg
           fi
           ls -la dist
 
       - uses: actions/upload-artifact@v4
         with:
-          name: myclash-${{ matrix.platform }}
-          path: dist/MyClash-*
+          name: kumoroute-${{ matrix.platform }}
+          path: dist/KumoRoute-*
           if-no-files-found: error
 
   release:
@@ -102,7 +102,7 @@ jobs:
 
       - uses: softprops/action-gh-release@v2
         with:
-          name: MyClash ${{ github.ref_name }}
+          name: KumoRoute ${{ github.ref_name }}
           tag_name: ${{ github.ref_name }}
           files: dist/*
           generate_release_notes: true

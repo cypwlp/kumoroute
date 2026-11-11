@@ -85,7 +85,7 @@ fn setup_tray(app: &tauri::App) {
         let show = MenuItem::with_id(app, "show", "顯示主視窗", true, None::<&str>)?;
         let proxy_t = MenuItem::with_id(app, "proxy", "切換系統代理", true, None::<&str>)?;
         let core_t = MenuItem::with_id(app, "core", "啟動/停止核心", true, None::<&str>)?;
-        let quit = MenuItem::with_id(app, "quit", "退出 MyClash", true, None::<&str>)?;
+        let quit = MenuItem::with_id(app, "quit", "退出 KumoRoute", true, None::<&str>)?;
         let menu = Menu::with_items(app, &[&show, &proxy_t, &core_t, &quit])?;
         let icon = app
             .default_window_icon()

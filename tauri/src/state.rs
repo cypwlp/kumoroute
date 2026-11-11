@@ -4,8 +4,9 @@ use std::sync::OnceLock;
 
 use serde::{Deserialize, Serialize};
 
-pub const APP_NAME: &str = "MyClash";
-pub const APP_VERSION: &str = "0.1.2";
+pub const APP_NAME: &str = "KumoRoute";
+pub const LEGACY_APP_NAME: &str = "MyClash";
+pub const APP_VERSION: &str = "0.2.0";
 pub const SUB_UA: &str = "clash-verge/v2.4.2";
 pub const TEST_URL: &str = "https://cp.cloudflare.com/generate_204";
 
@@ -14,6 +15,10 @@ pub const BUILTIN_CONFIG: &str = "mode: rule\nlog-level: info\nproxies: []\nrule
 pub fn data_dir() -> PathBuf {
     let base = dirs::config_dir().unwrap_or_else(|| PathBuf::from("."));
     let d = base.join(APP_NAME);
+    let legacy = base.join(LEGACY_APP_NAME);
+    if !d.exists() && legacy.is_dir() {
+        let _ = fs::rename(&legacy, &d);
+    }
     let _ = fs::create_dir_all(d.join("profiles"));
     let _ = fs::create_dir_all(d.join("logs"));
     d

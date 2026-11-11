@@ -3,18 +3,32 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>MyClash — 輕量跨平台 Clash 桌面客戶端（Windows / Linux / macOS）</title>
-<meta name="description" content="MyClash 是基於 mihomo 核心的跨平台 Clash 桌面客戶端（Windows / Linux / macOS）：訂閱管理、節點切換、一鍵系統代理、即時流量，開源免費。">
+<meta name="theme-color" content="#0b0e14">
+<title>KumoRoute — 輕量 Mihomo / Clash 跨平台桌面客戶端</title>
+<meta name="description" content="KumoRoute 是基於 mihomo 核心的輕量跨平台 Clash 桌面客戶端（Windows / Linux / macOS），支援訂閱管理、節點切換、一鍵系統代理與即時流量，開源免費。">
+<link rel="canonical" href="https://cypwlp.github.io/kumoroute/">
 <link rel="icon" href="assets/icon.png">
-<link rel="stylesheet" href="style.css">
+<meta property="og:type" content="website">
+<meta property="og:site_name" content="KumoRoute">
+<meta property="og:title" content="KumoRoute — 輕量 Mihomo / Clash 跨平台桌面客戶端">
+<meta property="og:description" content="KumoRoute 是基於 mihomo 核心的輕量跨平台 Clash 桌面客戶端（Windows / Linux / macOS），支援訂閱管理、節點切換、一鍵系統代理與即時流量，開源免費。">
+<meta property="og:url" content="https://cypwlp.github.io/kumoroute/">
+<meta property="og:image" content="https://cypwlp.github.io/kumoroute/assets/screenshot-overview.png">
+<meta property="og:image:alt" content="KumoRoute 桌面客戶端介面">
+<meta name="twitter:card" content="summary_large_image">
+<meta name="twitter:title" content="KumoRoute — 輕量 Mihomo 桌面客戶端">
+<meta name="twitter:description" content="KumoRoute 是基於 mihomo 核心的輕量跨平台 Clash 桌面客戶端（Windows / Linux / macOS），支援訂閱管理、節點切換、一鍵系統代理與即時流量，開源免費。">
+<meta name="twitter:image" content="https://cypwlp.github.io/kumoroute/assets/screenshot-overview.png">
+<script type="application/ld+json">{"@context":"https://schema.org","@type":"SoftwareApplication","name":"KumoRoute","applicationCategory":"UtilitiesApplication","operatingSystem":"Windows 10/11, Linux, macOS","description":"KumoRoute 是基於 mihomo 核心的輕量跨平台 Clash 桌面客戶端（Windows / Linux / macOS），支援訂閱管理、節點切換、一鍵系統代理與即時流量，開源免費。","url":"https://cypwlp.github.io/kumoroute/","downloadUrl":"https://github.com/cypwlp/kumoroute/releases/latest","codeRepository":"https://github.com/cypwlp/kumoroute","license":"https://github.com/cypwlp/kumoroute/blob/main/LICENSE","offers":{"@type":"Offer","price":"0","priceCurrency":"USD"}}</script>
+<link rel="stylesheet" href="style.css?v=0.2.0">
 </head>
 <body>
 
 <header class="nav">
   <div class="nav-inner">
     <a class="brand" href="#top">
-      <img src="assets/icon.png" alt="MyClash">
-      <span>MyClash</span>
+      <img src="assets/icon.png" alt="KumoRoute">
+      <span>KumoRoute</span>
     </a>
     <nav class="nav-links">
       <a href="#download">下載</a>
@@ -31,9 +45,9 @@
   <section class="hero" id="top">
     <div class="hero-inner">
       <div class="hero-copy">
-        <div class="badge">v0.1.2 · Windows / Linux / macOS · 開源免費</div>
+        <div class="badge">v0.2.0 · Windows / Linux / macOS · 開源免費</div>
         <h1>輕量的 Clash 桌面客戶端<br><span class="grad">一鍵接管系統流量</span></h1>
-        <p class="lead">MyClash 把 mihomo 核心裝進一個乾淨的圖形介面：訂閱管理、節點切換、模式切換、即時速度，一屏搞定。</p>
+        <p class="lead">KumoRoute 把 mihomo 核心裝進一個乾淨的圖形介面：訂閱管理、節點切換、模式切換、即時速度，一屏搞定。</p>
         <div class="cta">
           <a class="btn primary big" id="download-btn" href="#" target="_blank" rel="noopener">
             下載 Windows 版
@@ -47,7 +61,7 @@
         <div class="glow"></div>
         <div class="frame">
           <div class="frame-bar"><span></span><span></span><span></span></div>
-          <img src="assets/screenshot-overview.png" alt="MyClash 概覽介面">
+          <img src="assets/screenshot-overview.png" alt="KumoRoute 概覽介面">
         </div>
       </div>
     </div>
@@ -85,7 +99,7 @@
   </section>
 
   <section class="section" id="features">
-    <h2>為什麼選 MyClash</h2>
+    <h2>為什麼選 KumoRoute</h2>
     <p class="section-sub">一個殼，只做殼該做的事——核心交給成熟的 mihomo。</p>
     <div class="features">
       <div class="feature">
@@ -172,11 +186,11 @@
     <div class="faq">
       <details>
         <summary>Windows 說「已保護您的電腦」，怎麼辦？</summary>
-        <p>這是 SmartScreen 對未簽名程式的提示。點「更多資訊」→「仍要執行」即可。MyClash 完全開源，你可以自行檢視並從原始碼建置。</p>
+        <p>這是 SmartScreen 對未簽名程式的提示。點「更多資訊」→「仍要執行」即可。KumoRoute 完全開源，你可以自行檢視並從原始碼建置。</p>
       </details>
       <details>
         <summary>需要自己準備訂閱或節點嗎？</summary>
-        <p>是。MyClash 只提供客戶端，不包含、不販售任何節點或訂閱服務。你需要自備 Clash 格式的訂閱連結或設定檔。</p>
+        <p>是。KumoRoute 只提供客戶端，不包含、不販售任何節點或訂閱服務。你需要自備 Clash 格式的訂閱連結或設定檔。</p>
       </details>
       <details>
         <summary>支援哪些配置格式？</summary>
@@ -184,15 +198,19 @@
       </details>
       <details>
         <summary>系統代理開了但沒生效？</summary>
-        <p>部分安全軟體或網路加速器會「守護」系統代理設定，把它們改回去。MyClash 開代理後會自動複核並提示。請在該軟體中關閉代理守護，或改用其白名單。</p>
+        <p>部分安全軟體或網路加速器會「守護」系統代理設定，把它們改回去。KumoRoute 開代理後會自動複核並提示。請在該軟體中關閉代理守護，或改用其白名單。</p>
       </details>
       <details>
         <summary>資料會上傳到哪裡嗎？</summary>
-        <p>不會。設定、訂閱、日誌只存在你的電腦（%APPDATA%\MyClash），沒有任何統計或上報。</p>
+        <p>不會。設定、訂閱、日誌只存在你的電腦（%APPDATA%\KumoRoute），沒有任何統計或上報。</p>
+      </details>
+      <details>
+        <summary>從舊版 MyClash 升級會保留設定嗎？</summary>
+        <p>會。首次啟動 KumoRoute 時，會自動把原本位於 %APPDATA%\MyClash 的設定、訂閱與日誌遷移到 %APPDATA%\KumoRoute。</p>
       </details>
       <details>
         <summary>支援哪些平台？手機能用嗎？</summary>
-        <p>v0.1.2 提供 Windows（安裝包／免安裝）、Linux（AppImage／deb）、macOS（Universal dmg）。手機請參考上方的開源客戶端推薦（Android 可用 Clash Meta for Android／FlClash）。</p>
+        <p>v0.2.0 提供 Windows（安裝包／免安裝）、Linux（AppImage／deb）、macOS（Universal dmg）。手機請參考上方的開源客戶端推薦（Android 可用 Clash Meta for Android／FlClash）。</p>
       </details>
     </div>
   </section>
@@ -202,10 +220,10 @@
   <div class="foot-inner">
     <div class="foot-brand">
       <img src="assets/icon.png" alt="">
-      <span>MyClash</span>
+      <span>KumoRoute</span>
     </div>
     <p class="disclaimer">
-      本站僅提供 MyClash 的下載與其他開源專案的連結索引，不提供、不銷售任何代理節點或訂閱服務。<br>
+      本站僅提供 KumoRoute 的下載與其他開源專案的連結索引，不提供、不銷售任何代理節點或訂閱服務。<br>
       請自行準備合法的網路配置，並遵守所在國家與地區的法律法規。<br>
       客戶端程式碼以 MIT 授權；內含的 mihomo 核心以 GPL-3.0 授權，版權歸 MetaCubeX 所有。
     </p>
@@ -217,6 +235,6 @@
   </div>
 </footer>
 
-<script src="app.js"></script>
+<script src="app.js?v=0.2.0"></script>
 </body>
 </html>

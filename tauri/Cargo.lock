@@ -2008,6 +2008,28 @@ dependencies = [
 ]
 
 [[package]]
+name = "kumoroute"
+version = "0.2.0"
+dependencies = [
+ "chrono",
+ "dirs 5.0.1",
+ "open",
+ "regex",
+ "rfd",
+ "serde",
+ "serde_json",
+ "serde_yaml",
+ "tauri",
+ "tauri-build",
+ "tauri-plugin-single-instance",
+ "ureq",
+ "urlencoding",
+ "uuid",
+ "windows 0.58.0",
+ "winreg 0.52.0",
+]
+
+[[package]]
 name = "libappindicator"
 version = "0.9.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -2194,28 +2216,6 @@ dependencies = [
  "serde",
  "thiserror 2.0.21",
  "windows-sys 0.61.2",
-]
-
-[[package]]
-name = "myclash"
-version = "0.1.2"
-dependencies = [
- "chrono",
- "dirs 5.0.1",
- "open",
- "regex",
- "rfd",
- "serde",
- "serde_json",
- "serde_yaml",
- "tauri",
- "tauri-build",
- "tauri-plugin-single-instance",
- "ureq",
- "urlencoding",
- "uuid",
- "windows 0.58.0",
- "winreg 0.52.0",
 ]
 
 [[package]]

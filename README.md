@@ -1,6 +1,10 @@
-# MyClash
+# KumoRoute
 
-輕量的跨平台 Clash 桌面客戶端（Windows / Linux / macOS），內建 [mihomo](https://github.com/MetaCubeX/mihomo) 核心。
+輕量的跨平台 Mihomo / Clash 桌面客戶端（Windows / Linux / macOS），內建 [mihomo](https://github.com/MetaCubeX/mihomo) 核心。
+
+官方網站：https://cypwlp.github.io/kumoroute/
+
+> v0.2.0 起由 **MyClash** 更名為 **KumoRoute**；首次啟動會自動把舊資料目錄遷移到 `KumoRoute`。
 
 正式客戶端為 **Rust / Tauri 2**（`tauri/`），圖形介面與 Python 後備版（`client/`）共用同一套 HTML/CSS/JS。
 
@@ -13,7 +17,7 @@
 - 托盤常駐、關窗不退出、單實例
 - 發佈形態：Windows 安裝包（NSIS）＋免安裝 zip；Linux AppImage＋deb；macOS Universal dmg
 
-> MyClash 只提供客戶端，不包含、不販售任何節點或訂閱服務。
+> KumoRoute 只提供客戶端，不包含、不販售任何節點或訂閱服務。
 
 ## 專案結構
 
@@ -57,21 +61,21 @@ python app.py
 
 ## 發佈（自動）
 
-推送 `v*` tag 即由 GitHub Actions 自動編譯、打包並建立 Release（含 `MyClash-win-x64.zip` 與 `SHA256SUMS.txt`）：
+推送 `v*` tag 即由 GitHub Actions 自動編譯、打包並建立 Release（含 `KumoRoute-win-x64.zip` 與 `SHA256SUMS.txt`）：
 
 ```powershell
-git tag v0.1.0
-git push origin v0.1.0
+git tag v0.2.0
+git push origin v0.2.0
 ```
 
-下載站按鈕指向 `releases/latest/download/MyClash-win-x64.zip`（見 `site/app.js`）。
+下載站按鈕指向 `releases/latest/download/KumoRoute-win-x64.zip`（見 `site/app.js`）。
 Pages：Settings → Pages → Source 選「GitHub Actions」，推送後自動部署 `site/`。
 
 ## 鏡像（騰訊雲裸 IP）
 
 - 站址：http://129.204.149.106/ （僅 HTTP；域名與 443 被 ICP 攔截）
-- 同步：`bash packaging/deploy-tencent.sh`（SSH 到 `ubuntu@129.204.149.106`，上傳 `site/` 到 `/var/www/myclash`）
-- nginx 站點：`/etc/nginx/sites-available/myclash`（僅 `server_name 129.204.149.106` 的 80 block，不影響原域名配置）
+- 同步：`bash packaging/deploy-tencent.sh`（SSH 到 `ubuntu@129.204.149.106`，上傳 `site/` 到 `/var/www/kumoroute`）
+- nginx 站點：`/etc/nginx/sites-available/kumoroute`（僅 `server_name 129.204.149.106` 的 80 block，不影響原域名配置）
 
 本機打包（已編譯後）：`python packaging/pack.py`，產物在 `dist/`。
 

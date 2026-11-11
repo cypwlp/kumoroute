@@ -1,4 +1,4 @@
-"""MyClash - lightweight Clash/mihomo desktop client for Windows."""
+"""KumoRoute - lightweight Clash/mihomo desktop client."""
 
 import ctypes
 import json
@@ -21,8 +21,9 @@ from urllib.parse import quote
 import webview
 import yaml
 
-APP_NAME = "MyClash"
-APP_VERSION = "0.1.0"
+APP_NAME = "KumoRoute"
+LEGACY_APP_NAME = "MyClash"
+APP_VERSION = "0.2.0"
 CREATE_NO_WINDOW = 0x08000000
 SUB_UA = "clash-verge/v2.4.2"
 TEST_URL = "https://cp.cloudflare.com/generate_204"
@@ -59,7 +60,14 @@ def exe_dir() -> Path:
 
 
 def data_dir() -> Path:
-    d = Path(os.environ.get("APPDATA") or Path.home()) / APP_NAME
+    base = Path(os.environ.get("APPDATA") or Path.home())
+    d = base / APP_NAME
+    legacy = base / LEGACY_APP_NAME
+    if not d.exists() and legacy.is_dir():
+        try:
+            legacy.rename(d)
+        except OSError:
+            pass
     (d / "profiles").mkdir(parents=True, exist_ok=True)
     (d / "logs").mkdir(parents=True, exist_ok=True)
     return d
@@ -875,9 +883,9 @@ def build_tray(api: Api, win, state: dict):
             toggle_core,
         ),
         pystray.Menu.SEPARATOR,
-        pystray.MenuItem("退出 MyClash", quit_),
+        pystray.MenuItem("退出 KumoRoute", quit_),
     )
-    return pystray.Icon("MyClash", tray_image(), "MyClash", menu)
+    return pystray.Icon("KumoRoute", tray_image(), "KumoRoute", menu)
 
 
 _MUTEX = None
@@ -885,7 +893,7 @@ _MUTEX = None
 
 def acquire_single_instance() -> bool:
     global _MUTEX
-    _MUTEX = ctypes.windll.kernel32.CreateMutexW(None, False, "MyClash_SingleInstance_Mutex")
+    _MUTEX = ctypes.windll.kernel32.CreateMutexW(None, False, "KumoRoute_SingleInstance_Mutex")
     return ctypes.windll.kernel32.GetLastError() != 183
 
 
@@ -899,7 +907,7 @@ def _ensure_std_streams() -> None:
 def main() -> None:
     _ensure_std_streams()
     if not acquire_single_instance():
-        message_box("MyClash 已在執行中，請從系統托盤開啟。")
+        message_box("KumoRoute 已在執行中，請從系統托盤開啟。")
         return
 
     store = Store(data_dir() / "settings.json", DEFAULT_SETTINGS)
@@ -957,7 +965,7 @@ def main() -> None:
 
     threading.Thread(target=tray_thread, daemon=True).start()
 
-    if os.environ.get("MYCLASH_SELFTEST"):
+    if os.environ.get("KUMOROUTE_SELFTEST"):
         def selftest():
             time.sleep(7)
             try:
@@ -975,7 +983,7 @@ def main() -> None:
 
         threading.Thread(target=selftest, daemon=True).start()
 
-    auto_close = os.environ.get("MYCLASH_AUTOCLOSE")
+    auto_close = os.environ.get("KUMOROUTE_AUTOCLOSE")
     if auto_close:
         def auto():
             time.sleep(float(auto_close))
@@ -986,7 +994,7 @@ def main() -> None:
 
     try:
         webview.start(
-            debug=bool(os.environ.get("MYCLASH_DEBUG")),
+            debug=bool(os.environ.get("KUMOROUTE_DEBUG")),
             http_server=True,
             private_mode=False,
             storage_path=str(data_dir() / "webview"),
@@ -1009,5 +1017,5 @@ if __name__ == "__main__":
 
         tb = traceback.format_exc()
         app_log("FATAL\n" + tb)
-        message_box("MyClash 啟動失敗：\n" + tb[-800:])
+        message_box("KumoRoute 啟動失敗：\n" + tb[-800:])
         sys.exit(1)

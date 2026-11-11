@@ -6,7 +6,7 @@ import importlib.util
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
-spec = importlib.util.spec_from_file_location("myclash_app", ROOT / "client" / "app.py")
+spec = importlib.util.spec_from_file_location("kumoroute_app", ROOT / "client" / "app.py")
 app = importlib.util.module_from_spec(spec)
 spec.loader.exec_module(app)
 

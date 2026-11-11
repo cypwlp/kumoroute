@@ -1,8 +1,8 @@
-MyClash v0.1.2 — 輕量 Clash 桌面客戶端（Windows x64 免安裝版，Rust/Tauri）
+KumoRoute v0.2.0 — 輕量 Clash 桌面客戶端（Windows x64 免安裝版，Rust/Tauri）
 
 使用方法
-1. 解壓縮到任意資料夾（請保持 MyClash.exe、core\、與程式同層）
-2. 雙擊 MyClash.exe
+1. 解壓縮到任意資料夾（請保持 KumoRoute.exe、core\、與程式同層）
+2. 雙擊 KumoRoute.exe
 3. 到「訂閱」貼上你的 Clash 訂閱連結（或匯入本機 YAML）
 4. 回「概覽」打開「系統代理」
 
@@ -10,7 +10,8 @@ MyClash v0.1.2 — 輕量 Clash 桌面客戶端（Windows x64 免安裝版，Rus
 - 首次執行可能出現 Windows SmartScreen 提示：更多資訊 → 仍要執行（本程式未簽名）。
 - 關閉視窗會最小化到托盤，從托盤選單可退出。
 - 若系統代理開關打開後又被關掉，是其他安全軟體在守護代理設定，請關閉其代理守護。
-- 設定目錄：%APPDATA%\MyClash
+- 設定目錄：%APPDATA%\KumoRoute
+- 從舊版 MyClash 升級時，首次啟動會自動沿用並遷移原有設定。
 
 內置說明
 - 已內置 GeoIP/GeoSite 資料庫（geoip.metadb、geosite.dat），導入訂閱即可使用，無需聯網下載 geodata。

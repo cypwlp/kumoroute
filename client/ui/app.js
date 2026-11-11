@@ -86,8 +86,8 @@ const demoCfg = {
   mixed_port: 7890,
   controller_port: 9090,
   core_version: "v1.19.33",
-  app_version: "0.1.0",
-  data_dir: "C:\\Users\\…\\AppData\\Roaming\\MyClash",
+  app_version: "0.2.0",
+  data_dir: "C:\\Users\\…\\AppData\\Roaming\\KumoRoute",
   test_url: "https://cp.cloudflare.com/generate_204",
   profiles: [
     { id: "demo1", name: "範例機場", kind: "remote", updated_at: "2026-11-10 10:42:18" },
@@ -231,7 +231,7 @@ function renderAll() {
   $("#st-version").textContent = state.core_version ? "mihomo " + state.core_version : "mihomo 未啟動";
 
   const btn = $("#btn-toggle-core");
-  btn.textContent = state.running ? "停止核心" : "啟動 MyClash";
+  btn.textContent = state.running ? "停止核心" : "啟動 KumoRoute";
   btn.classList.toggle("primary", !state.running);
 
   $("#sw-sysproxy").checked = !!state.sys_proxy;

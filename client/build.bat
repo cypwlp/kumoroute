@@ -6,7 +6,7 @@ python -m pip install -r requirements.txt || goto :err
 python tools\make_icon.py || goto :err
 if not exist core\mihomo.exe python tools\fetch_core.py || goto :err
 
-python -m PyInstaller --noconfirm --clean --windowed --name MyClash ^
+python -m PyInstaller --noconfirm --clean --windowed --name KumoRoute ^
   --icon assets\icon.ico ^
   --add-data "ui;ui" ^
   --add-data "assets;assets" ^
@@ -16,13 +16,13 @@ python -m PyInstaller --noconfirm --clean --windowed --name MyClash ^
   --exclude-module tkinter ^
   --distpath ..\dist --workpath ..\build app.py || goto :err
 
-if not exist ..\dist\MyClash\core mkdir ..\dist\MyClash\core
-copy /y core\mihomo.exe ..\dist\MyClash\core\ >nul
-copy /y core\geoip.metadb ..\dist\MyClash\core\ >nul
-copy /y core\geosite.dat ..\dist\MyClash\core\ >nul
-copy /y core\LICENSE-GPL3.txt ..\dist\MyClash\core\ >nul
+if not exist ..\dist\KumoRoute\core mkdir ..\dist\KumoRoute\core
+copy /y core\mihomo.exe ..\dist\KumoRoute\core\ >nul
+copy /y core\geoip.metadb ..\dist\KumoRoute\core\ >nul
+copy /y core\geosite.dat ..\dist\KumoRoute\core\ >nul
+copy /y core\LICENSE-GPL3.txt ..\dist\KumoRoute\core\ >nul
 echo.
-echo Build OK: ..\dist\MyClash\MyClash.exe
+echo Build OK: ..\dist\KumoRoute\KumoRoute.exe
 exit /b 0
 
 :err
