@@ -1,54 +1,57 @@
 # MyClash
 
-輕量的 Windows 桌面 Clash 客戶端：Python + WebView2 圖形介面，內建 [mihomo](https://github.com/MetaCubeX/mihomo) 核心。
+輕量的 Windows 桌面 Clash 客戶端，內建 [mihomo](https://github.com/MetaCubeX/mihomo) 核心。
+
+正式客戶端為 **Rust / Tauri 2**（`tauri/`），圖形介面與 Python 後備版（`client/`）共用同一套 HTML/CSS/JS。
 
 - 一鍵系統代理（退出自動還原）
 - Clash 訂閱管理（遠端訂閱 / 本機 YAML）
 - 節點選擇、整組測速、模式切換（規則 / 全局 / 直連）
 - 即時上下行速度、連線數、日誌
-- 托盤常駐、關窗不退出
+- 托盤常駐、關窗不退出、單實例
 
 > MyClash 只提供客戶端，不包含、不販售任何節點或訂閱服務。
 
 ## 專案結構
 
 ```
-client/                 客戶端原始碼
-  app.py                後端：核心管理、訂閱、系統代理、托盤、JS API
-  ui/                   前端（HTML/CSS/JS，瀏覽器直接打開為 DEMO 模式）
+tauri/                  正式客戶端（Rust / Tauri 2）
+  src/                  後端：核心管理、訂閱、系統代理、托盤、commands
+  tauri.conf.json       frontendDist 指向 ../client/ui
+  .cargo/config.toml    crates 鏡像＋target 目錄
+client/                 共用 UI＋Python 後備版
+  ui/                   HTML/CSS/JS（pywebview / Tauri / DEMO 三模式）
+  app.py                Python 後備後端
   core/                 mihomo.exe（不提交）與 GPL-3.0 授權文本
-  tools/fetch_core.py   下載 mihomo 核心
-  tools/make_icon.py    產生圖示
-  build.bat             一鍵建置
+  tools/                fetch_core / make_icon
 site/                   下載站（GitHub Pages）
 .github/workflows/      Pages 部署工作流
 ```
 
-## 本機開發
+## 建置 Rust 正式版
+
+```powershell
+cd tauri
+cargo build --release
+# 產物 target\release\myclash.exe；把 client\core\ 複製到 exe 同層\core\ 即可運行
+```
+
+Windows 上實測 GNU toolchain 亦可鏈接；若遇連結問題可改用 MSVC（`rustup default stable-x86_64-pc-windows-msvc`＋VS C++ 工作負載）。
+
+## 本機開發（Python 後備）
 
 ```powershell
 cd client
 python -m pip install -r requirements.txt
-python tools\fetch_core.py        # 下載 mihomo.exe 到 client\core\
+python tools\fetch_core.py
 python app.py
 ```
 
-環境變數（測試用）：`MYCLASH_DEBUG=1` 開 devtools；`MYCLASH_AUTOCLOSE=15` 15 秒後自動退出；`MYCLASH_SELFTEST=1` 載入後把 DOM 狀態寫入日誌。
-
-## 建置可攜版
-
-```powershell
-cd client
-build.bat
-```
-
-產物：`dist\MyClash\`（含 `core\mihomo.exe`），壓縮後即 `MyClash-win-x64.zip`。
-
 ## 發佈
 
-1. GitHub 建立 Release（例如 `v0.1.0`），上傳 `MyClash-win-x64.zip`。
-2. 下載站的下載按鈕指向 `releases/latest/download/MyClash-win-x64.zip`（見 `site/app.js` 的 `REPO_URL`）。
-3. Pages：Settings → Pages → Source 選「GitHub Actions」，推送後 `deploy.yml` 自動部署 `site/`。
+1. 將 `myclash.exe`＋`core\`（mihomo.exe、GPL-3.0）＋README 壓成 `MyClash-win-x64.zip`。
+2. GitHub Release（如 `v0.1.0`）上傳該 zip；下載站按鈕指向 `releases/latest/download/MyClash-win-x64.zip`（見 `site/app.js`）。
+3. Pages：Settings → Pages → Source 選「GitHub Actions」，推送後自動部署 `site/`。
 
 ## 授權
 
