@@ -15,6 +15,10 @@
 - 節點選擇、整組測速、模式切換（規則 / 全局 / 直連）
 - 即時上下行速度、連線數、日誌
 - 本機流量統計：今日、近 7 日趨勢、近 30 日累計、峰值連線與速度
+- 節點健康度：最近 10 次延遲、平均延遲、逾時率、穩定性與推薦節點
+- 統計管理：CSV／JSON 匯出、清除統計、每日與近 7 日流量上限提醒
+- 核心與代理事件：核心啟動／重啟、最近啟動、系統代理時長、訂閱更新歷史
+- 流量歸屬：配置、策略組、節點；可選記錄熱門網域與規則命中（僅本機）
 - 內置 GeoIP/GeoSite 資料庫，導入訂閱即用（免從 GitHub 下載 geodata）
 - 核心崩潰自動重啟（60 秒內最多 5 次）＋日誌自動輪轉
 - 托盤常駐、關窗不退出、單實例
@@ -67,8 +71,8 @@ python app.py
 推送 `v*` tag 即由 GitHub Actions 自動編譯、打包並建立 Release（含 `KumoRoute-win-x64.zip` 與 `SHA256SUMS.txt`）：
 
 ```powershell
-git tag v0.2.2
-git push origin v0.2.2
+git tag v0.3.0
+git push origin v0.3.0
 ```
 
 下載站按鈕指向 `releases/latest/download/KumoRoute-win-x64.zip`（見 `site/app.js`）。

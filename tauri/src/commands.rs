@@ -1,3 +1,4 @@
+use std::fs;
 use std::sync::Mutex;
 
 use serde_json::{json, Value};
@@ -296,13 +297,62 @@ pub fn get_live(state: State<'_, Shared>) -> Value {
         return json!({"running": false});
     }
     match core::api("GET", port, "/connections", None, 5) {
-        Ok(d) => json!({
-            "running": true,
-            "up_total": d.get("uploadTotal").and_then(|v| v.as_u64()).unwrap_or(0),
-            "down_total": d.get("downloadTotal").and_then(|v| v.as_u64()).unwrap_or(0),
-            "count": d.get("connections").and_then(|v| v.as_array()).map(|a| a.len()).unwrap_or(0),
-        }),
+        Ok(d) => {
+            let raw = d.get("connections").and_then(|v| v.as_array()).cloned().unwrap_or_default();
+            let connections: Vec<Value> = raw
+                .iter()
+                .map(|c| {
+                    let meta = c.get("metadata").cloned().unwrap_or_else(|| json!({}));
+                    json!({
+                        "id": c.get("id").and_then(|v| v.as_str()).unwrap_or(""),
+                        "upload": c.get("upload").and_then(|v| v.as_u64()).unwrap_or(0),
+                        "download": c.get("download").and_then(|v| v.as_u64()).unwrap_or(0),
+                        "host": meta
+                            .get("host")
+                            .and_then(|v| v.as_str())
+                            .or_else(|| meta.get("destinationIP").and_then(|v| v.as_str()))
+                            .unwrap_or(""),
+                        "rule": c.get("rule").and_then(|v| v.as_str()).unwrap_or(""),
+                        "rulePayload": c.get("rulePayload").and_then(|v| v.as_str()).unwrap_or(""),
+                        "chains": c.get("chains").cloned().unwrap_or_else(|| json!([])),
+                    })
+                })
+                .collect();
+            json!({
+                "running": true,
+                "up_total": d.get("uploadTotal").and_then(|v| v.as_u64()).unwrap_or(0),
+                "down_total": d.get("downloadTotal").and_then(|v| v.as_u64()).unwrap_or(0),
+                "count": raw.len(),
+                "connections": connections,
+            })
+        }
         Err(_) => json!({"running": false}),
+    }
+}
+
+#[tauri::command]
+pub fn save_stats_export(format: String, content: String) -> Value {
+    let ext = if format.eq_ignore_ascii_case("csv") { "csv" } else { "json" };
+    let folder = dirs::download_dir()
+        .or_else(|| dirs::home_dir().map(|p| p.join("Downloads")))
+        .unwrap_or_else(data_dir);
+    if let Err(e) = fs::create_dir_all(&folder) {
+        return err(format!("無法建立下載資料夾：{e}"));
+    }
+    let name = format!(
+        "KumoRoute-stats-{}.{}",
+        chrono::Local::now().format("%Y%m%d-%H%M%S"),
+        ext
+    );
+    let path = folder.join(name);
+    let bytes = if ext == "csv" {
+        format!("\u{feff}{content}").into_bytes()
+    } else {
+        content.into_bytes()
+    };
+    match fs::write(&path, bytes) {
+        Ok(_) => json!({"ok": true, "path": path.to_string_lossy()}),
+        Err(e) => err(format!("匯出失敗：{e}")),
     }
 }
 

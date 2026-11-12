@@ -13,7 +13,7 @@
       <img src="icon.png" alt="KumoRoute" class="brand-icon">
       <div>
         <div class="brand-name">KumoRoute</div>
-        <div class="brand-ver" id="app-version">v0.2.2</div>
+        <div class="brand-ver" id="app-version">v0.3.0</div>
       </div>
     </div>
 
@@ -52,6 +52,7 @@
 
   <main>
     <div id="demo-banner" class="demo-banner hidden">DEMO 模式：瀏覽器預覽，未連接客戶端後端</div>
+    <div id="usage-alert" class="usage-alert hidden"></div>
 
     <section id="page-overview" class="page active">
       <header class="page-head">
@@ -172,6 +173,58 @@
           <span><i class="legend-down"></i>下載</span>
           <span><i class="legend-up"></i>上傳</span>
         </div>
+      </div>
+
+      <div class="card stats-events-card">
+        <div class="card-title">核心與代理</div>
+        <div class="stats-summary stats-summary-4">
+          <div><span>核心啟動</span><b id="core-starts">0 次</b></div>
+          <div><span>重新啟動</span><b id="core-restarts">0 次</b></div>
+          <div><span>最近啟動</span><b id="core-last-start">—</b></div>
+          <div><span>系統代理時長</span><b id="proxy-uptime">0 秒</b></div>
+        </div>
+        <div class="event-list" id="event-list"></div>
+      </div>
+
+      <div class="card stats-chart-card">
+        <div class="card-title">節點健康度</div>
+        <p class="hint">每次測速會保留最近 10 次結果；依成功率、平均延遲與波動推薦較穩定節點。</p>
+        <div id="node-health" class="node-health"></div>
+      </div>
+
+      <div class="card stats-chart-card">
+        <div class="card-title">流量歸屬</div>
+        <p class="hint">依作用中連線的位元組增量估算，可能包含少量重疊或漏計。</p>
+        <div class="attribution-grid">
+          <div><h4>配置</h4><div id="attr-profiles" class="attr-list"></div></div>
+          <div><h4>策略組</h4><div id="attr-groups" class="attr-list"></div></div>
+          <div><h4>節點</h4><div id="attr-nodes" class="attr-list"></div></div>
+          <div><h4>熱門網域</h4><div id="attr-domains" class="attr-list"></div></div>
+          <div><h4>規則命中</h4><div id="attr-rules" class="attr-list"></div></div>
+        </div>
+        <p class="hint">網域與規則排行預設關閉；啟用後也只保存在本機。</p>
+      </div>
+
+      <div class="card stats-total-card">
+        <div class="card-title">統計管理</div>
+        <div class="settings-grid limit-grid">
+          <label class="field">
+            <span>每日流量上限（GB，0 = 關閉）</span>
+            <input type="number" id="limit-daily" min="0" max="100000" step="0.1" value="0">
+          </label>
+          <label class="field">
+            <span>近 7 日流量上限（GB，0 = 關閉）</span>
+            <input type="number" id="limit-weekly" min="0" max="100000" step="0.1" value="0">
+          </label>
+        </div>
+        <label class="check privacy-check"><input type="checkbox" id="sw-domain-tracking"> 記錄熱門網域與規則命中（僅本機）</label>
+        <div class="row-actions">
+          <button class="btn primary" id="btn-save-limits">保存統計設定</button>
+          <button class="btn ghost" id="btn-export-csv">匯出 CSV</button>
+          <button class="btn ghost" id="btn-export-json">匯出 JSON</button>
+          <button class="btn ghost danger" id="btn-clear-stats">清除統計</button>
+        </div>
+        <p class="hint">清除統計不會刪除訂閱、設定或日誌。</p>
       </div>
 
       <div class="card stats-total-card">

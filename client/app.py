@@ -23,7 +23,7 @@ import yaml
 
 APP_NAME = "KumoRoute"
 LEGACY_APP_NAME = "MyClash"
-APP_VERSION = "0.2.2"
+APP_VERSION = "0.3.0"
 CREATE_NO_WINDOW = 0x08000000
 SUB_UA = f"KumoRoute/{APP_VERSION}"
 TEST_URL = "https://cp.cloudflare.com/generate_204"
@@ -768,11 +768,25 @@ class Api:
             return {"running": False}
         try:
             d = self._core.api("GET", "/connections", timeout=5)
+            raw = d.get("connections") or []
+            connections = []
+            for c in raw:
+                meta = c.get("metadata") or {}
+                connections.append({
+                    "id": str(c.get("id") or ""),
+                    "upload": int(c.get("upload") or 0),
+                    "download": int(c.get("download") or 0),
+                    "host": str(meta.get("host") or meta.get("destinationIP") or ""),
+                    "rule": str(c.get("rule") or ""),
+                    "rulePayload": str(c.get("rulePayload") or ""),
+                    "chains": [str(x) for x in (c.get("chains") or [])],
+                })
             return {
                 "running": True,
                 "up_total": int(d.get("uploadTotal") or 0),
                 "down_total": int(d.get("downloadTotal") or 0),
-                "count": len(d.get("connections") or []),
+                "count": len(raw),
+                "connections": connections,
             }
         except Exception:
             return {"running": False}
@@ -813,6 +827,19 @@ class Api:
             if changed_mixed and is_system_proxy_on(self._store):
                 _apply_registry_proxy(1, f"127.0.0.1:{mp}", PROXY_OVERRIDE)
             return {"ok": True}
+        except Exception as exc:
+            return {"ok": False, "error": str(exc)}
+
+    def save_stats_export(self, fmt: str, content: str) -> dict:
+        ext = "csv" if str(fmt).lower() == "csv" else "json"
+        try:
+            folder = Path.home() / "Downloads"
+            if not folder.is_dir():
+                folder = data_dir()
+            folder.mkdir(parents=True, exist_ok=True)
+            path = folder / f"KumoRoute-stats-{datetime.now():%Y%m%d-%H%M%S}.{ext}"
+            path.write_text(content, encoding="utf-8-sig" if ext == "csv" else "utf-8")
+            return {"ok": True, "path": str(path)}
         except Exception as exc:
             return {"ok": False, "error": str(exc)}
 

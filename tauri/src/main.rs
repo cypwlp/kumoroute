@@ -44,6 +44,7 @@ fn main() {
             commands::set_active_profile,
             commands::get_live,
             commands::get_logs,
+            commands::save_stats_export,
             commands::save_settings,
             commands::open_data_dir,
             commands::open_url,
