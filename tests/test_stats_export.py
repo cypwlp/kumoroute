@@ -58,7 +58,8 @@ class StatsExportTests(unittest.TestCase):
             api._store = FakeStore()
             with mock.patch.object(app.Path, "home", classmethod(lambda cls: root)):
                 with mock.patch.object(app, "data_dir", lambda: root):
-                    result = api.export_diagnostics()
+                    with mock.patch.object(app, "is_system_proxy_on", lambda store: False):
+                        result = api.export_diagnostics()
             self.assertTrue(result["ok"])
             text = Path(result["path"]).read_text(encoding="utf-8")
             self.assertIn("app_version: 0.4.0", text)
