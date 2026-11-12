@@ -4,6 +4,8 @@
     "resources": {
       "../LICENSE": "legal/LICENSE",
       "../NOTICE.md": "legal/NOTICE.md",
+      "../PRIVACY.md": "legal/PRIVACY.md",
+      "../TERMS.md": "legal/TERMS.md",
       "../client/core/mihomo-arm64": "core/mihomo-arm64",
       "../client/core/mihomo-x64": "core/mihomo-x64",
       "../client/core/geoip.metadb": "core/geoip.metadb",

@@ -19,6 +19,10 @@
 - 統計管理：CSV／JSON 匯出、清除統計、每日與近 7 日流量上限提醒
 - 核心與代理事件：核心啟動／重啟、最近啟動、系統代理時長、訂閱更新歷史
 - 流量歸屬：配置、策略組、節點；可選記錄熱門網域與規則命中（僅本機）
+- 更新檢查：啟動時自動檢查新版本並提示下載頁（不自動執行未簽名安裝檔）
+- 本機當機紀錄與去識別化診斷匯出
+- 隱私政策與使用條款
+- GitHub Actions 乾淨 runner 的 Windows／Linux／macOS core 與建置 smoke tests
 - 內置 GeoIP/GeoSite 資料庫，導入訂閱即用（免從 GitHub 下載 geodata）
 - 核心崩潰自動重啟（60 秒內最多 5 次）＋日誌自動輪轉
 - 托盤常駐、關窗不退出、單實例
@@ -71,8 +75,8 @@ python app.py
 推送 `v*` tag 即由 GitHub Actions 自動編譯、打包並建立 Release（含 `KumoRoute-win-x64.zip` 與 `SHA256SUMS.txt`）：
 
 ```powershell
-git tag v0.3.1
-git push origin v0.3.1
+git tag v0.4.0
+git push origin v0.4.0
 ```
 
 下載站按鈕指向 `releases/latest/download/KumoRoute-win-x64.zip`（見 `site/app.js`）。
@@ -92,4 +96,6 @@ Pages：Settings → Pages → Source 選「GitHub Actions」，推送後自動�
 
 - 客戶端程式碼：[MIT](LICENSE)
 - 第三方元件與獨立性聲明：[NOTICE.md](NOTICE.md)
+- 隱私政策：[PRIVACY.md](PRIVACY.md)
+- 使用條款：[TERMS.md](TERMS.md)
 - 內附 mihomo 核心：[GPL-3.0](client/core/LICENSE-GPL3.txt)，版權歸 [MetaCubeX](https://github.com/MetaCubeX/mihomo) 所有

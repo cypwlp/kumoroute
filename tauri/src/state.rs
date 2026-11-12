@@ -2,11 +2,12 @@ use std::fs;
 use std::path::PathBuf;
 use std::sync::OnceLock;
 
+use regex::Regex;
 use serde::{Deserialize, Serialize};
 
 pub const APP_NAME: &str = "KumoRoute";
 pub const LEGACY_APP_NAME: &str = "MyClash";
-pub const APP_VERSION: &str = "0.3.1";
+pub const APP_VERSION: &str = "0.4.0";
 pub const SUB_UA: &str = concat!("KumoRoute/", env!("CARGO_PKG_VERSION"));
 pub const TEST_URL: &str = "https://cp.cloudflare.com/generate_204";
 
@@ -80,6 +81,38 @@ pub fn core_binary() -> Option<PathBuf> {
 
 pub fn now() -> String {
     chrono::Local::now().format("%Y-%m-%d %H:%M:%S").to_string()
+}
+
+pub fn sanitize_diagnostics(text: &str) -> String {
+    let url_re = Regex::new(r#"https?://[^\s"'<>]+"#).unwrap();
+    let endpoint_re = Regex::new(r"(?m)(-->\s*)[^\s]+").unwrap();
+    let ip_re = Regex::new(r"\b(?:\d{1,3}\.){3}\d{1,3}\b").unwrap();
+    let text = url_re.replace_all(text, "<redacted-url>");
+    let text = endpoint_re.replace_all(&text, "${1}<redacted-endpoint>");
+    ip_re.replace_all(&text, "<redacted-ip>").to_string()
+}
+
+pub fn write_crash(kind: &str, detail: &str) {
+    let dir = data_dir().join("logs");
+    let _ = fs::create_dir_all(&dir);
+    let path = dir.join("crash.log");
+    if fs::metadata(&path).map(|m| m.len() > 1024 * 1024).unwrap_or(false) {
+        let backup = dir.join("crash.1.log");
+        let _ = fs::remove_file(&backup);
+        let _ = fs::rename(&path, backup);
+    }
+    let safe = sanitize_diagnostics(detail);
+    let mut start = safe.len().saturating_sub(200_000);
+    while start < safe.len() && !safe.is_char_boundary(start) {
+        start += 1;
+    }
+    let tail = &safe[start..];
+    if let Ok(mut f) = fs::OpenOptions::new().create(true).append(true).open(path) {
+        use std::io::Write;
+        let _ = writeln!(f, "\n===== {} {kind} =====", now());
+        let _ = f.write_all(tail.as_bytes());
+        let _ = f.write_all(b"\n");
+    }
 }
 
 pub fn app_log(msg: &str) {

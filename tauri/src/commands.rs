@@ -6,7 +6,7 @@ use tauri::State;
 
 use crate::core::{self, Core};
 use crate::proxy;
-use crate::state::{data_dir, Entry, Profiles, Store, APP_VERSION, TEST_URL};
+use crate::state::{data_dir, Entry, Profiles, Store, APP_VERSION, SUB_UA, TEST_URL};
 
 pub struct AppState {
     pub store: Store,
@@ -353,6 +353,105 @@ pub fn save_stats_export(format: String, content: String) -> Value {
     match fs::write(&path, bytes) {
         Ok(_) => json!({"ok": true, "path": path.to_string_lossy()}),
         Err(e) => err(format!("匯出失敗：{e}")),
+    }
+}
+
+#[tauri::command]
+pub fn check_update() -> Value {
+    let response = ureq::get("https://api.github.com/repos/cypwlp/kumoroute/releases/latest")
+        .set("User-Agent", SUB_UA)
+        .set("Accept", "application/vnd.github+json")
+        .timeout(std::time::Duration::from_secs(12))
+        .call();
+    let release: Value = match response {
+        Ok(r) => match r.into_json::<Value>() {
+            Ok(v) => v,
+            Err(e) => return err(format!("解析更新資訊失敗：{e}")),
+        },
+        Err(e) => return err(format!("檢查更新失敗：{e}")),
+    };
+    let latest = release
+        .get("tag_name")
+        .and_then(|v| v.as_str())
+        .unwrap_or("")
+        .trim_start_matches('v');
+    let current = APP_VERSION.trim_start_matches('v');
+    let number_key = |value: &str| -> Vec<u64> {
+        regex::Regex::new(r"\d+")
+            .unwrap()
+            .find_iter(value)
+            .map(|m| m.as_str().parse::<u64>().unwrap_or(0))
+            .collect()
+    };
+    let mut latest_key = number_key(latest);
+    let mut current_key = number_key(current);
+    latest_key.resize(4, 0);
+    current_key.resize(4, 0);
+    json!({
+        "ok": true,
+        "current": current,
+        "latest": latest,
+        "update_available": latest_key > current_key,
+        "url": release.get("html_url").and_then(|v| v.as_str()).unwrap_or("https://github.com/cypwlp/kumoroute/releases/latest"),
+        "published_at": release.get("published_at").and_then(|v| v.as_str()).unwrap_or(""),
+        "notes": release.get("body").and_then(|v| v.as_str()).unwrap_or("").chars().take(4000).collect::<String>(),
+    })
+}
+
+#[tauri::command]
+pub fn record_ui_error(message: String, stack: String) -> Value {
+    crate::state::write_crash("ui", &format!("{message}\n{stack}"));
+    ok()
+}
+
+fn read_tail(path: &std::path::Path, limit: usize) -> String {
+    let data = fs::read(path).unwrap_or_default();
+    let start = data.len().saturating_sub(limit);
+    String::from_utf8_lossy(&data[start..]).to_string()
+}
+
+#[tauri::command]
+pub fn export_diagnostics(state: State<'_, Shared>) -> Value {
+    let s = state.lock().unwrap();
+    let port = s.store.data.controller_port;
+    let running = core::is_up(port);
+    let folder = dirs::download_dir()
+        .or_else(|| dirs::home_dir().map(|p| p.join("Downloads")))
+        .unwrap_or_else(data_dir);
+    if let Err(e) = fs::create_dir_all(&folder) {
+        return err(format!("無法建立下載資料夾：{e}"));
+    }
+    let path = folder.join(format!(
+        "KumoRoute-diagnostics-{}.txt",
+        chrono::Local::now().format("%Y%m%d-%H%M%S")
+    ));
+    let logs_dir = data_dir().join("logs");
+    let mut text = format!(
+        "KumoRoute Diagnostics\ngenerated_at: {}\napp_version: {}\nplatform: {} {}\ncore_running: {}\ncore_version: {}\nsystem_proxy: {}\nmode: {}\nmixed_port: {}\ncontroller_port: {}\nprofiles: {}\nactive_profile_kind: {}\n",
+        crate::state::now(),
+        APP_VERSION,
+        std::env::consts::OS,
+        std::env::consts::ARCH,
+        running,
+        if running { core::version(port).unwrap_or_default() } else { "-".into() },
+        proxy::is_on(&s.store),
+        s.store.data.mode,
+        s.store.data.mixed_port,
+        port,
+        s.profiles.entries.len(),
+        s.profiles.active_entry(&s.store).kind,
+    );
+    for (label, file) in [
+        ("APP LOG", logs_dir.join("app.log")),
+        ("CORE LOG", logs_dir.join("core.log")),
+        ("CRASH LOG", logs_dir.join("crash.log")),
+    ] {
+        let body = crate::state::sanitize_diagnostics(&read_tail(&file, 131072));
+        text.push_str(&format!("\n===== {label} =====\n{body}\n"));
+    }
+    match fs::write(&path, text) {
+        Ok(_) => json!({"ok": true, "path": path.to_string_lossy()}),
+        Err(e) => err(format!("匯出診斷資料失敗：{e}")),
     }
 }
 

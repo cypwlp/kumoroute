@@ -3,12 +3,14 @@
 import ctypes
 import json
 import os
+import platform
 import re
 import shutil
 import subprocess
 import sys
 import threading
 import time
+import traceback
 import urllib.error
 import urllib.parse
 import urllib.request
@@ -23,7 +25,7 @@ import yaml
 
 APP_NAME = "KumoRoute"
 LEGACY_APP_NAME = "MyClash"
-APP_VERSION = "0.3.1"
+APP_VERSION = "0.4.0"
 CREATE_NO_WINDOW = 0x08000000
 SUB_UA = f"KumoRoute/{APP_VERSION}"
 TEST_URL = "https://cp.cloudflare.com/generate_204"
@@ -110,6 +112,45 @@ def rotate_core_log() -> None:
             p.replace(bak)
     except OSError:
         pass
+
+
+def _sanitize_diagnostics(text: str) -> str:
+    text = re.sub(r"https?://[^\s\"'<>]+", "<redacted-url>", text)
+    text = re.sub(r"(?m)(-->\s*)[^\s]+", r"\1<redacted-endpoint>", text)
+    text = re.sub(r"\b(?:\d{1,3}\.){3}\d{1,3}\b", "<redacted-ip>", text)
+    return text
+
+
+def write_crash(kind: str, detail: str) -> None:
+    try:
+        log_dir = data_dir() / "logs"
+        log_dir.mkdir(parents=True, exist_ok=True)
+        path = log_dir / "crash.log"
+        if path.exists() and path.stat().st_size > 1024 * 1024:
+            backup = log_dir / "crash.1.log"
+            backup.unlink(missing_ok=True)
+            path.replace(backup)
+        with open(path, "a", encoding="utf-8") as f:
+            f.write(f"\n===== {_now()} {kind} =====\n")
+            f.write(_sanitize_diagnostics(detail[-200000:]))
+            f.write("\n")
+    except Exception:
+        pass
+
+
+def install_crash_hooks() -> None:
+    def excepthook(exc_type, exc_value, tb):
+        write_crash("uncaught", "".join(traceback.format_exception(exc_type, exc_value, tb)))
+        sys.__excepthook__(exc_type, exc_value, tb)
+
+    def thread_hook(args):
+        if args.exc_type is SystemExit:
+            return
+        detail = "".join(traceback.format_exception(args.exc_type, args.exc_value, args.exc_traceback))
+        write_crash(f"thread:{args.thread.name if args.thread else ''}", detail)
+
+    sys.excepthook = excepthook
+    threading.excepthook = thread_hook
 
 
 def app_log(msg: str) -> None:
@@ -830,6 +871,75 @@ class Api:
         except Exception as exc:
             return {"ok": False, "error": str(exc)}
 
+    def check_update(self) -> dict:
+        try:
+            req = urllib.request.Request(
+                "https://api.github.com/repos/cypwlp/kumoroute/releases/latest",
+                headers={"User-Agent": SUB_UA, "Accept": "application/vnd.github+json"},
+            )
+            with urllib.request.urlopen(req, timeout=12) as r:
+                release = json.load(r)
+            latest = str(release.get("tag_name") or "").lstrip("v")
+            current = APP_VERSION.lstrip("v")
+
+            def version_key(value: str) -> tuple[int, ...]:
+                nums = [int(x) for x in re.findall(r"\d+", value)]
+                return tuple(nums + [0] * (4 - len(nums)))[:4]
+
+            return {
+                "ok": True,
+                "current": current,
+                "latest": latest,
+                "update_available": version_key(latest) > version_key(current),
+                "url": str(release.get("html_url") or "https://github.com/cypwlp/kumoroute/releases/latest"),
+                "published_at": str(release.get("published_at") or ""),
+                "notes": str(release.get("body") or "")[:4000],
+            }
+        except Exception as exc:
+            return {"ok": False, "error": str(exc)}
+
+    def record_ui_error(self, message: str, stack: str = "") -> dict:
+        write_crash("ui", f"{message}\n{stack}")
+        return {"ok": True}
+
+    def export_diagnostics(self) -> dict:
+        try:
+            folder = Path.home() / "Downloads"
+            if not folder.is_dir():
+                folder = data_dir()
+            folder.mkdir(parents=True, exist_ok=True)
+            path = folder / f"KumoRoute-diagnostics-{datetime.now():%Y%m%d-%H%M%S}.txt"
+            running = self._core.is_up()
+            sections = [
+                "KumoRoute Diagnostics",
+                f"generated_at: {_now()}",
+                f"app_version: {APP_VERSION}",
+                f"platform: {platform.platform()}",
+                f"python: {sys.version.split()[0]}",
+                f"core_running: {running}",
+                f"core_version: {self._core.version() if running else '-'}",
+                f"system_proxy: {is_system_proxy_on(self._store)}",
+                f"mode: {self._store.data.get('mode', 'rule')}",
+                f"mixed_port: {self._store.data.get('mixed_port')}",
+                f"controller_port: {self._store.data.get('controller_port')}",
+                f"profiles: {len(self._profiles.entries)}",
+                f"active_profile_kind: {self._profiles.active_entry().get('kind', '')}",
+            ]
+            for label, source, limit in (
+                ("APP LOG", data_dir() / "logs" / "app.log", 131072),
+                ("CORE LOG", data_dir() / "logs" / "core.log", 131072),
+                ("CRASH LOG", data_dir() / "logs" / "crash.log", 131072),
+            ):
+                try:
+                    raw = source.read_bytes()[-limit:].decode("utf-8", "replace")
+                except OSError:
+                    raw = "(unavailable)"
+                sections.append(f"\n===== {label} =====\n{_sanitize_diagnostics(raw)}")
+            path.write_text("\n".join(sections), encoding="utf-8")
+            return {"ok": True, "path": str(path)}
+        except Exception as exc:
+            return {"ok": False, "error": str(exc)}
+
     def save_stats_export(self, fmt: str, content: str) -> dict:
         ext = "csv" if str(fmt).lower() == "csv" else "json"
         try:
@@ -933,6 +1043,7 @@ def _ensure_std_streams() -> None:
 
 def main() -> None:
     _ensure_std_streams()
+    install_crash_hooks()
     if not acquire_single_instance():
         message_box("KumoRoute 已在執行中，請從系統托盤開啟。")
         return

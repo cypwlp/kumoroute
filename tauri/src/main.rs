@@ -12,6 +12,13 @@ use tauri::tray::{MouseButton, MouseButtonState, TrayIconBuilder, TrayIconEvent}
 use tauri::{Manager, RunEvent, WindowEvent};
 
 fn main() {
+    std::panic::set_hook(Box::new(|info| {
+        state::write_crash("panic", &info.to_string());
+    }));
+    if std::env::args().any(|arg| arg == "--version") {
+        println!("KumoRoute {}", env!("CARGO_PKG_VERSION"));
+        return;
+    }
     let mut store = state::Store::load();
     let profiles = state::Profiles::load(&mut store);
     let app_state = commands::AppState {
@@ -45,6 +52,9 @@ fn main() {
             commands::get_live,
             commands::get_logs,
             commands::save_stats_export,
+            commands::check_update,
+            commands::record_ui_error,
+            commands::export_diagnostics,
             commands::save_settings,
             commands::open_data_dir,
             commands::open_url,

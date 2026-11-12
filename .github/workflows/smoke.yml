@@ -1,0 +1,73 @@
+name: Clean runner smoke tests
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+env:
+  MIHOMO_VERSION: v1.19.33
+  CARGO_NET_RETRY: "5"
+  CARGO_HTTP_TIMEOUT: "60"
+
+jobs:
+  smoke:
+    name: smoke (${{ matrix.platform }})
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: windows-latest
+            platform: windows
+          - os: ubuntu-22.04
+            platform: linux
+          - os: macos-latest
+            platform: macos
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+
+      - name: Install Linux dependencies
+        if: matrix.platform == 'linux'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y libwebkit2gtk-4.1-dev libgtk-3-dev libayatana-appindicator3-dev librsvg2-dev patchelf
+
+      - name: Install Python test dependencies
+        run: python -m pip install -r client/requirements.txt
+
+      - name: Fetch mihomo core and geodata
+        run: python client/tools/fetch_core.py
+
+      - name: Run Python and export tests
+        run: python -m unittest discover -s tests -p "test_*.py" -v
+
+      - name: Start bundled mihomo core
+        run: python tests/smoke_core.py
+
+      - name: Check frontend syntax
+        run: |
+          node --check client/ui/app.js
+          node --check site/app.js
+
+      - name: Use official crates.io in CI
+        run: python -c "from pathlib import Path; Path('tauri/.cargo/config.toml').unlink(missing_ok=True)"
+
+      - name: Build Tauri binary
+        working-directory: tauri
+        run: cargo build --release
+
+      - name: Verify Tauri executable starts
+        run: python -c "import subprocess,sys; p='tauri/target/release/kumoroute.exe' if sys.platform=='win32' else 'tauri/target/release/kumoroute'; print(subprocess.check_output([p,'--version'],text=True).strip())"

@@ -15,9 +15,12 @@ let toastTimer = null;
 let pendingDelete = { id: null, timer: null };
 
 const STATS_KEY = "kumoroute.stats.v1";
+const PREFS_KEY = "kumoroute.preferences.v1";
 const STATS_KEEP_DAYS = 35;
 const MAX_EVENTS = 100;
 let usageData = loadUsageData();
+let prefs = loadPreferences();
+let latestUpdate = null;
 let sessionStartedAt = Date.now();
 let peakConnections = 0;
 let peakDownSpeed = 0;
@@ -48,6 +51,91 @@ function localDayKey(date = new Date()) {
   const m = String(date.getMonth() + 1).padStart(2, "0");
   const d = String(date.getDate()).padStart(2, "0");
   return `${y}-${m}-${d}`;
+}
+
+function loadPreferences() {
+  const defaults = { autoUpdateCheck: true, lastUpdateCheck: 0 };
+  try {
+    const raw = localStorage.getItem(PREFS_KEY);
+    if (!raw) return defaults;
+    const parsed = JSON.parse(raw);
+    return {
+      autoUpdateCheck: parsed.autoUpdateCheck !== false,
+      lastUpdateCheck: Number(parsed.lastUpdateCheck || 0),
+    };
+  } catch (e) {
+    return defaults;
+  }
+}
+
+function savePreferences() {
+  try { localStorage.setItem(PREFS_KEY, JSON.stringify(prefs)); } catch (e) { /* ignore */ }
+}
+
+function renderUpdateUi() {
+  if (!$("#update-current")) return;
+  $("#update-current").textContent = "v" + (latestUpdate?.current || (state ? state.app_version : "—"));
+  $("#sw-auto-update").checked = prefs.autoUpdateCheck !== false;
+  const latest = latestUpdate?.latest ? "v" + latestUpdate.latest : "尚未檢查";
+  $("#update-latest").textContent = latest;
+  const btn = $("#btn-open-update");
+  btn.disabled = !(latestUpdate && latestUpdate.update_available && latestUpdate.url);
+  if (latestUpdate && latestUpdate.update_available) {
+    $("#update-status").textContent = `有新版本 ${latest} 可用。`;
+  } else if (latestUpdate && latestUpdate.latest) {
+    $("#update-status").textContent = "目前已是最新版本。";
+  } else {
+    $("#update-status").textContent = "只檢查版本並提示；不會自動下載或執行安裝檔。";
+  }
+}
+
+async function checkForUpdates(manual = true) {
+  if (demo) {
+    latestUpdate = { ok: true, current: demoCfg.app_version, latest: demoCfg.app_version, update_available: false, url: "https://github.com/cypwlp/kumoroute/releases" };
+    renderUpdateUi();
+    if (manual) toast("目前已是最新版本", "ok");
+    return latestUpdate;
+  }
+  const btn = $("#btn-check-update");
+  if (btn) { btn.disabled = true; btn.textContent = "檢查中…"; }
+  try {
+    const res = await api("check_update");
+    if (res && res.ok) {
+      latestUpdate = res;
+      prefs.lastUpdateCheck = Date.now();
+      savePreferences();
+      renderUpdateUi();
+      if (res.update_available) toast(`發現新版本 v${res.latest}`, "ok");
+      else if (manual) toast("目前已是最新版本", "ok");
+      return res;
+    }
+    if (manual) toast((res && res.error) || "檢查更新失敗", "error");
+  } catch (e) {
+    if (manual) toast(String(e), "error");
+  } finally {
+    if (btn) { btn.disabled = false; btn.textContent = "檢查更新"; }
+  }
+  return null;
+}
+
+function initUpdateChecker() {
+  renderUpdateUi();
+  if (prefs.autoUpdateCheck && Date.now() - Number(prefs.lastUpdateCheck || 0) > 6 * 3600 * 1000) {
+    checkForUpdates(false);
+  }
+}
+
+function installUiCrashHandlers() {
+  const report = (message, stack) => {
+    if (demo) return;
+    if (!((window.pywebview && window.pywebview.api) || (window.__TAURI__ && window.__TAURI__.core))) return;
+    api("record_ui_error", String(message || "unknown UI error"), String(stack || "")).catch(() => {});
+  };
+  window.addEventListener("error", (event) => report(event.message, event.error && event.error.stack));
+  window.addEventListener("unhandledrejection", (event) => {
+    const reason = event.reason;
+    report(reason && reason.message ? reason.message : reason, reason && reason.stack ? reason.stack : "");
+  });
 }
 
 function emptyAttribution() {
@@ -323,6 +411,7 @@ const TAURI_SIG = {
   set_active_profile: ["pid"],
   save_settings: ["mixedPort", "controllerPort"],
   save_stats_export: ["format", "content"],
+  record_ui_error: ["message", "stack"],
   open_url: ["url"],
 };
 
@@ -346,7 +435,7 @@ const demoCfg = {
   mixed_port: 7890,
   controller_port: 9090,
   core_version: "v1.19.33",
-  app_version: "0.3.1",
+  app_version: "0.4.0",
   data_dir: "C:\\Users\\…\\AppData\\Roaming\\KumoRoute",
   test_url: "https://cp.cloudflare.com/generate_204",
   profiles: [
@@ -1498,6 +1587,31 @@ function bindActions() {
       toast("已複製", "ok");
     } catch (e) { toast("複製失敗", "error"); }
   });
+  $("#btn-check-update").addEventListener("click", () => checkForUpdates(true));
+  $("#sw-auto-update").addEventListener("change", (ev) => {
+    prefs.autoUpdateCheck = ev.target.checked;
+    savePreferences();
+  });
+  $("#btn-open-update").addEventListener("click", () => {
+    if (!latestUpdate || !latestUpdate.url) return;
+    if (demo) window.open(latestUpdate.url, "_blank");
+    else api("open_url", latestUpdate.url);
+  });
+  $("#btn-export-diagnostics").addEventListener("click", async () => {
+    if (demo) {
+      toast("DEMO 模式不匯出診斷資料", "error");
+      return;
+    }
+    const btn = $("#btn-export-diagnostics");
+    btn.disabled = true; btn.textContent = "匯出中…";
+    try {
+      const res = await api("export_diagnostics");
+      if (res && res.ok) toast(`診斷資料已匯出：${res.path}`, "ok");
+      else toast((res && res.error) || "匯出失敗", "error");
+    } catch (e) { toast(String(e), "error"); }
+    btn.disabled = false; btn.textContent = "匯出診斷資料";
+  });
+
   $$("[data-open-url]").forEach((b) => b.addEventListener("click", () => {
     const url = b.dataset.openUrl;
     if (demo) window.open(url, "_blank");
@@ -1510,6 +1624,7 @@ function bindActions() {
 document.addEventListener("DOMContentLoaded", async () => {
   bindNav();
   bindActions();
+  installUiCrashHandlers();
   await waitBridge();
   demo = !((window.pywebview && window.pywebview.api) || (window.__TAURI__ && window.__TAURI__.core));
   if (demo) {
@@ -1524,6 +1639,7 @@ document.addEventListener("DOMContentLoaded", async () => {
   await refreshState();
   drawSpark();
   renderStatsPage();
+  initUpdateChecker();
 
   const wanted = new URLSearchParams(location.search).get("page");
   if (wanted && document.getElementById("page-" + wanted)) switchPage(wanted);

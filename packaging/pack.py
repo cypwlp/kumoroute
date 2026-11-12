@@ -15,7 +15,7 @@ OUT_DIR = ROOT / "dist"
 STAGE = OUT_DIR / "rust" / "KumoRoute"
 ZIP_PATH = OUT_DIR / "KumoRoute-win-x64.zip"
 CORE_FILES = ("mihomo.exe", "geoip.metadb", "geosite.dat", "LICENSE-GPL3.txt")
-LEGAL_FILES = ("LICENSE", "NOTICE.md")
+LEGAL_FILES = ("LICENSE", "NOTICE.md", "PRIVACY.md", "TERMS.md")
 
 
 def main():
