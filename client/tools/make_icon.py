@@ -2,7 +2,7 @@
 
 from pathlib import Path
 
-from PIL import Image, ImageDraw, ImageFont
+from PIL import Image, ImageDraw
 
 HERE = Path(__file__).resolve().parent
 OUT = HERE.parent / "assets"
@@ -13,6 +13,18 @@ SITE = HERE.parents[1] / "site" / "assets"
 
 def lerp(a, b, t):
     return tuple(int(a[i] + (b[i] - a[i]) * t) for i in range(3))
+
+
+def bezier(p0, p1, p2, p3, steps=72):
+    points = []
+    for i in range(steps + 1):
+        t = i / steps
+        u = 1 - t
+        points.append((
+            u**3 * p0[0] + 3 * u**2 * t * p1[0] + 3 * u * t**2 * p2[0] + t**3 * p3[0],
+            u**3 * p0[1] + 3 * u**2 * t * p1[1] + 3 * u * t**2 * p2[1] + t**3 * p3[1],
+        ))
+    return points
 
 
 def main():
@@ -32,23 +44,21 @@ def main():
     img.paste(grad, (0, 0), mask)
     d = ImageDraw.Draw(img)
 
-    # subtle inner highlight ring
     d.rounded_rectangle((56, 56, S - 56, S - 56), radius=230, outline=(255, 255, 255, 48), width=6)
 
-    # white K
-    font = None
-    for name in ("segoeuib.ttf", "arialbd.ttf"):
-        try:
-            font = ImageFont.truetype(f"C:/Windows/Fonts/{name}", 470)
-            break
-        except OSError:
-            continue
-    if font is None:
-        font = ImageFont.load_default()
-    d.text((S / 2, S / 2 + 18), "K", font=font, fill=(255, 255, 255, 240), anchor="mm")
+    # Abstract route: a winding path from a starting node to a target node.
+    nodes = [(300, 742), (462, 500), (606, 548), (722, 332)]
+    width = 84
+    for a, b in zip(nodes, nodes[1:]):
+        d.line((a, b), fill=(255, 255, 255, 238), width=width)
+    for x, y in nodes[:-1]:
+        r = width // 2
+        d.ellipse((x - r, y - r, x + r, y + r), fill=(255, 255, 255, 238))
 
-    # speed accent dot
-    d.ellipse((S * 0.66, S * 0.24, S * 0.76, S * 0.34), fill=(61, 220, 151, 255))
+    # Mint target node, intentionally distinct from letter-based marks.
+    tx, ty = nodes[-1]
+    d.ellipse((tx - 66, ty - 66, tx + 66, ty + 66), fill=(255, 255, 255, 245))
+    d.ellipse((tx - 50, ty - 50, tx + 50, ty + 50), fill=(61, 220, 151, 255))
 
     master = img.resize((256, 256), Image.LANCZOS)
     for directory in (OUT, UI, TAURI, SITE):
