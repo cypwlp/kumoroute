@@ -1,4 +1,4 @@
-KumoRoute v0.2.1 — 輕量 Clash 桌面客戶端（Windows x64 免安裝版，Rust/Tauri）
+KumoRoute v0.2.1 — 輕量 Mihomo 桌面客戶端（Windows x64 免安裝版，Rust/Tauri；相容 Clash 配置）
 
 使用方法
 1. 解壓縮到任意資料夾（請保持 KumoRoute.exe、core\、與程式同層）

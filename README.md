@@ -2,9 +2,9 @@
 
 輕量的跨平台 Mihomo 桌面客戶端（Windows / Linux / macOS），內建 [mihomo](https://github.com/MetaCubeX/mihomo) 核心，並相容 Clash 配置。
 
-官方網站：https://kumoroute.cypilu.online/
+官方網站：https://cypwlp.github.io/kumoroute/
 
-GitHub Pages 備援：https://cypwlp.github.io/kumoroute/
+自訂域名 `kumoroute.cypilu.online` 已預留；目前指向中國大陸騰訊雲主機時會受 ICP／備案攔截，待改 DNS 至 GitHub Pages 或完成合規備案後再切換。
 
 > v0.2.0 起由 **MyClash** 更名為 **KumoRoute**；首次啟動會自動把舊資料目錄遷移到 `KumoRoute`。
 
@@ -75,10 +75,11 @@ Pages：Settings → Pages → Source 選「GitHub Actions」，推送後自動�
 
 ## 鏡像（騰訊雲裸 IP）
 
-- 正式站：https://kumoroute.cypilu.online/ （Tencent Cloud + Let’s Encrypt）
+- 主站：https://cypwlp.github.io/kumoroute/ （GitHub Pages）
 - IP 備援：http://129.204.149.106/
+- 自訂域名：`kumoroute.cypilu.online`（暫緩；中國大陸主機需 ICP 備案，或將 DNS 改成 GitHub Pages CNAME）
 - 同步：`bash packaging/deploy-tencent.sh`（SSH 到 `ubuntu@129.204.149.106`，上傳 `site/` 到 `/var/www/kumoroute`）
-- nginx 站點：`/etc/nginx/sites-available/kumoroute`；憑證由 Certbot 自動續期
+- nginx 站點：`/etc/nginx/sites-available/kumoroute`；Let’s Encrypt 憑證已配置，待域名可合規對外服務後啟用
 
 本機打包（已編譯後）：`python packaging/pack.py`，產物在 `dist/`。
 

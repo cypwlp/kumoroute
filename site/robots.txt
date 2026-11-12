@@ -1,4 +1,4 @@
 User-agent: *
 Allow: /
 
-Sitemap: https://kumoroute.cypilu.online/sitemap.xml
+Sitemap: https://cypwlp.github.io/kumoroute/sitemap.xml
