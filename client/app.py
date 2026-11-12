@@ -25,7 +25,7 @@ import yaml
 
 APP_NAME = "KumoRoute"
 LEGACY_APP_NAME = "MyClash"
-APP_VERSION = "0.4.0"
+APP_VERSION = "0.5.0"
 CREATE_NO_WINDOW = 0x08000000
 SUB_UA = f"KumoRoute/{APP_VERSION}"
 TEST_URL = "https://cp.cloudflare.com/generate_204"
@@ -114,11 +114,34 @@ def rotate_core_log() -> None:
         pass
 
 
+def _sanitize_diagnostics_report(text: str) -> tuple[str, dict]:
+    summary = {"urls": 0, "endpoints": 0, "ips": 0, "secrets": 0}
+    text, summary["endpoints"] = re.subn(
+        r"(?m)(-->\s*)[^\s]+", r"\1<redacted-endpoint>", text
+    )
+    text, summary["urls"] = re.subn(
+        r"(?i)https?://[^\s\"'<>]+", "<redacted-url>", text
+    )
+    text, ipv4_count = re.subn(r"\b(?:\d{1,3}\.){3}\d{1,3}\b", "<redacted-ip>", text)
+    text, ipv6_count = re.subn(
+        r"(?i)\b(?:(?:[0-9a-f]{1,4}:){1,7}:[0-9a-f]{1,4}|(?:[0-9a-f]{1,4}:){1,7}[0-9a-f]{0,3}[a-f][0-9a-f]{0,3})\b", "<redacted-ip>", text
+    )
+    summary["ips"] = ipv4_count + ipv6_count
+    text, bearer_count = re.subn(
+        r"(?i)\bBearer\s+[A-Za-z0-9._~+/=-]+", "Bearer <redacted-secret>", text
+    )
+    text, secret_count = re.subn(
+        r"(?i)\b(token|secret|password|passwd|authorization|api[_-]?key|access[_-]?token)\b"
+        r"(\s*[:=]\s*)([^\s,;\"'<>]+)",
+        r"\1\2<redacted-secret>",
+        text,
+    )
+    summary["secrets"] = secret_count + bearer_count
+    return text, summary
+
+
 def _sanitize_diagnostics(text: str) -> str:
-    text = re.sub(r"https?://[^\s\"'<>]+", "<redacted-url>", text)
-    text = re.sub(r"(?m)(-->\s*)[^\s]+", r"\1<redacted-endpoint>", text)
-    text = re.sub(r"\b(?:\d{1,3}\.){3}\d{1,3}\b", "<redacted-ip>", text)
-    return text
+    return _sanitize_diagnostics_report(text)[0]
 
 
 def write_crash(kind: str, detail: str) -> None:
@@ -182,6 +205,20 @@ DEFAULT_SETTINGS = {
 }
 
 
+def _atomic_write_text(path: Path, text: str, encoding: str = "utf-8") -> None:
+    path.parent.mkdir(parents=True, exist_ok=True)
+    tmp = path.with_name(f".{path.name}.{uuid.uuid4().hex}.tmp")
+    try:
+        with open(tmp, "w", encoding=encoding, newline="") as f:
+            f.write(text)
+            f.flush()
+            os.fsync(f.fileno())
+        tmp.replace(path)
+    except Exception:
+        tmp.unlink(missing_ok=True)
+        raise
+
+
 class Store:
     def __init__(self, path: Path, default: dict):
         self.path = path
@@ -197,9 +234,7 @@ class Store:
 
     def save(self) -> None:
         with self.lock:
-            tmp = self.path.with_suffix(".tmp")
-            tmp.write_text(json.dumps(self.data, ensure_ascii=False, indent=2), encoding="utf-8")
-            tmp.replace(self.path)
+            _atomic_write_text(self.path, json.dumps(self.data, ensure_ascii=False, indent=2))
 
 
 def get_system_proxy() -> dict:
@@ -242,10 +277,51 @@ def is_system_proxy_on(store: Store) -> bool:
     return cur["enable"] == 1 and "127.0.0.1:" in cur["server"]
 
 
+def recover_stale_proxy(store: Store) -> dict | None:
+    """Restore the pre-KumoRoute proxy left behind by an unclean shutdown."""
+    if sys.platform != "win32":
+        return None
+    original = store.data.get("original_proxy")
+    if not original:
+        return None
+    current = get_system_proxy()
+    expected = f"127.0.0.1:{int(store.data.get('mixed_port', 7890))}"
+    if current.get("enable") == 1 and str(current.get("server", "")).strip() == expected:
+        try:
+            _apply_registry_proxy(
+                int(original.get("enable", 0)),
+                str(original.get("server", "")),
+                str(original.get("override", "")),
+            )
+        except Exception as exc:
+            return {"attempted": True, "restored": False, "error": str(exc)}
+        store.data["original_proxy"] = None
+        try:
+            store.save()
+        except Exception as exc:
+            return {
+                "attempted": True,
+                "restored": True,
+                "error": f"代理已恢復，但設定檔儲存失敗：{exc}",
+            }
+        return {"attempted": True, "restored": True}
+    store.data["original_proxy"] = None
+    try:
+        store.save()
+    except Exception as exc:
+        return {
+            "attempted": True,
+            "cleared_stale": True,
+            "error": f"已忽略過期代理快照，但設定檔儲存失敗：{exc}",
+        }
+    return {"attempted": True, "cleared_stale": True}
+
+
 class Profiles:
-    def __init__(self, store: Store):
+    def __init__(self, store: Store, root: Path | None = None):
         self._store = store
-        self.root = data_dir() / "profiles"
+        self.root = Path(root) if root else data_dir() / "profiles"
+        self.root.mkdir(parents=True, exist_ok=True)
         self.index_path = self.root / "index.json"
         self.lock = threading.Lock()
         self.entries: list[dict] = []
@@ -257,9 +333,7 @@ class Profiles:
         self._ensure_default()
 
     def _save(self) -> None:
-        tmp = self.index_path.with_suffix(".tmp")
-        tmp.write_text(json.dumps(self.entries, ensure_ascii=False, indent=2), encoding="utf-8")
-        tmp.replace(self.index_path)
+        _atomic_write_text(self.index_path, json.dumps(self.entries, ensure_ascii=False, indent=2))
 
     def _ensure_default(self) -> None:
         if not self.entries:
@@ -303,53 +377,100 @@ class Profiles:
             )
 
     @staticmethod
+    def _validate_remote_url(url: str) -> urllib.parse.ParseResult:
+        parsed = urllib.parse.urlsplit(url)
+        if parsed.scheme.lower() not in ("http", "https") or not parsed.hostname:
+            raise ValueError("訂閱連結必須是有效的 http(s):// 網址")
+        if parsed.username or parsed.password:
+            raise ValueError("訂閱連結不可包含帳號或密碼")
+        return parsed
+
+    @staticmethod
     def _fetch(url: str) -> str:
         req = urllib.request.Request(
             url, headers={"User-Agent": SUB_UA, "Accept": "*/*"}
         )
         with urllib.request.urlopen(req, timeout=25) as r:
+            content_length = r.headers.get("Content-Length")
+            try:
+                declared_size = int(content_length) if content_length else 0
+            except (TypeError, ValueError):
+                declared_size = 0
+            if declared_size > 10 * 1024 * 1024:
+                raise ValueError("訂閱檔案超過 10MB，已中止")
             raw = r.read(10 * 1024 * 1024 + 1)
         if len(raw) > 10 * 1024 * 1024:
             raise ValueError("訂閱檔案超過 10MB，已中止")
         return raw.decode("utf-8", "replace")
 
+    def _register_entry(self, entry: dict, text: str) -> dict:
+        path = self.path_of(entry["id"])
+        _atomic_write_text(path, text)
+        try:
+            with self.lock:
+                self.entries.append(entry)
+                self._save()
+        except Exception:
+            with self.lock:
+                self.entries = [e for e in self.entries if e["id"] != entry["id"]]
+            path.unlink(missing_ok=True)
+            raise
+        return entry
+
     def add_remote(self, url: str, name: str) -> dict:
         url = (url or "").strip()
-        if not re.match(r"^https?://", url, re.I):
-            raise ValueError("訂閱連結必須是 http(s):// 開頭")
+        parsed = self._validate_remote_url(url)
         text = self._fetch(url)
         self._validate(text)
         pid = uuid.uuid4().hex[:8]
-        self.path_of(pid).write_text(text, encoding="utf-8")
-        name = (name or "").strip() or (urllib.parse.urlparse(url).hostname or f"訂閱 {len(self.entries) + 1}")
         entry = {
             "id": pid,
-            "name": name,
+            "name": (name or "").strip() or parsed.hostname or f"訂閱 {len(self.entries) + 1}",
             "kind": "remote",
             "url": url,
             "updated_at": _now(),
         }
-        with self.lock:
-            self.entries.append(entry)
-            self._save()
-        return entry
+        return self._register_entry(entry, text)
 
     def add_local(self, src: str) -> dict:
         p = Path(src)
         text = p.read_text(encoding="utf-8", errors="replace")
         self._validate(text)
-        pid = uuid.uuid4().hex[:8]
-        self.path_of(pid).write_text(text, encoding="utf-8")
         entry = {
-            "id": pid,
+            "id": uuid.uuid4().hex[:8],
             "name": p.stem,
             "kind": "local",
             "url": "",
             "updated_at": _now(),
         }
-        with self.lock:
-            self.entries.append(entry)
-            self._save()
+        return self._register_entry(entry, text)
+
+    def _backup_path_of(self, pid: str) -> Path:
+        return self.root / f"{pid}.yaml.bak"
+
+    def _apply_remote_text(self, pid: str, text: str) -> dict:
+        self._validate(text)
+        entry = self.get(pid)
+        if not entry:
+            raise ValueError("找不到該訂閱")
+        if entry["kind"] != "remote" or not entry.get("url"):
+            raise ValueError("只有遠端訂閱可以更新")
+        path = self.path_of(pid)
+        backup = self._backup_path_of(pid)
+        previous = dict(entry)
+        backup.write_bytes(path.read_bytes())
+        try:
+            _atomic_write_text(path, text)
+            entry["updated_at"] = _now()
+            with self.lock:
+                self._save()
+        except Exception as exc:
+            try:
+                _atomic_write_text(path, backup.read_text(encoding="utf-8"))
+            finally:
+                entry.clear()
+                entry.update(previous)
+            raise ValueError(f"訂閱更新失敗，已自動回滾：{exc}") from exc
         return entry
 
     def update(self, pid: str) -> dict:
@@ -358,13 +479,23 @@ class Profiles:
             raise ValueError("找不到該訂閱")
         if entry["kind"] != "remote" or not entry.get("url"):
             raise ValueError("只有遠端訂閱可以更新")
+        self._validate_remote_url(entry["url"])
         text = self._fetch(entry["url"])
+        return self._apply_remote_text(pid, text)
+
+    def rollback_to(self, pid: str, previous: dict) -> None:
+        backup = self._backup_path_of(pid)
+        if not backup.is_file():
+            raise ValueError("找不到可回滾的訂閱備份")
+        text = backup.read_text(encoding="utf-8")
         self._validate(text)
-        self.path_of(pid).write_text(text, encoding="utf-8")
-        entry["updated_at"] = _now()
+        _atomic_write_text(self.path_of(pid), text)
+        entry = self.get(pid)
+        if entry is not None:
+            entry.clear()
+            entry.update(previous)
         with self.lock:
             self._save()
-        return entry
 
     def delete(self, pid: str) -> None:
         entry = self.get(pid)
@@ -377,6 +508,7 @@ class Profiles:
             self._save()
         try:
             self.path_of(pid).unlink(missing_ok=True)
+            self._backup_path_of(pid).unlink(missing_ok=True)
         except OSError:
             pass
         if self._store.data.get("active_profile") == pid:
@@ -571,6 +703,7 @@ class Api:
         self._core = core
         self._win = None
         self._on_quit = None
+        self._proxy_recovery = None
 
     # ---- state ----
 
@@ -580,6 +713,8 @@ class Api:
         return {k: entry.get(k, "") for k in ("id", "name", "kind", "updated_at")}
 
     def get_state(self) -> dict:
+        recovery = self._proxy_recovery
+        self._proxy_recovery = None
         running = self._core.is_up()
         mode = self._store.data.get("mode", "rule")
         if running:
@@ -600,6 +735,7 @@ class Api:
             "data_dir": str(data_dir()),
             "core_found": core_binary() is not None,
             "test_url": TEST_URL,
+            "proxy_recovery": recovery,
         }
 
     def is_sys_proxy(self) -> bool:
@@ -641,18 +777,27 @@ class Api:
                         return {"ok": False, "error": "核心啟動失敗：" + msg}
                 cur = get_system_proxy()
                 ours = cur["enable"] == 1 and cur["server"].startswith("127.0.0.1:")
-                if not ours and not self._store.data.get("original_proxy"):
+                captured_now = not ours and not self._store.data.get("original_proxy")
+                if captured_now:
                     self._store.data["original_proxy"] = cur
-                _apply_registry_proxy(
-                    1,
-                    f"127.0.0.1:{int(self._store.data['mixed_port'])}",
-                    PROXY_OVERRIDE,
-                )
+                    self._store.save()
+                try:
+                    _apply_registry_proxy(
+                        1,
+                        f"127.0.0.1:{int(self._store.data['mixed_port'])}",
+                        PROXY_OVERRIDE,
+                    )
+                except Exception:
+                    if captured_now:
+                        self._store.data["original_proxy"] = None
+                        self._store.save()
+                    raise
                 self._store.save()
                 time.sleep(1.2)
                 if not is_system_proxy_on(self._store):
-                    self._store.data["original_proxy"] = None
-                    self._store.save()
+                    if captured_now:
+                        self._store.data["original_proxy"] = None
+                        self._store.save()
                     return {
                         "ok": False,
                         "error": "系統代理被其他軟體改回（常見於安全軟體／網路加速器的代理守護）。"
@@ -767,11 +912,16 @@ class Api:
 
     def update_profile(self, pid: str) -> dict:
         try:
+            previous = self._profiles.get(pid)
+            previous = dict(previous) if previous else None
             self._profiles.update(pid)
             if self._store.data.get("active_profile") == pid:
                 ok, msg = self._core.reload_runtime()
                 if not ok:
-                    return {"ok": False, "error": msg}
+                    if previous:
+                        self._profiles.rollback_to(pid, previous)
+                        self._core.reload_runtime()
+                    return {"ok": False, "error": f"更新失敗，已自動回滾：{msg}"}
             return {"ok": True}
         except Exception as exc:
             return {"ok": False, "error": str(exc)}
@@ -902,40 +1052,51 @@ class Api:
         write_crash("ui", f"{message}\n{stack}")
         return {"ok": True}
 
+    def _diagnostics_payload(self) -> tuple[str, dict]:
+        running = self._core.is_up()
+        sections = [
+            "KumoRoute Diagnostics",
+            f"generated_at: {_now()}",
+            f"app_version: {APP_VERSION}",
+            f"platform: {platform.platform()}",
+            f"python: {sys.version.split()[0]}",
+            f"core_running: {running}",
+            f"core_version: {self._core.version() if running else '-'}",
+            f"system_proxy: {is_system_proxy_on(self._store)}",
+            f"mode: {self._store.data.get('mode', 'rule')}",
+            f"mixed_port: {self._store.data.get('mixed_port')}",
+            f"controller_port: {self._store.data.get('controller_port')}",
+            f"profiles: {len(self._profiles.entries)}",
+            f"active_profile_kind: {self._profiles.active_entry().get('kind', '')}",
+        ]
+        for label, source, limit in (
+            ("APP LOG", data_dir() / "logs" / "app.log", 131072),
+            ("CORE LOG", data_dir() / "logs" / "core.log", 131072),
+            ("CRASH LOG", data_dir() / "logs" / "crash.log", 131072),
+        ):
+            try:
+                raw = source.read_bytes()[-limit:].decode("utf-8", "replace")
+            except OSError:
+                raw = "(unavailable)"
+            sections.append(f"\n===== {label} =====\n{raw}")
+        return _sanitize_diagnostics_report("\n".join(sections))
+
+    def diagnostics_preview(self) -> dict:
+        try:
+            text, summary = self._diagnostics_payload()
+            return {"ok": True, "text": text, "summary": summary}
+        except Exception as exc:
+            return {"ok": False, "error": str(exc)}
+
     def export_diagnostics(self) -> dict:
         try:
+            text, _ = self._diagnostics_payload()
             folder = Path.home() / "Downloads"
             if not folder.is_dir():
                 folder = data_dir()
             folder.mkdir(parents=True, exist_ok=True)
             path = folder / f"KumoRoute-diagnostics-{datetime.now():%Y%m%d-%H%M%S}.txt"
-            running = self._core.is_up()
-            sections = [
-                "KumoRoute Diagnostics",
-                f"generated_at: {_now()}",
-                f"app_version: {APP_VERSION}",
-                f"platform: {platform.platform()}",
-                f"python: {sys.version.split()[0]}",
-                f"core_running: {running}",
-                f"core_version: {self._core.version() if running else '-'}",
-                f"system_proxy: {is_system_proxy_on(self._store)}",
-                f"mode: {self._store.data.get('mode', 'rule')}",
-                f"mixed_port: {self._store.data.get('mixed_port')}",
-                f"controller_port: {self._store.data.get('controller_port')}",
-                f"profiles: {len(self._profiles.entries)}",
-                f"active_profile_kind: {self._profiles.active_entry().get('kind', '')}",
-            ]
-            for label, source, limit in (
-                ("APP LOG", data_dir() / "logs" / "app.log", 131072),
-                ("CORE LOG", data_dir() / "logs" / "core.log", 131072),
-                ("CRASH LOG", data_dir() / "logs" / "crash.log", 131072),
-            ):
-                try:
-                    raw = source.read_bytes()[-limit:].decode("utf-8", "replace")
-                except OSError:
-                    raw = "(unavailable)"
-                sections.append(f"\n===== {label} =====\n{_sanitize_diagnostics(raw)}")
-            path.write_text("\n".join(sections), encoding="utf-8")
+            path.write_text(text, encoding="utf-8")
             return {"ok": True, "path": str(path)}
         except Exception as exc:
             return {"ok": False, "error": str(exc)}
@@ -961,10 +1122,14 @@ class Api:
             return {"ok": False, "error": str(exc)}
 
     def open_url(self, url: str) -> dict:
-        if re.match(r"^https?://", url or "", re.I):
-            webbrowser.open(url)
-            return {"ok": True}
-        return {"ok": False, "error": "無效的網址"}
+        try:
+            parsed = urllib.parse.urlsplit((url or "").strip())
+        except ValueError:
+            return {"ok": False, "error": "無效的網址"}
+        if parsed.scheme.lower() not in ("http", "https") or not parsed.hostname or parsed.username or parsed.password:
+            return {"ok": False, "error": "只允許不含帳密的 HTTP(S) 網址"}
+        webbrowser.open(parsed.geturl())
+        return {"ok": True}
 
     def quit_app(self) -> dict:
         if self._on_quit:
@@ -1049,9 +1214,13 @@ def main() -> None:
         return
 
     store = Store(data_dir() / "settings.json", DEFAULT_SETTINGS)
+    proxy_recovery = recover_stale_proxy(store)
     profiles = Profiles(store)
     core = Core(store, profiles)
     api = Api(store, profiles, core)
+    api._proxy_recovery = proxy_recovery
+    if proxy_recovery:
+        app_log(f"stale proxy recovery: {proxy_recovery}")
 
     ok, msg = core.start()
     app_log(f"core start ok={ok} msg={msg}")

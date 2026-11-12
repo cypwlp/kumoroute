@@ -1,0 +1,39 @@
+{
+  "$schema": "../gen/schemas/desktop-schema.json",
+  "identifier": "main",
+  "description": "Main KumoRoute window with access only to KumoRoute commands.",
+  "windows": [
+    "main"
+  ],
+  "platforms": [
+    "linux",
+    "macOS",
+    "windows"
+  ],
+  "permissions": [
+    "allow-get-state",
+    "allow-start-core",
+    "allow-stop-core",
+    "allow-set-mode",
+    "allow-set-system-proxy",
+    "allow-get-proxy-groups",
+    "allow-select-proxy",
+    "allow-test-group-delay",
+    "allow-add-subscription",
+    "allow-import-profile",
+    "allow-update-profile",
+    "allow-delete-profile",
+    "allow-set-active-profile",
+    "allow-get-live",
+    "allow-get-logs",
+    "allow-save-stats-export",
+    "allow-check-update",
+    "allow-record-ui-error",
+    "allow-diagnostics-preview",
+    "allow-export-diagnostics",
+    "allow-save-settings",
+    "allow-open-data-dir",
+    "allow-open-url",
+    "allow-quit-app"
+  ]
+}

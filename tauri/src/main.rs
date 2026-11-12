@@ -11,6 +11,50 @@ use tauri::menu::{Menu, MenuItem};
 use tauri::tray::{MouseButton, MouseButtonState, TrayIconBuilder, TrayIconEvent};
 use tauri::{Manager, RunEvent, WindowEvent};
 
+fn run_core_self_test() -> Result<(), String> {
+    use std::net::TcpListener;
+
+    fn free_port() -> Result<u16, String> {
+        let listener = TcpListener::bind("127.0.0.1:0").map_err(|e| e.to_string())?;
+        listener.local_addr().map(|addr| addr.port()).map_err(|e| e.to_string())
+    }
+
+    let root = std::env::temp_dir().join(format!(
+        "kumoroute-rust-self-test-{}",
+        uuid::Uuid::new_v4().simple()
+    ));
+    std::fs::create_dir_all(&root).map_err(|e| e.to_string())?;
+    std::env::set_var("KUMOROUTE_DATA_DIR", &root);
+    let result = (|| {
+        let mut store = state::Store::load();
+        store.data.controller_port = free_port()?;
+        store.data.mixed_port = free_port()?;
+        if store.data.controller_port == store.data.mixed_port {
+            store.data.mixed_port = free_port()?;
+        }
+        store.save()?;
+        let profiles = state::Profiles::load(&mut store);
+        let runtime = profiles.build_runtime(&store)?;
+        let mut core = core::Core::new();
+        core.start(store.data.controller_port, runtime)?;
+        let version = core::version(store.data.controller_port)
+            .ok_or_else(|| "Rust core self-test: /version returned no version".to_string())?;
+        core::api("GET", store.data.controller_port, "/connections", None, 5)?;
+        core.stop();
+        println!(
+            "RUST CORE SELF TEST OK version={} controller_port={} mixed_port={}",
+            version, store.data.controller_port, store.data.mixed_port
+        );
+        Ok(())
+    })();
+    let cleanup = std::fs::remove_dir_all(&root);
+    if let Err(cleanup_error) = cleanup {
+        eprintln!("self-test cleanup warning: {cleanup_error}");
+    }
+    result
+}
+
+
 fn main() {
     std::panic::set_hook(Box::new(|info| {
         state::write_crash("panic", &info.to_string());
@@ -19,12 +63,20 @@ fn main() {
         println!("KumoRoute {}", env!("CARGO_PKG_VERSION"));
         return;
     }
+    if std::env::args().any(|arg| arg == "--core-self-test") {
+        if let Err(e) = run_core_self_test() {
+            eprintln!("RUST CORE SELF TEST FAILED: {e}");
+            std::process::exit(1);
+        }
+        return;
+    }
     let mut store = state::Store::load();
     let profiles = state::Profiles::load(&mut store);
     let app_state = commands::AppState {
         store,
         profiles,
         core: core::Core::new(),
+        proxy_recovery: None,
     };
 
     tauri::Builder::default()
@@ -54,6 +106,7 @@ fn main() {
             commands::save_stats_export,
             commands::check_update,
             commands::record_ui_error,
+            commands::diagnostics_preview,
             commands::export_diagnostics,
             commands::save_settings,
             commands::open_data_dir,
@@ -67,6 +120,14 @@ fn main() {
             setup_tray(app);
             let shared = app.state::<commands::Shared>();
             let mut s = shared.lock().unwrap();
+            let recovery = proxy::recover_stale_proxy(&mut s.store);
+            if recovery.attempted {
+                state::app_log(&format!(
+                    "stale proxy recovery attempted: restored={}, stale={}, error={:?}",
+                    recovery.restored, recovery.cleared_stale, recovery.error
+                ));
+                s.proxy_recovery = Some(recovery);
+            }
             let port = s.store.data.controller_port;
             if let Ok(rt) = s.profiles.build_runtime(&s.store) {
                 if let Err(e) = s.core.start(port, rt) {

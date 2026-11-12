@@ -1,4 +1,5 @@
-use crate::state::Store;
+use crate::state::{ProxySnapshot, Store};
+use serde::Serialize;
 
 pub const PROXY_OVERRIDE: &str = "<local>;localhost;127.*;10.*;172.16.*;172.17.*;172.18.*;172.19.*;172.20.*;172.21.*;172.22.*;172.23.*;172.24.*;172.25.*;172.26.*;172.27.*;172.28.*;172.29.*;172.30.*;172.31.*;192.168.*";
 
@@ -229,6 +230,83 @@ mod imp {
 
 pub use imp::{apply, get_system_proxy};
 
+#[derive(Debug, Clone, Default, Serialize)]
+pub struct ProxyRecovery {
+    pub attempted: bool,
+    pub restored: bool,
+    pub cleared_stale: bool,
+    pub error: Option<String>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+enum RecoveryAction {
+    None,
+    Restore(ProxySnapshot),
+    ClearStale,
+}
+
+fn recovery_action(
+    original: Option<&ProxySnapshot>,
+    current: &ProxySnapshot,
+    expected_server: &str,
+) -> RecoveryAction {
+    let Some(original) = original else {
+        return RecoveryAction::None;
+    };
+    if current.enable == 1 && current.server.trim() == expected_server {
+        RecoveryAction::Restore(original.clone())
+    } else {
+        RecoveryAction::ClearStale
+    }
+}
+
+pub fn recover_stale_proxy(store: &mut Store) -> ProxyRecovery {
+    let original = store.data.original_proxy.clone();
+    if original.is_none() {
+        return ProxyRecovery::default();
+    }
+    let current = get_system_proxy();
+    let expected = format!("127.0.0.1:{}", store.data.mixed_port);
+    match recovery_action(original.as_ref(), &current, &expected) {
+        RecoveryAction::None => ProxyRecovery::default(),
+        RecoveryAction::Restore(original) => match apply(
+            original.enable,
+            &original.server,
+            &original.override_list,
+        ) {
+            Ok(()) => {
+                store.data.original_proxy = None;
+                let mut recovery = ProxyRecovery {
+                    attempted: true,
+                    restored: true,
+                    ..ProxyRecovery::default()
+                };
+                if let Err(e) = store.save() {
+                    recovery.error = Some(format!("代理已恢復，但設定檔儲存失敗：{e}"));
+                }
+                recovery
+            }
+            Err(e) => ProxyRecovery {
+                attempted: true,
+                error: Some(format!("偵測到上次未清理的系統代理，但恢復失敗：{e}")),
+                ..ProxyRecovery::default()
+            },
+        },
+        RecoveryAction::ClearStale => {
+            store.data.original_proxy = None;
+            let mut recovery = ProxyRecovery {
+                attempted: true,
+                cleared_stale: true,
+                ..ProxyRecovery::default()
+            };
+            if let Err(e) = store.save() {
+                recovery.error = Some(format!("已忽略過期代理快照，但設定檔儲存失敗：{e}"));
+            }
+            recovery
+        }
+    }
+}
+
 pub fn is_on(_store: &Store) -> bool {
     let cur = get_system_proxy();
     cur.enable == 1 && cur.server.contains("127.0.0.1:")
@@ -241,30 +319,93 @@ pub fn set_system_proxy(store: &mut Store, enabled: bool, core_up: bool) -> Resu
         }
         let cur = get_system_proxy();
         let ours = cur.enable == 1 && cur.server.starts_with("127.0.0.1:");
-        if !ours && store.data.original_proxy.is_none() {
+        let captured_now = !ours && store.data.original_proxy.is_none();
+        if captured_now {
             store.data.original_proxy = Some(cur);
+            store.save()?;
         }
-        apply(
+        if let Err(e) = apply(
             1,
             &format!("127.0.0.1:{}", store.data.mixed_port),
             PROXY_OVERRIDE,
-        )?;
+        ) {
+            if captured_now {
+                store.data.original_proxy = None;
+                let _ = store.save();
+            }
+            return Err(e);
+        }
         let _ = store.save();
         std::thread::sleep(std::time::Duration::from_millis(1200));
         if !is_on(store) {
-            store.data.original_proxy = None;
-            let _ = store.save();
+            if captured_now {
+                store.data.original_proxy = None;
+                let _ = store.save();
+            }
             return Err(
                 "系統代理被其他軟體改回（常見於安全軟體／網路加速器的代理守護）。請關閉該功能後再試。"
                     .into(),
             );
         }
     } else {
-        match store.data.original_proxy.take() {
+        let original = store.data.original_proxy.clone();
+        match original {
             Some(orig) => apply(orig.enable, &orig.server, &orig.override_list)?,
             None => apply(0, "", "")?,
         }
-        let _ = store.save();
+        store.data.original_proxy = None;
+        store.save()?;
     }
     Ok(is_on(store))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn snapshot(enable: u32, server: &str) -> ProxySnapshot {
+        ProxySnapshot {
+            enable,
+            server: server.into(),
+            override_list: String::new(),
+        }
+    }
+
+    #[test]
+    fn only_recovers_when_current_proxy_matches_kumoroute() {
+        let original = snapshot(1, "10.0.0.1:8080");
+        assert_eq!(
+            recovery_action(
+                Some(&original),
+                &snapshot(1, "127.0.0.1:7890"),
+                "127.0.0.1:7890"
+            ),
+            RecoveryAction::Restore(original.clone())
+        );
+        assert_eq!(
+            recovery_action(
+                Some(&original),
+                &snapshot(1, "127.0.0.1:9999"),
+                "127.0.0.1:7890"
+            ),
+            RecoveryAction::ClearStale
+        );
+        assert_eq!(
+            recovery_action(None, &snapshot(1, "127.0.0.1:7890"), "127.0.0.1:7890"),
+            RecoveryAction::None
+        );
+    }
+
+    #[test]
+    fn external_proxy_change_is_not_overwritten() {
+        let original = snapshot(0, "");
+        assert_eq!(
+            recovery_action(
+                Some(&original),
+                &snapshot(1, "192.168.1.10:3128"),
+                "127.0.0.1:7890"
+            ),
+            RecoveryAction::ClearStale
+        );
+    }
 }

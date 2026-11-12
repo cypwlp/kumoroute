@@ -13,7 +13,7 @@
       <img src="icon.png" alt="KumoRoute" class="brand-icon">
       <div>
         <div class="brand-name">KumoRoute</div>
-        <div class="brand-ver" id="app-version">v0.4.0</div>
+        <div class="brand-ver" id="app-version">v0.5.0</div>
       </div>
     </div>
 
@@ -332,13 +332,31 @@
           <button class="btn ghost small" data-open-url="https://github.com/MetaCubeX/mihomo">mihomo 專案（GPL-3.0）</button>
           <button class="btn ghost small" data-open-url="https://cypwlp.github.io/kumoroute/privacy.html">隱私政策</button>
           <button class="btn ghost small" data-open-url="https://cypwlp.github.io/kumoroute/terms.html">服務條款</button>
-          <button class="btn ghost small" id="btn-export-diagnostics">匯出診斷資料</button>
+          <button class="btn ghost small" id="btn-export-diagnostics">預覽／匯出診斷資料</button>
         </div>
         <p class="hint disclaimer">KumoRoute 僅提供代理工具的圖形化管理，不包含、不販售任何節點或訂閱服務。
         請自行準備合法的代理配置，並遵守所在國家與地區的法律法規。</p>
       </div>
     </section>
   </main>
+
+  <div id="diagnostics-modal" class="modal hidden" role="dialog" aria-modal="true" aria-labelledby="diagnostics-title">
+    <div class="modal-card">
+      <div class="modal-head">
+        <div>
+          <div class="card-title" id="diagnostics-title">診斷資料預覽</div>
+          <p class="hint" id="diagnostics-summary">正在產生去識別化內容…</p>
+        </div>
+        <button class="modal-close" id="btn-close-diagnostics" aria-label="關閉預覽">×</button>
+      </div>
+      <pre id="diagnostics-preview" class="diagnostics-preview" tabindex="0"></pre>
+      <div class="modal-actions">
+        <button class="btn ghost" id="btn-copy-diagnostics">複製內容</button>
+        <button class="btn primary" id="btn-confirm-export-diagnostics">確認匯出</button>
+        <button class="btn ghost" id="btn-cancel-diagnostics">取消</button>
+      </div>
+    </div>
+  </div>
 
   <div id="toast" class="toast hidden"></div>
 </div>

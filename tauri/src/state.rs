@@ -1,5 +1,6 @@
 use std::fs;
-use std::path::PathBuf;
+use std::io::{Read, Write};
+use std::path::{Path, PathBuf};
 use std::sync::OnceLock;
 
 use regex::Regex;
@@ -7,19 +8,24 @@ use serde::{Deserialize, Serialize};
 
 pub const APP_NAME: &str = "KumoRoute";
 pub const LEGACY_APP_NAME: &str = "MyClash";
-pub const APP_VERSION: &str = "0.4.0";
+pub const APP_VERSION: &str = "0.5.0";
 pub const SUB_UA: &str = concat!("KumoRoute/", env!("CARGO_PKG_VERSION"));
 pub const TEST_URL: &str = "https://cp.cloudflare.com/generate_204";
 
 pub const BUILTIN_CONFIG: &str = "mode: rule\nlog-level: info\nproxies: []\nrules:\n  - MATCH,DIRECT\n";
 
 pub fn data_dir() -> PathBuf {
-    let base = dirs::config_dir().unwrap_or_else(|| PathBuf::from("."));
-    let d = base.join(APP_NAME);
-    let legacy = base.join(LEGACY_APP_NAME);
-    if !d.exists() && legacy.is_dir() {
-        let _ = fs::rename(&legacy, &d);
-    }
+    let d = if let Some(path) = std::env::var_os("KUMOROUTE_DATA_DIR") {
+        PathBuf::from(path)
+    } else {
+        let base = dirs::config_dir().unwrap_or_else(|| PathBuf::from("."));
+        let d = base.join(APP_NAME);
+        let legacy = base.join(LEGACY_APP_NAME);
+        if !d.exists() && legacy.is_dir() {
+            let _ = fs::rename(&legacy, &d);
+        }
+        d
+    };
     let _ = fs::create_dir_all(d.join("profiles"));
     let _ = fs::create_dir_all(d.join("logs"));
     d
@@ -83,13 +89,63 @@ pub fn now() -> String {
     chrono::Local::now().format("%Y-%m-%d %H:%M:%S").to_string()
 }
 
+#[derive(Debug, Clone, Default, Serialize, Deserialize, PartialEq, Eq)]
+pub struct RedactionSummary {
+    pub urls: usize,
+    pub endpoints: usize,
+    pub ips: usize,
+    pub secrets: usize,
+}
+
+#[derive(Debug, Clone)]
+pub struct SanitizedDiagnostics {
+    pub text: String,
+    pub summary: RedactionSummary,
+}
+
+fn regex_cell(pattern: &'static str) -> &'static Regex {
+    static CACHE: OnceLock<std::sync::Mutex<std::collections::HashMap<&'static str, &'static Regex>>> =
+        OnceLock::new();
+    let cache = CACHE.get_or_init(|| std::sync::Mutex::new(std::collections::HashMap::new()));
+    let mut guard = cache.lock().unwrap_or_else(|e| e.into_inner());
+    if let Some(re) = guard.get(pattern) {
+        return re;
+    }
+    let re = Box::leak(Box::new(Regex::new(pattern).expect("valid diagnostics regex")));
+    guard.insert(pattern, re);
+    re
+}
+
+pub fn sanitize_diagnostics_report(text: &str) -> SanitizedDiagnostics {
+    let endpoint_re = regex_cell(r"(?m)(-->\s*)[^\s]+");
+    let url_re = regex_cell(r#"(?i)https?://[^\s"'<>]+"#);
+    let ip_re = regex_cell(r"\b(?:\d{1,3}\.){3}\d{1,3}\b");
+    let ipv6_re = regex_cell(r#"(?i)\b(?:(?:[0-9a-f]{1,4}:){1,7}:[0-9a-f]{1,4}|(?:[0-9a-f]{1,4}:){1,7}[0-9a-f]{0,3}[a-f][0-9a-f]{0,3})\b"#);
+    let secret_re = regex_cell(
+        r#"(?i)\b(token|secret|password|passwd|authorization|api[_-]?key|access[_-]?token)\b(\s*[:=]\s*)([^\s,;"'<>]+)"#,
+    );
+    let bearer_re = regex_cell(r"(?i)\bBearer\s+[A-Za-z0-9._~+/=-]+");
+
+    let mut summary = RedactionSummary::default();
+    summary.endpoints = endpoint_re.find_iter(text).count();
+    let text = endpoint_re.replace_all(text, "${1}<redacted-endpoint>");
+    summary.urls = url_re.find_iter(&text).count();
+    let text = url_re.replace_all(&text, "<redacted-url>");
+    summary.ips = ip_re.find_iter(&text).count() + ipv6_re.find_iter(&text).count();
+    let text = ip_re.replace_all(&text, "<redacted-ip>");
+    let text = ipv6_re.replace_all(&text, "<redacted-ip>");
+    summary.secrets = bearer_re.find_iter(&text).count();
+    let text = bearer_re.replace_all(&text, "Bearer <redacted-secret>");
+    summary.secrets += secret_re.find_iter(&text).count();
+    let text = secret_re.replace_all(&text, "${1}${2}<redacted-secret>");
+    SanitizedDiagnostics {
+        text: text.to_string(),
+        summary,
+    }
+}
+
 pub fn sanitize_diagnostics(text: &str) -> String {
-    let url_re = Regex::new(r#"https?://[^\s"'<>]+"#).unwrap();
-    let endpoint_re = Regex::new(r"(?m)(-->\s*)[^\s]+").unwrap();
-    let ip_re = Regex::new(r"\b(?:\d{1,3}\.){3}\d{1,3}\b").unwrap();
-    let text = url_re.replace_all(text, "<redacted-url>");
-    let text = endpoint_re.replace_all(&text, "${1}<redacted-endpoint>");
-    ip_re.replace_all(&text, "<redacted-ip>").to_string()
+    sanitize_diagnostics_report(text).text
 }
 
 pub fn write_crash(kind: &str, detail: &str) {
@@ -143,7 +199,7 @@ pub fn ensure_geo_files() {
     }
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+#[derive(Debug, Clone, Serialize, Deserialize, Default, PartialEq, Eq)]
 pub struct ProxySnapshot {
     pub enable: u32,
     pub server: String,
@@ -190,12 +246,35 @@ impl Store {
     }
 
     pub fn save(&self) -> Result<(), String> {
-        let tmp = self.path.with_extension("tmp");
         let text = serde_json::to_string_pretty(&self.data).map_err(|e| e.to_string())?;
-        fs::write(&tmp, text).map_err(|e| e.to_string())?;
-        fs::rename(&tmp, &self.path).map_err(|e| e.to_string())?;
-        Ok(())
+        atomic_write(&self.path, &text)
     }
+}
+
+fn atomic_write(path: &Path, text: &str) -> Result<(), String> {
+    let parent = path
+        .parent()
+        .ok_or_else(|| "設定檔路徑沒有父目錄".to_string())?;
+    fs::create_dir_all(parent).map_err(|e| e.to_string())?;
+    let file_name = path
+        .file_name()
+        .and_then(|v| v.to_str())
+        .unwrap_or("state");
+    let tmp = parent.join(format!(
+        ".{file_name}.{}.tmp",
+        uuid::Uuid::new_v4().simple()
+    ));
+    let result = (|| {
+        let mut file = fs::File::create(&tmp).map_err(|e| e.to_string())?;
+        file.write_all(text.as_bytes()).map_err(|e| e.to_string())?;
+        file.sync_all().map_err(|e| e.to_string())?;
+        drop(file);
+        fs::rename(&tmp, path).map_err(|e| e.to_string())
+    })();
+    if result.is_err() {
+        let _ = fs::remove_file(&tmp);
+    }
+    result
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -215,7 +294,11 @@ pub struct Profiles {
 
 impl Profiles {
     pub fn load(store: &mut Store) -> Self {
-        let root = data_dir().join("profiles");
+        Self::load_from(data_dir().join("profiles"), store)
+    }
+
+    fn load_from(root: PathBuf, store: &mut Store) -> Self {
+        let _ = fs::create_dir_all(&root);
         let index = root.join("index.json");
         let mut entries: Vec<Entry> = fs::read_to_string(&index)
             .ok()
@@ -224,7 +307,7 @@ impl Profiles {
         if entries.is_empty() {
             let f = root.join("direct.yaml");
             if !f.exists() {
-                let _ = fs::write(&f, BUILTIN_CONFIG);
+                let _ = atomic_write(&f, BUILTIN_CONFIG);
             }
             entries.push(Entry {
                 id: "direct".into(),
@@ -235,7 +318,9 @@ impl Profiles {
             });
         }
         let p = Self { root, entries };
-        p.save_index();
+        if let Err(e) = p.save_index() {
+            app_log(&format!("profiles index save failed: {e}"));
+        }
         let active = store.data.active_profile.clone();
         if active.is_empty() || p.get(&active).is_none() {
             store.data.active_profile = p.entries[0].id.clone();
@@ -244,12 +329,9 @@ impl Profiles {
         p
     }
 
-    fn save_index(&self) {
-        let tmp = self.root.join("index.tmp");
-        if let Ok(t) = serde_json::to_string_pretty(&self.entries) {
-            let _ = fs::write(&tmp, t);
-            let _ = fs::rename(&tmp, self.root.join("index.json"));
-        }
+    fn save_index(&self) -> Result<(), String> {
+        let text = serde_json::to_string_pretty(&self.entries).map_err(|e| e.to_string())?;
+        atomic_write(&self.root.join("index.json"), &text)
     }
 
     pub fn get(&self, id: &str) -> Option<&Entry> {
@@ -279,29 +361,63 @@ impl Profiles {
     }
 
     fn fetch(url: &str) -> Result<String, String> {
+        const MAX_BYTES: u64 = 10 * 1024 * 1024;
         let resp = ureq::get(url)
             .set("User-Agent", SUB_UA)
             .timeout(std::time::Duration::from_secs(25))
             .call()
             .map_err(|e| e.to_string())?;
-        let text = resp.into_string().map_err(|e| e.to_string())?;
-        if text.len() > 10 * 1024 * 1024 {
+        if resp
+            .header("Content-Length")
+            .and_then(|v| v.parse::<u64>().ok())
+            .is_some_and(|n| n > MAX_BYTES)
+        {
             return Err("訂閱檔案超過 10MB，已中止".into());
         }
-        Ok(text)
+        let mut raw = Vec::new();
+        resp.into_reader()
+            .take(MAX_BYTES + 1)
+            .read_to_end(&mut raw)
+            .map_err(|e| e.to_string())?;
+        if raw.len() as u64 > MAX_BYTES {
+            return Err("訂閱檔案超過 10MB，已中止".into());
+        }
+        String::from_utf8(raw).map_err(|_| "訂閱內容不是有效的 UTF-8 文字".to_string())
+    }
+
+    fn validate_remote_url(url: &str) -> Result<(), String> {
+        let parsed = url::Url::parse(url).map_err(|_| "訂閱連結格式無效".to_string())?;
+        if !matches!(parsed.scheme(), "http" | "https") || parsed.host_str().is_none() {
+            return Err("訂閱連結必須是有效的 http(s):// 網址".into());
+        }
+        if !parsed.username().is_empty() || parsed.password().is_some() {
+            return Err("訂閱連結不可包含帳號或密碼".into());
+        }
+        Ok(())
+    }
+
+    fn register_entry(&mut self, entry: Entry, text: &str) -> Result<Entry, String> {
+        atomic_write(&self.path_of(&entry.id), text)?;
+        self.entries.push(entry.clone());
+        if let Err(e) = self.save_index() {
+            self.entries.retain(|item| item.id != entry.id);
+            let _ = fs::remove_file(self.path_of(&entry.id));
+            return Err(format!("儲存配置索引失敗：{e}"));
+        }
+        Ok(entry)
     }
 
     pub fn add_remote(&mut self, url: &str, name: &str) -> Result<Entry, String> {
         let url = url.trim();
-        if !url.starts_with("http://") && !url.starts_with("https://") {
-            return Err("訂閱連結必須是 http(s):// 開頭".into());
-        }
+        Self::validate_remote_url(url)?;
         let text = Self::fetch(url)?;
         Self::validate(&text)?;
         let id = uuid::Uuid::new_v4().simple().to_string()[..8].to_string();
-        fs::write(self.path_of(&id), &text).map_err(|e| e.to_string())?;
         let name = if name.trim().is_empty() {
-            url::host(url).unwrap_or_else(|| format!("訂閱 {}", self.entries.len() + 1))
+            url::Url::parse(url)
+                .ok()
+                .and_then(|parsed| parsed.host_str().map(str::to_string))
+                .unwrap_or_else(|| format!("訂閱 {}", self.entries.len() + 1))
         } else {
             name.trim().to_string()
         };
@@ -312,9 +428,7 @@ impl Profiles {
             url: url.to_string(),
             updated_at: now(),
         };
-        self.entries.push(entry.clone());
-        self.save_index();
-        Ok(entry)
+        self.register_entry(entry, &text)
     }
 
     pub fn add_local(&mut self, src: &str) -> Result<Entry, String> {
@@ -322,7 +436,6 @@ impl Profiles {
         let text = fs::read_to_string(&p).map_err(|e| e.to_string())?;
         Self::validate(&text)?;
         let id = uuid::Uuid::new_v4().simple().to_string()[..8].to_string();
-        fs::write(self.path_of(&id), &text).map_err(|e| e.to_string())?;
         let name = p
             .file_stem()
             .map(|s| s.to_string_lossy().to_string())
@@ -334,9 +447,38 @@ impl Profiles {
             url: String::new(),
             updated_at: now(),
         };
-        self.entries.push(entry.clone());
-        self.save_index();
-        Ok(entry)
+        self.register_entry(entry, &text)
+    }
+
+    fn backup_path_of(&self, id: &str) -> PathBuf {
+        self.root.join(format!("{id}.yaml.bak"))
+    }
+
+    fn apply_remote_text(&mut self, id: &str, text: &str) -> Result<(), String> {
+        Self::validate(text)?;
+        let entry = self.get(id).cloned().ok_or("找不到該訂閱")?;
+        if entry.kind != "remote" || entry.url.is_empty() {
+            return Err("只有遠端訂閱可以更新".into());
+        }
+        let path = self.path_of(id);
+        let backup = self.backup_path_of(id);
+        fs::copy(&path, &backup).map_err(|e| format!("建立訂閱備份失敗：{e}"))?;
+        if let Err(e) = atomic_write(&path, text) {
+            let _ = fs::remove_file(&backup);
+            return Err(e);
+        }
+        let previous = entry.clone();
+        if let Some(current) = self.entries.iter_mut().find(|item| item.id == id) {
+            current.updated_at = now();
+        }
+        if let Err(e) = self.save_index() {
+            let _ = atomic_write(&path, &fs::read_to_string(&backup).unwrap_or_default());
+            if let Some(current) = self.entries.iter_mut().find(|item| item.id == id) {
+                *current = previous;
+            }
+            return Err(format!("儲存配置索引失敗，已自動回滾：{e}"));
+        }
+        Ok(())
     }
 
     pub fn update(&mut self, id: &str) -> Result<(), String> {
@@ -344,14 +486,21 @@ impl Profiles {
         if entry.kind != "remote" || entry.url.is_empty() {
             return Err("只有遠端訂閱可以更新".into());
         }
+        Self::validate_remote_url(&entry.url)?;
         let text = Self::fetch(&entry.url)?;
+        self.apply_remote_text(id, &text)
+    }
+
+    pub fn rollback_to(&mut self, id: &str, previous: &Entry) -> Result<(), String> {
+        let backup = self.backup_path_of(id);
+        let text = fs::read_to_string(&backup).map_err(|e| format!("找不到可回滾的備份：{e}"))?;
         Self::validate(&text)?;
-        fs::write(self.path_of(id), &text).map_err(|e| e.to_string())?;
-        if let Some(e) = self.entries.iter_mut().find(|e| e.id == id) {
-            e.updated_at = now();
+        atomic_write(&self.path_of(id), &text)?;
+        if let Some(current) = self.entries.iter_mut().find(|item| item.id == id) {
+            *current = previous.clone();
         }
-        self.save_index();
-        Ok(())
+        self.save_index()
+            .map_err(|e| format!("恢復配置索引失敗：{e}"))
     }
 
     pub fn delete(&mut self, id: &str, store: &mut Store) -> Result<(), String> {
@@ -360,8 +509,9 @@ impl Profiles {
             return Err("內建配置不能刪除".into());
         }
         self.entries.retain(|e| e.id != id);
-        self.save_index();
+        self.save_index()?;
         let _ = fs::remove_file(self.path_of(id));
+        let _ = fs::remove_file(self.backup_path_of(id));
         if store.data.active_profile == id {
             store.data.active_profile = self.entries[0].id.clone();
             let _ = store.save();
@@ -420,19 +570,126 @@ impl Profiles {
         }
         let out = data_dir().join("runtime.yaml");
         let yaml = serde_yaml::to_string(&cfg).map_err(|e| e.to_string())?;
-        fs::write(&out, yaml).map_err(|e| e.to_string())?;
+        atomic_write(&out, &yaml)?;
         Ok(out)
     }
 }
 
-mod url {
-    pub fn host(url: &str) -> Option<String> {
-        let rest = url.split("://").nth(1)?;
-        let host = rest.split(['/', '?', ':']).next()?;
-        if host.is_empty() {
-            None
-        } else {
-            Some(host.to_string())
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    struct TempDir(PathBuf);
+
+    impl TempDir {
+        fn new(name: &str) -> Self {
+            let path = std::env::temp_dir().join(format!(
+                "kumoroute-{name}-{}",
+                uuid::Uuid::new_v4().simple()
+            ));
+            fs::create_dir_all(&path).unwrap();
+            Self(path)
         }
+    }
+
+    impl Drop for TempDir {
+        fn drop(&mut self) {
+            let _ = fs::remove_dir_all(&self.0);
+        }
+    }
+
+    fn test_store(root: &Path) -> Store {
+        Store {
+            path: root.join("settings.json"),
+            data: Settings::default(),
+        }
+    }
+
+    #[test]
+    fn diagnostics_redact_common_secrets() {
+        let report = sanitize_diagnostics_report(
+            "URL https://user.example/api?token=topsecret\n\
+             --> 127.0.0.1:9090\n\
+             public 203.0.113.7 ipv6 2001:db8::1\n\
+             Authorization: Bearer abc.def token=plain-secret",
+        );
+        assert!(!report.text.contains("https://"));
+        assert!(!report.text.contains("127.0.0.1:9090"));
+        assert!(!report.text.contains("203.0.113.7"));
+        assert!(!report.text.contains("2001:db8::1"));
+        assert!(!report.text.contains("topsecret"));
+        assert!(!report.text.contains("plain-secret"));
+        assert!(!report.text.contains("abc.def"));
+        assert!(report.summary.urls >= 1);
+        assert!(report.summary.endpoints >= 1);
+        assert!(report.summary.ips >= 2);
+        assert!(report.summary.secrets >= 2);
+    }
+
+    #[test]
+    fn remote_url_validation_rejects_unsafe_forms() {
+        assert!(Profiles::validate_remote_url("https://example.com/sub").is_ok());
+        assert!(Profiles::validate_remote_url("http://127.0.0.1:8080/sub").is_ok());
+        assert!(Profiles::validate_remote_url("ftp://example.com/sub").is_err());
+        assert!(Profiles::validate_remote_url("https://user:pass@example.com/sub").is_err());
+        assert!(Profiles::validate_remote_url("not a url").is_err());
+    }
+
+    #[test]
+    fn profile_update_and_rollback_are_transactional() {
+        let temp = TempDir::new("profile-rollback");
+        let mut store = test_store(&temp.0);
+        let mut profiles = Profiles::load_from(temp.0.join("profiles"), &mut store);
+        let source = temp.0.join("source.yaml");
+        fs::write(
+            &source,
+            "mode: rule\nproxies: []\nrules:\n  - MATCH,DIRECT\n",
+        )
+        .unwrap();
+        let added = profiles.add_local(source.to_str().unwrap()).unwrap();
+        {
+            let entry = profiles
+                .entries
+                .iter_mut()
+                .find(|entry| entry.id == added.id)
+                .unwrap();
+            entry.kind = "remote".into();
+            entry.url = "https://example.com/sub".into();
+        }
+        let previous = profiles.get(&added.id).cloned().unwrap();
+        let original = fs::read_to_string(profiles.path_of(&added.id)).unwrap();
+        profiles
+            .apply_remote_text(&added.id, "mode: global\nproxies: []\n")
+            .unwrap();
+        assert!(fs::read_to_string(profiles.path_of(&added.id))
+            .unwrap()
+            .contains("mode: global"));
+        profiles.rollback_to(&added.id, &previous).unwrap();
+        assert_eq!(fs::read_to_string(profiles.path_of(&added.id)).unwrap(), original);
+        assert_eq!(profiles.get(&added.id).unwrap().updated_at, previous.updated_at);
+    }
+
+    #[test]
+    fn invalid_profile_update_keeps_previous_file() {
+        let temp = TempDir::new("profile-invalid");
+        let mut store = test_store(&temp.0);
+        let mut profiles = Profiles::load_from(temp.0.join("profiles"), &mut store);
+        let source = temp.0.join("source.yaml");
+        fs::write(&source, "mode: rule\nproxies: []\n").unwrap();
+        let added = profiles.add_local(source.to_str().unwrap()).unwrap();
+        {
+            let entry = profiles
+                .entries
+                .iter_mut()
+                .find(|entry| entry.id == added.id)
+                .unwrap();
+            entry.kind = "remote".into();
+            entry.url = "https://example.com/sub".into();
+        }
+        let path = profiles.path_of(&added.id);
+        let before = fs::read_to_string(&path).unwrap();
+        assert!(profiles.apply_remote_text(&added.id, "mode: [broken").is_err());
+        assert_eq!(fs::read_to_string(&path).unwrap(), before);
     }
 }

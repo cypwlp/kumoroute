@@ -5,13 +5,14 @@ use serde_json::{json, Value};
 use tauri::State;
 
 use crate::core::{self, Core};
-use crate::proxy;
+use crate::proxy::{self, ProxyRecovery};
 use crate::state::{data_dir, Entry, Profiles, Store, APP_VERSION, SUB_UA, TEST_URL};
 
 pub struct AppState {
     pub store: Store,
     pub profiles: Profiles,
     pub core: Core,
+    pub proxy_recovery: Option<ProxyRecovery>,
 }
 
 pub type Shared = Mutex<AppState>;
@@ -50,7 +51,8 @@ pub fn cleanup(state: &Shared) {
 
 #[tauri::command]
 pub fn get_state(state: State<'_, Shared>) -> Value {
-    let s = state.lock().unwrap();
+    let mut s = state.lock().unwrap();
+    let proxy_recovery = s.proxy_recovery.take();
     let port = s.store.data.controller_port;
     let running = core::is_up(port);
     let mut mode = s.store.data.mode.clone();
@@ -75,6 +77,7 @@ pub fn get_state(state: State<'_, Shared>) -> Value {
         "data_dir": data_dir().to_string_lossy(),
         "core_found": crate::state::core_binary().is_some(),
         "test_url": TEST_URL,
+        "proxy_recovery": proxy_recovery,
     })
 }
 
@@ -246,11 +249,23 @@ pub fn import_profile(state: State<'_, Shared>) -> Value {
 #[tauri::command]
 pub fn update_profile(state: State<'_, Shared>, pid: String) -> Value {
     let mut s = state.lock().unwrap();
+    let previous = s.profiles.get(&pid).cloned();
     if let Err(e) = s.profiles.update(&pid) {
         return err(e);
     }
     if s.store.data.active_profile == pid {
         if let Err(e) = do_reload(&mut *s) {
+            if let Some(previous) = previous {
+                return match s.profiles.rollback_to(&pid, &previous) {
+                    Ok(()) => {
+                        let _ = do_reload(&mut *s);
+                        err(format!("更新失敗，已自動回滾：{e}"))
+                    }
+                    Err(rollback_error) => err(format!(
+                        "更新失敗：{e}；自動回滾也失敗：{rollback_error}"
+                    )),
+                };
+            }
             return err(e);
         }
     }
@@ -410,21 +425,9 @@ fn read_tail(path: &std::path::Path, limit: usize) -> String {
     String::from_utf8_lossy(&data[start..]).to_string()
 }
 
-#[tauri::command]
-pub fn export_diagnostics(state: State<'_, Shared>) -> Value {
-    let s = state.lock().unwrap();
+fn diagnostics_text(s: &AppState) -> Result<(String, crate::state::RedactionSummary), String> {
     let port = s.store.data.controller_port;
     let running = core::is_up(port);
-    let folder = dirs::download_dir()
-        .or_else(|| dirs::home_dir().map(|p| p.join("Downloads")))
-        .unwrap_or_else(data_dir);
-    if let Err(e) = fs::create_dir_all(&folder) {
-        return err(format!("無法建立下載資料夾：{e}"));
-    }
-    let path = folder.join(format!(
-        "KumoRoute-diagnostics-{}.txt",
-        chrono::Local::now().format("%Y%m%d-%H%M%S")
-    ));
     let logs_dir = data_dir().join("logs");
     let mut text = format!(
         "KumoRoute Diagnostics\ngenerated_at: {}\napp_version: {}\nplatform: {} {}\ncore_running: {}\ncore_version: {}\nsystem_proxy: {}\nmode: {}\nmixed_port: {}\ncontroller_port: {}\nprofiles: {}\nactive_profile_kind: {}\n",
@@ -446,9 +449,43 @@ pub fn export_diagnostics(state: State<'_, Shared>) -> Value {
         ("CORE LOG", logs_dir.join("core.log")),
         ("CRASH LOG", logs_dir.join("crash.log")),
     ] {
-        let body = crate::state::sanitize_diagnostics(&read_tail(&file, 131072));
+        let body = read_tail(&file, 131072);
         text.push_str(&format!("\n===== {label} =====\n{body}\n"));
     }
+    let report = crate::state::sanitize_diagnostics_report(&text);
+    Ok((report.text, report.summary))
+}
+
+#[tauri::command]
+pub fn diagnostics_preview(state: State<'_, Shared>) -> Value {
+    let s = state.lock().unwrap_or_else(|e| e.into_inner());
+    match diagnostics_text(&s) {
+        Ok((text, summary)) => json!({
+            "ok": true,
+            "text": text,
+            "summary": summary,
+        }),
+        Err(e) => err(e),
+    }
+}
+
+#[tauri::command]
+pub fn export_diagnostics(state: State<'_, Shared>) -> Value {
+    let s = state.lock().unwrap_or_else(|e| e.into_inner());
+    let (text, _) = match diagnostics_text(&s) {
+        Ok(value) => value,
+        Err(e) => return err(e),
+    };
+    let folder = dirs::download_dir()
+        .or_else(|| dirs::home_dir().map(|p| p.join("Downloads")))
+        .unwrap_or_else(data_dir);
+    if let Err(e) = fs::create_dir_all(&folder) {
+        return err(format!("無法建立下載資料夾：{e}"));
+    }
+    let path = folder.join(format!(
+        "KumoRoute-diagnostics-{}.txt",
+        chrono::Local::now().format("%Y%m%d-%H%M%S")
+    ));
     match fs::write(&path, text) {
         Ok(_) => json!({"ok": true, "path": path.to_string_lossy()}),
         Err(e) => err(format!("匯出診斷資料失敗：{e}")),
@@ -497,11 +534,19 @@ pub fn open_data_dir() -> Value {
 
 #[tauri::command]
 pub fn open_url(url: String) -> Value {
-    if url.starts_with("http://") || url.starts_with("https://") {
-        let _ = open::that(url);
-        ok()
-    } else {
-        err("無效的網址")
+    let Ok(parsed) = url::Url::parse(url.trim()) else {
+        return err("無效的網址");
+    };
+    if !matches!(parsed.scheme(), "http" | "https")
+        || parsed.host_str().is_none()
+        || !parsed.username().is_empty()
+        || parsed.password().is_some()
+    {
+        return err("只允許不含帳密的 HTTP(S) 網址");
+    }
+    match open::that(parsed.as_str()) {
+        Ok(()) => ok(),
+        Err(e) => err(e.to_string()),
     }
 }
 

@@ -1,0 +1,44 @@
+name: Dependency security
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+  workflow_call:
+
+permissions:
+  contents: read
+
+jobs:
+  audit:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: actions/setup-python@v7
+        with:
+          python-version: "3.12"
+
+      - name: Audit Python dependencies
+        run: |
+          python -m pip install --upgrade pip "pip-audit==2.10.1"
+          pip-audit --progress-spinner off -r client/requirements.txt
+
+      - name: Install Rust security tools
+        run: |
+          cargo install cargo-audit --version 0.23.0 --locked
+          cargo install cargo-cyclonedx --version 0.5.10 --locked
+
+      - name: Audit Rust dependencies
+        run: cargo audit --file tauri/Cargo.lock
+
+      - name: Generate CycloneDX SBOM
+        working-directory: tauri
+        run: cargo cyclonedx --format json --override-filename KumoRoute.cdx
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: kumoroute-cyclonedx-sbom
+          path: tauri/KumoRoute.cdx.json
+          if-no-files-found: error

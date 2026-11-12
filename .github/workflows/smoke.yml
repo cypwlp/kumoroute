@@ -65,9 +65,14 @@ jobs:
       - name: Use official crates.io in CI
         run: python -c "from pathlib import Path; Path('tauri/.cargo/config.toml').unlink(missing_ok=True)"
 
+      - name: Run Rust unit and integration tests
+        run: cargo test --manifest-path tauri/Cargo.toml -- --test-threads=1
+
       - name: Build Tauri binary
         working-directory: tauri
         run: cargo build --release
 
-      - name: Verify Tauri executable starts
-        run: python -c "import subprocess,sys; p='tauri/target/release/kumoroute.exe' if sys.platform=='win32' else 'tauri/target/release/kumoroute'; print(subprocess.check_output([p,'--version'],text=True).strip())"
+      - name: Verify Tauri executable and bundled core
+        run: |
+          python -c "import subprocess,sys; p='tauri/target/release/kumoroute.exe' if sys.platform=='win32' else 'tauri/target/release/kumoroute'; print(subprocess.check_output([p,'--version'],text=True).strip())"
+          python -c "import subprocess,sys; p='tauri/target/release/kumoroute.exe' if sys.platform=='win32' else 'tauri/target/release/kumoroute'; print(subprocess.check_output([p,'--core-self-test'],text=True).strip())"

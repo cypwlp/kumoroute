@@ -13,6 +13,8 @@ let sparkDown = [];
 let sparkUp = [];
 let toastTimer = null;
 let pendingDelete = { id: null, timer: null };
+let lastProxyRecovery = null;
+let diagnosticsText = "";
 
 const STATS_KEY = "kumoroute.stats.v1";
 const PREFS_KEY = "kumoroute.preferences.v1";
@@ -435,7 +437,7 @@ const demoCfg = {
   mixed_port: 7890,
   controller_port: 9090,
   core_version: "v1.19.33",
-  app_version: "0.4.0",
+  app_version: "0.5.0",
   data_dir: "C:\\Users\\…\\AppData\\Roaming\\KumoRoute",
   test_url: "https://cp.cloudflare.com/generate_204",
   profiles: [
@@ -582,7 +584,13 @@ async function refreshState() {
 
 function renderAll() {
   if (!state) return;
-  $("#foot-dot").className = "dot" + (state.running ? " on" : "");
+  if (state.proxy_recovery && state.proxy_recovery !== lastProxyRecovery) {
+    lastProxyRecovery = state.proxy_recovery;
+    const recovery = state.proxy_recovery;
+    if (recovery.error) toast(recovery.error, "error");
+    else if (recovery.restored) toast("偵測到上次未清理的系統代理，已自動恢復原始設定。", "ok");
+    else if (recovery.cleared_stale) toast("已清除過期的代理快照；目前系統代理未被覆蓋。", "ok");
+  }  $("#foot-dot").className = "dot" + (state.running ? " on" : "");
   $("#foot-core").textContent = state.running ? "核心運行中" : "核心未啟動";
   $("#foot-proxy").textContent = "系統代理：" + (state.sys_proxy ? "開" : "關");
   $("#app-version").textContent = "v" + state.app_version;
@@ -1597,19 +1605,70 @@ function bindActions() {
     if (demo) window.open(latestUpdate.url, "_blank");
     else api("open_url", latestUpdate.url);
   });
+  const closeDiagnostics = () => {
+    $("#diagnostics-modal").classList.add("hidden");
+    diagnosticsText = "";
+  };
   $("#btn-export-diagnostics").addEventListener("click", async () => {
     if (demo) {
-      toast("DEMO 模式不匯出診斷資料", "error");
+      toast("DEMO 模式不產生診斷資料", "error");
       return;
     }
     const btn = $("#btn-export-diagnostics");
+    btn.disabled = true; btn.textContent = "產生預覽中…";
+    try {
+      const res = await api("diagnostics_preview");
+      if (!res || !res.ok) {
+        toast((res && res.error) || "無法產生診斷預覽", "error");
+        return;
+      }
+      diagnosticsText = res.text || "";
+      $("#diagnostics-preview").textContent = diagnosticsText;
+      const summary = res.summary || {};
+      $("#diagnostics-summary").textContent =
+        `已去識別化：URL ${Number(summary.urls || 0)}、IP ${Number(summary.ips || 0)}、` +
+        `端點 ${Number(summary.endpoints || 0)}、敏感欄位 ${Number(summary.secrets || 0)}。` +
+        "請確認內容後再匯出。";
+      $("#diagnostics-modal").classList.remove("hidden");
+      $("#btn-confirm-export-diagnostics").focus();
+    } catch (e) {
+      toast(String(e), "error");
+    } finally {
+      btn.disabled = false; btn.textContent = "預覽／匯出診斷資料";
+    }
+  });
+  $("#btn-confirm-export-diagnostics").addEventListener("click", async () => {
+    const btn = $("#btn-confirm-export-diagnostics");
     btn.disabled = true; btn.textContent = "匯出中…";
     try {
       const res = await api("export_diagnostics");
-      if (res && res.ok) toast(`診斷資料已匯出：${res.path}`, "ok");
-      else toast((res && res.error) || "匯出失敗", "error");
-    } catch (e) { toast(String(e), "error"); }
-    btn.disabled = false; btn.textContent = "匯出診斷資料";
+      if (res && res.ok) {
+        toast(`診斷資料已匯出：${res.path}`, "ok");
+        closeDiagnostics();
+      } else {
+        toast((res && res.error) || "匯出失敗", "error");
+      }
+    } catch (e) {
+      toast(String(e), "error");
+    } finally {
+      btn.disabled = false; btn.textContent = "確認匯出";
+    }
+  });
+  $("#btn-copy-diagnostics").addEventListener("click", async () => {
+    try {
+      await navigator.clipboard.writeText(diagnosticsText);
+      toast("已複製去識別化診斷內容", "ok");
+    } catch (e) {
+      toast("複製失敗", "error");
+    }
+  });
+  $("#btn-close-diagnostics").addEventListener("click", closeDiagnostics);
+  $("#btn-cancel-diagnostics").addEventListener("click", closeDiagnostics);
+  $("#diagnostics-modal").addEventListener("click", (ev) => {
+    if (ev.target === $("#diagnostics-modal")) closeDiagnostics();
+  });
+  document.addEventListener("keydown", (ev) => {
+    if (ev.key === "Escape" && !$("#diagnostics-modal").classList.contains("hidden")) closeDiagnostics();
   });
 
   $$("[data-open-url]").forEach((b) => b.addEventListener("click", () => {

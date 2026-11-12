@@ -20,7 +20,11 @@
 - 核心與代理事件：核心啟動／重啟、最近啟動、系統代理時長、訂閱更新歷史
 - 流量歸屬：配置、策略組、節點；可選記錄熱門網域與規則命中（僅本機）
 - 更新檢查：啟動時自動檢查新版本並提示下載頁（不自動執行未簽名安裝檔）
-- 本機當機紀錄與去識別化診斷匯出
+- 本機當機紀錄與去識別化診斷預覽／匯出（可先檢查再寫檔）
+- 代理設定先落盤再套用；啟動時自動恢復上次異常退出留下的系統代理
+- Rust 三平台整合自測（`cargo test`＋實際啟動內附 mihomo）
+- 依賴稽核（RustSec、pip-audit）與 CycloneDX／SPDX SBOM
+- 嚴格 CSP、Tauri 視窗 capability 與 KumoRoute 命令白名單
 - 隱私政策與使用條款
 - GitHub Actions 乾淨 runner 的 Windows／Linux／macOS core 與建置 smoke tests
 - 內置 GeoIP/GeoSite 資料庫，導入訂閱即用（免從 GitHub 下載 geodata）
@@ -75,8 +79,8 @@ python app.py
 推送 `v*` tag 即由 GitHub Actions 自動編譯、打包並建立 Release（含 `KumoRoute-win-x64.zip` 與 `SHA256SUMS.txt`）：
 
 ```powershell
-git tag v0.4.0
-git push origin v0.4.0
+git tag v0.5.0
+git push origin v0.5.0
 ```
 
 下載站按鈕指向 `releases/latest/download/KumoRoute-win-x64.zip`（見 `site/app.js`）。
@@ -91,6 +95,19 @@ Pages：Settings → Pages → Source 選「GitHub Actions」，推送後自動�
 - nginx 站點：`/etc/nginx/sites-available/kumoroute`；Let’s Encrypt 憑證已配置，待域名可合規對外服務後啟用
 
 本機打包（已編譯後）：`python packaging/pack.py`，產物在 `dist/`。
+
+## 安全與測試
+
+```powershell
+$env:PATH="$HOME\.cargo\bin;$env:PATH"
+cargo test --manifest-path tauri/Cargo.toml -- --test-threads=1
+cargo run --manifest-path tauri/Cargo.toml -- --core-self-test
+python -m unittest discover -s tests -p "test_*.py" -v
+```
+
+CI 會在 Windows、Linux、macOS 執行 Rust 單元測試與實際核心自測；`Dependency security` workflow 會執行 RustSec、pip-audit 與 CycloneDX SBOM。Release 也會附上 SPDX SBOM。
+
+診斷資料只在本機產生；預覽內容會遮蔽 URL、IP、日誌端點及 token／password 等敏感欄位，確認後才寫入檔案。
 
 ## 授權
 

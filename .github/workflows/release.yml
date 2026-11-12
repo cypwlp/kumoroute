@@ -88,14 +88,28 @@ jobs:
           path: dist/KumoRoute-*
           if-no-files-found: error
 
+  security:
+    uses: ./.github/workflows/security.yml
+
   release:
-    needs: build
+    needs: [build, security]
     runs-on: ubuntu-latest
     steps:
+      - uses: actions/checkout@v7
+
       - uses: actions/download-artifact@v4
         with:
           path: dist
           merge-multiple: true
+
+      - name: Generate release SBOM
+        uses: anchore/sbom-action@66cbf4bc1f1c0d2edc94016e65bc221b6bb0ad6c # v0.24.3
+        with:
+          path: .
+          format: spdx-json
+          output-file: dist/KumoRoute-${{ github.ref_name }}.spdx.json
+          upload-artifact: false
+          upload-release-assets: false
 
       - name: Checksums
         run: |

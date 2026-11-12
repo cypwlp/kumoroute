@@ -2009,7 +2009,7 @@ dependencies = [
 
 [[package]]
 name = "kumoroute"
-version = "0.4.0"
+version = "0.5.0"
 dependencies = [
  "chrono",
  "dirs 5.0.1",
@@ -2023,6 +2023,7 @@ dependencies = [
  "tauri-build",
  "tauri-plugin-single-instance",
  "ureq",
+ "url",
  "urlencoding",
  "uuid",
  "windows 0.58.0",

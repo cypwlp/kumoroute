@@ -177,6 +177,294 @@
       "description": "Permission identifier",
       "oneOf": [
         {
+          "description": "Enables the add_subscription command without any pre-configured scope.",
+          "type": "string",
+          "const": "allow-add-subscription",
+          "markdownDescription": "Enables the add_subscription command without any pre-configured scope."
+        },
+        {
+          "description": "Enables the check_update command without any pre-configured scope.",
+          "type": "string",
+          "const": "allow-check-update",
+          "markdownDescription": "Enables the check_update command without any pre-configured scope."
+        },
+        {
+          "description": "Enables the delete_profile command without any pre-configured scope.",
+          "type": "string",
+          "const": "allow-delete-profile",
+          "markdownDescription": "Enables the delete_profile command without any pre-configured scope."
+        },
+        {
+          "description": "Enables the diagnostics_preview command without any pre-configured scope.",
+          "type": "string",
+          "const": "allow-diagnostics-preview",
+          "markdownDescription": "Enables the diagnostics_preview command without any pre-configured scope."
+        },
+        {
+          "description": "Enables the export_diagnostics command without any pre-configured scope.",
+          "type": "string",
+          "const": "allow-export-diagnostics",
+          "markdownDescription": "Enables the export_diagnostics command without any pre-configured scope."
+        },
+        {
+          "description": "Enables the get_live command without any pre-configured scope.",
+          "type": "string",
+          "const": "allow-get-live",
+          "markdownDescription": "Enables the get_live command without any pre-configured scope."
+        },
+        {
+          "description": "Enables the get_logs command without any pre-configured scope.",
+          "type": "string",
+          "const": "allow-get-logs",
+          "markdownDescription": "Enables the get_logs command without any pre-configured scope."
+        },
+        {
+          "description": "Enables the get_proxy_groups command without any pre-configured scope.",
+          "type": "string",
+          "const": "allow-get-proxy-groups",
+          "markdownDescription": "Enables the get_proxy_groups command without any pre-configured scope."
+        },
+        {
+          "description": "Enables the get_state command without any pre-configured scope.",
+          "type": "string",
+          "const": "allow-get-state",
+          "markdownDescription": "Enables the get_state command without any pre-configured scope."
+        },
+        {
+          "description": "Enables the import_profile command without any pre-configured scope.",
+          "type": "string",
+          "const": "allow-import-profile",
+          "markdownDescription": "Enables the import_profile command without any pre-configured scope."
+        },
+        {
+          "description": "Enables the open_data_dir command without any pre-configured scope.",
+          "type": "string",
+          "const": "allow-open-data-dir",
+          "markdownDescription": "Enables the open_data_dir command without any pre-configured scope."
+        },
+        {
+          "description": "Enables the open_url command without any pre-configured scope.",
+          "type": "string",
+          "const": "allow-open-url",
+          "markdownDescription": "Enables the open_url command without any pre-configured scope."
+        },
+        {
+          "description": "Enables the quit_app command without any pre-configured scope.",
+          "type": "string",
+          "const": "allow-quit-app",
+          "markdownDescription": "Enables the quit_app command without any pre-configured scope."
+        },
+        {
+          "description": "Enables the record_ui_error command without any pre-configured scope.",
+          "type": "string",
+          "const": "allow-record-ui-error",
+          "markdownDescription": "Enables the record_ui_error command without any pre-configured scope."
+        },
+        {
+          "description": "Enables the save_settings command without any pre-configured scope.",
+          "type": "string",
+          "const": "allow-save-settings",
+          "markdownDescription": "Enables the save_settings command without any pre-configured scope."
+        },
+        {
+          "description": "Enables the save_stats_export command without any pre-configured scope.",
+          "type": "string",
+          "const": "allow-save-stats-export",
+          "markdownDescription": "Enables the save_stats_export command without any pre-configured scope."
+        },
+        {
+          "description": "Enables the select_proxy command without any pre-configured scope.",
+          "type": "string",
+          "const": "allow-select-proxy",
+          "markdownDescription": "Enables the select_proxy command without any pre-configured scope."
+        },
+        {
+          "description": "Enables the set_active_profile command without any pre-configured scope.",
+          "type": "string",
+          "const": "allow-set-active-profile",
+          "markdownDescription": "Enables the set_active_profile command without any pre-configured scope."
+        },
+        {
+          "description": "Enables the set_mode command without any pre-configured scope.",
+          "type": "string",
+          "const": "allow-set-mode",
+          "markdownDescription": "Enables the set_mode command without any pre-configured scope."
+        },
+        {
+          "description": "Enables the set_system_proxy command without any pre-configured scope.",
+          "type": "string",
+          "const": "allow-set-system-proxy",
+          "markdownDescription": "Enables the set_system_proxy command without any pre-configured scope."
+        },
+        {
+          "description": "Enables the start_core command without any pre-configured scope.",
+          "type": "string",
+          "const": "allow-start-core",
+          "markdownDescription": "Enables the start_core command without any pre-configured scope."
+        },
+        {
+          "description": "Enables the stop_core command without any pre-configured scope.",
+          "type": "string",
+          "const": "allow-stop-core",
+          "markdownDescription": "Enables the stop_core command without any pre-configured scope."
+        },
+        {
+          "description": "Enables the test_group_delay command without any pre-configured scope.",
+          "type": "string",
+          "const": "allow-test-group-delay",
+          "markdownDescription": "Enables the test_group_delay command without any pre-configured scope."
+        },
+        {
+          "description": "Enables the update_profile command without any pre-configured scope.",
+          "type": "string",
+          "const": "allow-update-profile",
+          "markdownDescription": "Enables the update_profile command without any pre-configured scope."
+        },
+        {
+          "description": "Denies the add_subscription command without any pre-configured scope.",
+          "type": "string",
+          "const": "deny-add-subscription",
+          "markdownDescription": "Denies the add_subscription command without any pre-configured scope."
+        },
+        {
+          "description": "Denies the check_update command without any pre-configured scope.",
+          "type": "string",
+          "const": "deny-check-update",
+          "markdownDescription": "Denies the check_update command without any pre-configured scope."
+        },
+        {
+          "description": "Denies the delete_profile command without any pre-configured scope.",
+          "type": "string",
+          "const": "deny-delete-profile",
+          "markdownDescription": "Denies the delete_profile command without any pre-configured scope."
+        },
+        {
+          "description": "Denies the diagnostics_preview command without any pre-configured scope.",
+          "type": "string",
+          "const": "deny-diagnostics-preview",
+          "markdownDescription": "Denies the diagnostics_preview command without any pre-configured scope."
+        },
+        {
+          "description": "Denies the export_diagnostics command without any pre-configured scope.",
+          "type": "string",
+          "const": "deny-export-diagnostics",
+          "markdownDescription": "Denies the export_diagnostics command without any pre-configured scope."
+        },
+        {
+          "description": "Denies the get_live command without any pre-configured scope.",
+          "type": "string",
+          "const": "deny-get-live",
+          "markdownDescription": "Denies the get_live command without any pre-configured scope."
+        },
+        {
+          "description": "Denies the get_logs command without any pre-configured scope.",
+          "type": "string",
+          "const": "deny-get-logs",
+          "markdownDescription": "Denies the get_logs command without any pre-configured scope."
+        },
+        {
+          "description": "Denies the get_proxy_groups command without any pre-configured scope.",
+          "type": "string",
+          "const": "deny-get-proxy-groups",
+          "markdownDescription": "Denies the get_proxy_groups command without any pre-configured scope."
+        },
+        {
+          "description": "Denies the get_state command without any pre-configured scope.",
+          "type": "string",
+          "const": "deny-get-state",
+          "markdownDescription": "Denies the get_state command without any pre-configured scope."
+        },
+        {
+          "description": "Denies the import_profile command without any pre-configured scope.",
+          "type": "string",
+          "const": "deny-import-profile",
+          "markdownDescription": "Denies the import_profile command without any pre-configured scope."
+        },
+        {
+          "description": "Denies the open_data_dir command without any pre-configured scope.",
+          "type": "string",
+          "const": "deny-open-data-dir",
+          "markdownDescription": "Denies the open_data_dir command without any pre-configured scope."
+        },
+        {
+          "description": "Denies the open_url command without any pre-configured scope.",
+          "type": "string",
+          "const": "deny-open-url",
+          "markdownDescription": "Denies the open_url command without any pre-configured scope."
+        },
+        {
+          "description": "Denies the quit_app command without any pre-configured scope.",
+          "type": "string",
+          "const": "deny-quit-app",
+          "markdownDescription": "Denies the quit_app command without any pre-configured scope."
+        },
+        {
+          "description": "Denies the record_ui_error command without any pre-configured scope.",
+          "type": "string",
+          "const": "deny-record-ui-error",
+          "markdownDescription": "Denies the record_ui_error command without any pre-configured scope."
+        },
+        {
+          "description": "Denies the save_settings command without any pre-configured scope.",
+          "type": "string",
+          "const": "deny-save-settings",
+          "markdownDescription": "Denies the save_settings command without any pre-configured scope."
+        },
+        {
+          "description": "Denies the save_stats_export command without any pre-configured scope.",
+          "type": "string",
+          "const": "deny-save-stats-export",
+          "markdownDescription": "Denies the save_stats_export command without any pre-configured scope."
+        },
+        {
+          "description": "Denies the select_proxy command without any pre-configured scope.",
+          "type": "string",
+          "const": "deny-select-proxy",
+          "markdownDescription": "Denies the select_proxy command without any pre-configured scope."
+        },
+        {
+          "description": "Denies the set_active_profile command without any pre-configured scope.",
+          "type": "string",
+          "const": "deny-set-active-profile",
+          "markdownDescription": "Denies the set_active_profile command without any pre-configured scope."
+        },
+        {
+          "description": "Denies the set_mode command without any pre-configured scope.",
+          "type": "string",
+          "const": "deny-set-mode",
+          "markdownDescription": "Denies the set_mode command without any pre-configured scope."
+        },
+        {
+          "description": "Denies the set_system_proxy command without any pre-configured scope.",
+          "type": "string",
+          "const": "deny-set-system-proxy",
+          "markdownDescription": "Denies the set_system_proxy command without any pre-configured scope."
+        },
+        {
+          "description": "Denies the start_core command without any pre-configured scope.",
+          "type": "string",
+          "const": "deny-start-core",
+          "markdownDescription": "Denies the start_core command without any pre-configured scope."
+        },
+        {
+          "description": "Denies the stop_core command without any pre-configured scope.",
+          "type": "string",
+          "const": "deny-stop-core",
+          "markdownDescription": "Denies the stop_core command without any pre-configured scope."
+        },
+        {
+          "description": "Denies the test_group_delay command without any pre-configured scope.",
+          "type": "string",
+          "const": "deny-test-group-delay",
+          "markdownDescription": "Denies the test_group_delay command without any pre-configured scope."
+        },
+        {
+          "description": "Denies the update_profile command without any pre-configured scope.",
+          "type": "string",
+          "const": "deny-update-profile",
+          "markdownDescription": "Denies the update_profile command without any pre-configured scope."
+        },
+        {
           "description": "Default core plugins set.\n#### This default permission set includes:\n\n- `core:path:default`\n- `core:event:default`\n- `core:window:default`\n- `core:webview:default`\n- `core:app:default`\n- `core:image:default`\n- `core:resources:default`\n- `core:menu:default`\n- `core:tray:default`",
           "type": "string",
           "const": "core:default",
