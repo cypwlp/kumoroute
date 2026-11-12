@@ -4,7 +4,7 @@
 
 官方網站：https://cypwlp.github.io/kumoroute/
 
-自訂域名 `kumoroute.cypilu.online` 已預留；目前指向中國大陸騰訊雲主機時會受 ICP／備案攔截，待改 DNS 至 GitHub Pages 或完成合規備案後再切換。
+自訂鏡像域名 `kumoroute.cypilu.cloud`（及 `kumoroute.cypilu.online`）已預留；目前騰訊 DNSPod 仍可能回傳備案攔截頁，待完成合規備案後再切換。
 
 > v0.2.0 起由 **MyClash** 更名為 **KumoRoute**；首次啟動會自動把舊資料目錄遷移到 `KumoRoute`。
 
@@ -82,7 +82,7 @@ Pages：Settings → Pages → Source 選「GitHub Actions」，推送後自動�
 
 - 主站：https://cypwlp.github.io/kumoroute/ （GitHub Pages）
 - IP 備援：http://129.204.149.106/
-- 自訂域名：`kumoroute.cypilu.online`（暫緩；中國大陸主機需 ICP 備案，或將 DNS 改成 GitHub Pages CNAME）
+- 自訂鏡像：`kumoroute.cypilu.cloud`、`kumoroute.cypilu.online`（暫緩；中國大陸主機需 ICP 備案才能穩定使用 HTTPS）
 - 同步：`bash packaging/deploy-tencent.sh`（SSH 到 `ubuntu@129.204.149.106`，上傳 `site/` 到 `/var/www/kumoroute`）
 - nginx 站點：`/etc/nginx/sites-available/kumoroute`；Let’s Encrypt 憑證已配置，待域名可合規對外服務後啟用
 
