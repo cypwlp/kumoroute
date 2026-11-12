@@ -4,23 +4,23 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <meta name="theme-color" content="#0b0e14">
-<title>KumoRoute — 輕量 Mihomo / Clash 跨平台桌面客戶端</title>
-<meta name="description" content="KumoRoute 是基於 mihomo 核心的輕量跨平台 Clash 桌面客戶端（Windows / Linux / macOS），支援訂閱管理、節點切換、一鍵系統代理與即時流量，開源免費。">
+<title>KumoRoute — 輕量 Mihomo 跨平台桌面客戶端</title>
+<meta name="description" content="KumoRoute 是基於 mihomo 核心的輕量跨平台桌面客戶端（Windows / Linux / macOS），相容 Clash 配置，支援訂閱管理、節點切換、一鍵系統代理與即時流量。">
 <link rel="canonical" href="https://kumoroute.cypilu.online/">
 <link rel="icon" href="assets/icon.png">
 <meta property="og:type" content="website">
 <meta property="og:site_name" content="KumoRoute">
-<meta property="og:title" content="KumoRoute — 輕量 Mihomo / Clash 跨平台桌面客戶端">
-<meta property="og:description" content="KumoRoute 是基於 mihomo 核心的輕量跨平台 Clash 桌面客戶端（Windows / Linux / macOS），支援訂閱管理、節點切換、一鍵系統代理與即時流量，開源免費。">
+<meta property="og:title" content="KumoRoute — 輕量 Mihomo 跨平台桌面客戶端">
+<meta property="og:description" content="KumoRoute 是基於 mihomo 核心的輕量跨平台桌面客戶端（Windows / Linux / macOS），相容 Clash 配置，支援訂閱管理、節點切換、一鍵系統代理與即時流量。">
 <meta property="og:url" content="https://kumoroute.cypilu.online/">
 <meta property="og:image" content="https://kumoroute.cypilu.online/assets/screenshot-overview.png">
 <meta property="og:image:alt" content="KumoRoute 桌面客戶端介面">
 <meta name="twitter:card" content="summary_large_image">
 <meta name="twitter:title" content="KumoRoute — 輕量 Mihomo 桌面客戶端">
-<meta name="twitter:description" content="KumoRoute 是基於 mihomo 核心的輕量跨平台 Clash 桌面客戶端（Windows / Linux / macOS），支援訂閱管理、節點切換、一鍵系統代理與即時流量，開源免費。">
+<meta name="twitter:description" content="KumoRoute 是基於 mihomo 核心的輕量跨平台桌面客戶端（Windows / Linux / macOS），相容 Clash 配置，支援訂閱管理、節點切換、一鍵系統代理與即時流量。">
 <meta name="twitter:image" content="https://kumoroute.cypilu.online/assets/screenshot-overview.png">
-<script type="application/ld+json">{"@context":"https://schema.org","@type":"SoftwareApplication","name":"KumoRoute","applicationCategory":"UtilitiesApplication","operatingSystem":"Windows 10/11, Linux, macOS","description":"KumoRoute 是基於 mihomo 核心的輕量跨平台 Clash 桌面客戶端（Windows / Linux / macOS），支援訂閱管理、節點切換、一鍵系統代理與即時流量，開源免費。","url":"https://kumoroute.cypilu.online/","downloadUrl":"https://github.com/cypwlp/kumoroute/releases/latest","codeRepository":"https://github.com/cypwlp/kumoroute","license":"https://github.com/cypwlp/kumoroute/blob/main/LICENSE","offers":{"@type":"Offer","price":"0","priceCurrency":"USD"}}</script>
-<link rel="stylesheet" href="style.css?v=0.2.0">
+<script type="application/ld+json">{"@context":"https://schema.org","@type":"SoftwareApplication","name":"KumoRoute","applicationCategory":"UtilitiesApplication","operatingSystem":"Windows 10/11, Linux, macOS","description":"KumoRoute 是基於 mihomo 核心的輕量跨平台桌面客戶端（Windows / Linux / macOS），相容 Clash 配置，支援訂閱管理、節點切換、一鍵系統代理與即時流量。","url":"https://kumoroute.cypilu.online/","downloadUrl":"https://github.com/cypwlp/kumoroute/releases/latest","codeRepository":"https://github.com/cypwlp/kumoroute","license":"https://github.com/cypwlp/kumoroute/blob/main/LICENSE","offers":{"@type":"Offer","price":"0","priceCurrency":"USD"}}</script>
+<link rel="stylesheet" href="style.css?v=0.2.1">
 </head>
 <body>
 
@@ -34,7 +34,6 @@
       <a href="#download">下載</a>
       <a href="#features">功能</a>
       <a href="#screens">介面</a>
-      <a href="#clients">其他客戶端</a>
       <a href="#faq">常見問題</a>
     </nav>
     <a class="btn ghost small" id="github-top" href="#" target="_blank" rel="noopener">GitHub</a>
@@ -45,8 +44,8 @@
   <section class="hero" id="top">
     <div class="hero-inner">
       <div class="hero-copy">
-        <div class="badge">v0.2.0 · Windows / Linux / macOS · 開源免費</div>
-        <h1>輕量的 Clash 桌面客戶端<br><span class="grad">一鍵接管系統流量</span></h1>
+        <div class="badge">v0.2.1 · Windows / Linux / macOS · 開源免費</div>
+        <h1>輕量的 Mihomo 桌面客戶端<br><span class="grad">一鍵接管系統流量</span></h1>
         <p class="lead">KumoRoute 把 mihomo 核心裝進一個乾淨的圖形介面：訂閱管理、節點切換、模式切換、即時速度，一屏搞定。</p>
         <div class="cta">
           <a class="btn primary big" id="download-btn" href="#" target="_blank" rel="noopener">
@@ -150,37 +149,6 @@
     </div>
   </section>
 
-  <section class="section" id="clients">
-    <h2>其他開源客戶端</h2>
-    <p class="section-sub">跨平台之外，也可以參考這些成熟開源專案（皆為第三方開源，版權歸原作者）。</p>
-    <div class="clients">
-      <a class="client" href="https://github.com/clash-verge-rev/clash-verge-rev" target="_blank" rel="noopener">
-        <h3>Clash Verge Rev</h3>
-        <p>Windows / macOS / Linux · Tauri 圖形客戶端</p>
-      </a>
-      <a class="client" href="https://github.com/chen08209/FlClash" target="_blank" rel="noopener">
-        <h3>FlClash</h3>
-        <p>Windows / macOS / Linux / Android · Flutter 多平台</p>
-      </a>
-      <a class="client" href="https://github.com/2dust/v2rayN" target="_blank" rel="noopener">
-        <h3>v2rayN</h3>
-        <p>Windows · 老牌多協議客戶端</p>
-      </a>
-      <a class="client" href="https://github.com/MetaCubeX/ClashMetaForAndroid" target="_blank" rel="noopener">
-        <h3>Clash Meta for Android</h3>
-        <p>Android · mihomo 官方行動端</p>
-      </a>
-      <a class="client" href="https://github.com/KaringX/karing" target="_blank" rel="noopener">
-        <h3>Karing</h3>
-        <p>iOS / macOS / Windows · 多核心圖形客戶端</p>
-      </a>
-      <a class="client" href="https://github.com/getsurfboard/surfboard/releases" target="_blank" rel="noopener">
-        <h3>Surfboard</h3>
-        <p>Android · 相容 Surge 配置的代理工具</p>
-      </a>
-    </div>
-  </section>
-
   <section class="section" id="faq">
     <h2>常見問題</h2>
     <div class="faq">
@@ -210,7 +178,7 @@
       </details>
       <details>
         <summary>支援哪些平台？手機能用嗎？</summary>
-        <p>v0.2.0 提供 Windows（安裝包／免安裝）、Linux（AppImage／deb）、macOS（Universal dmg）。手機請參考上方的開源客戶端推薦（Android 可用 Clash Meta for Android／FlClash）。</p>
+        <p>v0.2.1 提供 Windows（安裝包／免安裝）、Linux（AppImage／deb）、macOS（Universal dmg）。手機版目前未提供；Windows、Linux 與 macOS 可直接使用。</p>
       </details>
     </div>
   </section>
@@ -223,18 +191,21 @@
       <span>KumoRoute</span>
     </div>
     <p class="disclaimer">
-      本站僅提供 KumoRoute 的下載與其他開源專案的連結索引，不提供、不銷售任何代理節點或訂閱服務。<br>
+      本站僅提供 KumoRoute 的下載與授權資訊，不提供、不銷售任何代理節點或訂閱服務。<br>
       請自行準備合法的網路配置，並遵守所在國家與地區的法律法規。<br>
-      客戶端程式碼以 MIT 授權；內含的 mihomo 核心以 GPL-3.0 授權，版權歸 MetaCubeX 所有。
+      客戶端程式碼以 MIT 授權；內含的 mihomo 核心以 GPL-3.0 授權，版權歸 MetaCubeX 所有。<br>
+      KumoRoute 為獨立開源專案，除依 GPL-3.0 內置 mihomo 核心外，與任何其他客戶端或服務無隸屬、代理、背書或合作關係；第三方名稱及商標歸其各自權利人所有。
     </p>
     <p class="foot-links">
       <a id="github-foot" href="#" target="_blank" rel="noopener">GitHub</a>
       <a href="https://github.com/MetaCubeX/mihomo" target="_blank" rel="noopener">mihomo</a>
       <a href="https://github.com/MetaCubeX/mihomo/blob/Meta/LICENSE" target="_blank" rel="noopener">GPL-3.0</a>
+      <a href="https://github.com/cypwlp/kumoroute/blob/main/LICENSE" target="_blank" rel="noopener">MIT</a>
+      <a href="https://github.com/cypwlp/kumoroute/blob/main/NOTICE.md" target="_blank" rel="noopener">NOTICE</a>
     </p>
   </div>
 </footer>
 
-<script src="app.js?v=0.2.0"></script>
+<script src="app.js?v=0.2.1"></script>
 </body>
 </html>

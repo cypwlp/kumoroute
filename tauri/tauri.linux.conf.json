@@ -2,6 +2,8 @@
   "bundle": {
     "targets": ["appimage", "deb"],
     "resources": {
+      "../LICENSE": "legal/LICENSE",
+      "../NOTICE.md": "legal/NOTICE.md",
       "../client/core/mihomo": "core/mihomo",
       "../client/core/geoip.metadb": "core/geoip.metadb",
       "../client/core/geosite.dat": "core/geosite.dat",

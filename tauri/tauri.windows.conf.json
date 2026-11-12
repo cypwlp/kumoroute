@@ -2,6 +2,8 @@
   "bundle": {
     "targets": ["nsis"],
     "resources": {
+      "../LICENSE": "legal/LICENSE",
+      "../NOTICE.md": "legal/NOTICE.md",
       "../client/core/mihomo.exe": "core/mihomo.exe",
       "../client/core/geoip.metadb": "core/geoip.metadb",
       "../client/core/geosite.dat": "core/geosite.dat",

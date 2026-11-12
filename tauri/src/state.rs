@@ -6,8 +6,8 @@ use serde::{Deserialize, Serialize};
 
 pub const APP_NAME: &str = "KumoRoute";
 pub const LEGACY_APP_NAME: &str = "MyClash";
-pub const APP_VERSION: &str = "0.2.0";
-pub const SUB_UA: &str = "clash-verge/v2.4.2";
+pub const APP_VERSION: &str = "0.2.1";
+pub const SUB_UA: &str = concat!("KumoRoute/", env!("CARGO_PKG_VERSION"));
 pub const TEST_URL: &str = "https://cp.cloudflare.com/generate_204";
 
 pub const BUILTIN_CONFIG: &str = "mode: rule\nlog-level: info\nproxies: []\nrules:\n  - MATCH,DIRECT\n";

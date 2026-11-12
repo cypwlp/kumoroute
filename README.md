@@ -1,6 +1,6 @@
 # KumoRoute
 
-輕量的跨平台 Mihomo / Clash 桌面客戶端（Windows / Linux / macOS），內建 [mihomo](https://github.com/MetaCubeX/mihomo) 核心。
+輕量的跨平台 Mihomo 桌面客戶端（Windows / Linux / macOS），內建 [mihomo](https://github.com/MetaCubeX/mihomo) 核心，並相容 Clash 配置。
 
 官方網站：https://kumoroute.cypilu.online/
 
@@ -66,8 +66,8 @@ python app.py
 推送 `v*` tag 即由 GitHub Actions 自動編譯、打包並建立 Release（含 `KumoRoute-win-x64.zip` 與 `SHA256SUMS.txt`）：
 
 ```powershell
-git tag v0.2.0
-git push origin v0.2.0
+git tag v0.2.1
+git push origin v0.2.1
 ```
 
 下載站按鈕指向 `releases/latest/download/KumoRoute-win-x64.zip`（見 `site/app.js`）。
@@ -85,4 +85,5 @@ Pages：Settings → Pages → Source 選「GitHub Actions」，推送後自動�
 ## 授權
 
 - 客戶端程式碼：[MIT](LICENSE)
+- 第三方元件與獨立性聲明：[NOTICE.md](NOTICE.md)
 - 內附 mihomo 核心：[GPL-3.0](client/core/LICENSE-GPL3.txt)，版權歸 [MetaCubeX](https://github.com/MetaCubeX/mihomo) 所有

@@ -1,7 +1,7 @@
 [package]
 name = "kumoroute"
-version = "0.2.0"
-description = "Lightweight Clash/mihomo desktop client"
+version = "0.2.1"
+description = "Lightweight Mihomo-compatible desktop client"
 edition = "2021"
 rust-version = "1.77"
 

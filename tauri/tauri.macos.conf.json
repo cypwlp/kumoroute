@@ -2,6 +2,8 @@
   "bundle": {
     "targets": ["dmg"],
     "resources": {
+      "../LICENSE": "legal/LICENSE",
+      "../NOTICE.md": "legal/NOTICE.md",
       "../client/core/mihomo-arm64": "core/mihomo-arm64",
       "../client/core/mihomo-x64": "core/mihomo-x64",
       "../client/core/geoip.metadb": "core/geoip.metadb",

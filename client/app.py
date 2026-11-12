@@ -23,9 +23,9 @@ import yaml
 
 APP_NAME = "KumoRoute"
 LEGACY_APP_NAME = "MyClash"
-APP_VERSION = "0.2.0"
+APP_VERSION = "0.2.1"
 CREATE_NO_WINDOW = 0x08000000
-SUB_UA = "clash-verge/v2.4.2"
+SUB_UA = f"KumoRoute/{APP_VERSION}"
 TEST_URL = "https://cp.cloudflare.com/generate_204"
 INTERNET_SETTINGS = r"Software\Microsoft\Windows\CurrentVersion\Internet Settings"
 PROXY_OVERRIDE = (

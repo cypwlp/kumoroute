@@ -1,4 +1,4 @@
-KumoRoute v0.2.0 — 輕量 Clash 桌面客戶端（Windows x64 免安裝版，Rust/Tauri）
+KumoRoute v0.2.1 — 輕量 Clash 桌面客戶端（Windows x64 免安裝版，Rust/Tauri）
 
 使用方法
 1. 解壓縮到任意資料夾（請保持 KumoRoute.exe、core\、與程式同層）
@@ -18,5 +18,6 @@ KumoRoute v0.2.0 — 輕量 Clash 桌面客戶端（Windows x64 免安裝版，R
 - 核心若異常退出會自動重啟（60 秒內最多 5 次）；core.log 超過 2MB 自動輪轉為 core.1.log。
 
 授權
-- 客戶端程式碼 MIT；內附 mihomo 核心為 GPL-3.0（見 core\LICENSE-GPL3.txt）。
+- 客戶端程式碼 MIT（見 LICENSE）；第三方元件聲明見 NOTICE.md。
+- 內附 mihomo 核心為 GPL-3.0（見 core\LICENSE-GPL3.txt）。
 - 本軟體不含任何節點或訂閱服務，請自備合法的 Clash 配置並遵守當地法律法規。
