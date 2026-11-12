@@ -11,6 +11,8 @@ env:
   # Pin the core so tag builds are reproducible and never depend on GitHub's
   # unauthenticated API rate limit.
   MIHOMO_VERSION: v1.19.33
+  CARGO_NET_RETRY: "5"
+  CARGO_HTTP_TIMEOUT: "60"
 
 jobs:
   build:
@@ -51,6 +53,9 @@ jobs:
 
       - name: Fetch mihomo core and geodata
         run: python client/tools/fetch_core.py
+
+      - name: Use official crates.io in CI
+        run: python -c "from pathlib import Path; Path('tauri/.cargo/config.toml').unlink(missing_ok=True)"
 
       - name: Build (Tauri bundle)
         working-directory: tauri
