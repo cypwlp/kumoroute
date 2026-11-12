@@ -14,6 +14,16 @@ let sparkUp = [];
 let toastTimer = null;
 let pendingDelete = { id: null, timer: null };
 
+const STATS_KEY = "kumoroute.stats.v1";
+const STATS_KEEP_DAYS = 35;
+let usageData = loadUsageData();
+let sessionStartedAt = Date.now();
+let peakConnections = 0;
+let peakDownSpeed = 0;
+let peakUpSpeed = 0;
+let statsDirty = false;
+let lastStatsSave = 0;
+
 /* ---------- helpers ---------- */
 
 function fmtBytes(n, perSec) {
@@ -23,6 +33,84 @@ function fmtBytes(n, perSec) {
   while (n >= 1024 && i < units.length - 1) { n /= 1024; i++; }
   const v = i === 0 ? Math.round(n) : n >= 100 ? n.toFixed(0) : n.toFixed(1);
   return v + " " + units[i] + (perSec ? "/s" : "");
+}
+
+function localDayKey(date = new Date()) {
+  const y = date.getFullYear();
+  const m = String(date.getMonth() + 1).padStart(2, "0");
+  const d = String(date.getDate()).padStart(2, "0");
+  return `${y}-${m}-${d}`;
+}
+
+function loadUsageData() {
+  const empty = { days: {}, updatedAt: null };
+  try {
+    const raw = localStorage.getItem(STATS_KEY);
+    if (!raw) return empty;
+    const parsed = JSON.parse(raw);
+    if (!parsed || typeof parsed.days !== "object" || Array.isArray(parsed.days)) return empty;
+    return { days: parsed.days, updatedAt: parsed.updatedAt || null };
+  } catch (e) {
+    return empty;
+  }
+}
+
+function pruneUsageData() {
+  const cutoff = new Date();
+  cutoff.setDate(cutoff.getDate() - STATS_KEEP_DAYS);
+  const cutoffKey = localDayKey(cutoff);
+  Object.keys(usageData.days).forEach((key) => {
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(key) || key < cutoffKey) delete usageData.days[key];
+  });
+}
+
+function saveUsageData(force = false) {
+  if (!force && !statsDirty) return;
+  pruneUsageData();
+  usageData.updatedAt = new Date().toISOString();
+  try {
+    localStorage.setItem(STATS_KEY, JSON.stringify(usageData));
+    statsDirty = false;
+    lastStatsSave = Date.now();
+  } catch (e) { /* storage may be unavailable */ }
+}
+
+function addUsage(down, up) {
+  if (down <= 0 && up <= 0) return;
+  const key = localDayKey();
+  const day = usageData.days[key] || { down: 0, up: 0 };
+  day.down = Number(day.down || 0) + Math.max(0, down);
+  day.up = Number(day.up || 0) + Math.max(0, up);
+  usageData.days[key] = day;
+  statsDirty = true;
+}
+
+function recentDays(count) {
+  const out = [];
+  for (let i = count - 1; i >= 0; i--) {
+    const d = new Date();
+    d.setHours(12, 0, 0, 0);
+    d.setDate(d.getDate() - i);
+    const key = localDayKey(d);
+    const item = usageData.days[key] || { down: 0, up: 0 };
+    out.push({
+      key,
+      date: d,
+      down: Number(item.down || 0),
+      up: Number(item.up || 0),
+    });
+  }
+  return out;
+}
+
+function fmtDuration(totalSeconds) {
+  totalSeconds = Math.max(0, Math.floor(Number(totalSeconds) || 0));
+  const h = Math.floor(totalSeconds / 3600);
+  const m = Math.floor((totalSeconds % 3600) / 60);
+  const s = totalSeconds % 60;
+  if (h > 0) return `${h} 小時 ${m} 分`;
+  if (m > 0) return `${m} 分 ${s} 秒`;
+  return `${s} 秒`;
 }
 
 function esc(s) {
@@ -86,7 +174,7 @@ const demoCfg = {
   mixed_port: 7890,
   controller_port: 9090,
   core_version: "v1.19.33",
-  app_version: "0.2.1",
+  app_version: "0.2.2",
   data_dir: "C:\\Users\\…\\AppData\\Roaming\\KumoRoute",
   test_url: "https://cp.cloudflare.com/generate_204",
   profiles: [
@@ -298,20 +386,39 @@ function setSpeeds(down, up, count) {
 
 async function tickLive() {
   if (!state) return;
-  if (!state.running) { setSpeeds(0, 0, 0); return; }
+  if (!state.running) {
+    prevTotals = null;
+    setSpeeds(0, 0, 0);
+    if (page === "stats") renderStatsPage();
+    return;
+  }
   try {
     const live = demo ? demoLive() : await api("get_live");
-    if (!live || !live.running) { setSpeeds(0, 0, 0); return; }
+    if (!live || !live.running) {
+      prevTotals = null;
+      setSpeeds(0, 0, 0);
+      if (page === "stats") renderStatsPage();
+      return;
+    }
     const now = performance.now() / 1000;
+    const count = Number(live.count) || 0;
+    peakConnections = Math.max(peakConnections, count);
     if (prevTotals && now - prevTotals.t > 0.2) {
       const dt = now - prevTotals.t;
-      const down = Math.max(0, (live.down_total - prevTotals.down) / dt);
-      const up = Math.max(0, (live.up_total - prevTotals.up) / dt);
-      setSpeeds(down, up, live.count);
+      const downDelta = Math.max(0, live.down_total - prevTotals.down);
+      const upDelta = Math.max(0, live.up_total - prevTotals.up);
+      const down = downDelta / dt;
+      const up = upDelta / dt;
+      peakDownSpeed = Math.max(peakDownSpeed, down);
+      peakUpSpeed = Math.max(peakUpSpeed, up);
+      addUsage(downDelta, upDelta);
+      setSpeeds(down, up, count);
     }
     prevTotals = { t: now, down: live.down_total, up: live.up_total };
     $("#sp-down-total").textContent = fmtBytes(live.down_total);
     $("#sp-up-total").textContent = fmtBytes(live.up_total);
+    if (statsDirty && Date.now() - lastStatsSave > 5000) saveUsageData();
+    if (page === "stats") renderStatsPage();
   } catch (e) { /* ignore */ }
 }
 
@@ -360,6 +467,109 @@ function drawSpark() {
   }
   drawLine(sparkDown, "#6ea8ff");
   drawLine(sparkUp, "rgba(61,220,151,0.9)");
+}
+
+function seedDemoStats() {
+  const samples = [
+    [180 * 1048576, 9 * 1048576],
+    [245 * 1048576, 12 * 1048576],
+    [120 * 1048576, 7 * 1048576],
+    [430 * 1048576, 19 * 1048576],
+    [280 * 1048576, 14 * 1048576],
+    [610 * 1048576, 27 * 1048576],
+    [365 * 1048576, 18 * 1048576],
+  ];
+  samples.forEach(([down, up], index) => {
+    const d = new Date();
+    d.setDate(d.getDate() - (samples.length - 1 - index));
+    usageData.days[localDayKey(d)] = { down, up };
+  });
+  saveUsageData(true);
+}
+
+function renderStatsPage() {
+  if (!$("#stats-today-total")) return;
+  const days = recentDays(30);
+  const today = days[days.length - 1] || { down: 0, up: 0 };
+  const totalDown = days.reduce((sum, d) => sum + d.down, 0);
+  const totalUp = days.reduce((sum, d) => sum + d.up, 0);
+  $("#stats-today-total").textContent = fmtBytes(today.down + today.up);
+  $("#stats-today-down").textContent = fmtBytes(today.down);
+  $("#stats-today-up").textContent = fmtBytes(today.up);
+  $("#stats-session-time").textContent = fmtDuration((Date.now() - sessionStartedAt) / 1000);
+  $("#stats-peak-conn").textContent = String(peakConnections);
+  $("#stats-peak-speed").textContent = fmtBytes(peakDownSpeed, true);
+  $("#stats-peak-speed-sub").textContent = `上傳峰值 ${fmtBytes(peakUpSpeed, true)}`;
+  $("#stats-total-down").textContent = fmtBytes(totalDown);
+  $("#stats-total-up").textContent = fmtBytes(totalUp);
+  $("#stats-total-sum").textContent = fmtBytes(totalDown + totalUp);
+  drawStatsChart();
+}
+
+function drawStatsChart() {
+  const cv = $("#stats-chart");
+  if (!cv) return;
+  const w = cv.clientWidth;
+  const h = cv.clientHeight || 180;
+  if (!w) return;
+  const dpr = window.devicePixelRatio || 1;
+  if (cv.width !== Math.round(w * dpr) || cv.height !== Math.round(h * dpr)) {
+    cv.width = Math.round(w * dpr);
+    cv.height = Math.round(h * dpr);
+  }
+  const ctx = cv.getContext("2d");
+  ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+  ctx.clearRect(0, 0, w, h);
+
+  const series = recentDays(7);
+  const totals = series.map((d) => d.down + d.up);
+  const max = Math.max(1, ...totals);
+  const left = 8;
+  const right = 8;
+  const top = 20;
+  const bottom = 27;
+  const plotW = Math.max(1, w - left - right);
+  const plotH = Math.max(1, h - top - bottom);
+  const baseline = top + plotH;
+  const slot = plotW / series.length;
+
+  ctx.strokeStyle = "rgba(255,255,255,0.055)";
+  ctx.lineWidth = 1;
+  for (let i = 0; i <= 3; i++) {
+    const y = top + (plotH * i) / 3;
+    ctx.beginPath();
+    ctx.moveTo(left, y + 0.5);
+    ctx.lineTo(w - right, y + 0.5);
+    ctx.stroke();
+  }
+
+  series.forEach((day, i) => {
+    const total = day.down + day.up;
+    const totalH = total ? Math.max(3, (total / max) * plotH) : 0;
+    const downH = total ? (day.down / total) * totalH : 0;
+    const upH = total ? (day.up / total) * totalH : 0;
+    const barW = Math.min(32, slot * 0.54);
+    const x = left + i * slot + (slot - barW) / 2;
+    const upY = baseline - totalH;
+    const downY = upY + upH;
+
+    if (downH > 0) {
+      ctx.fillStyle = "rgba(110,168,255,0.9)";
+      ctx.fillRect(x, downY, barW, downH);
+    }
+    if (upH > 0) {
+      ctx.fillStyle = "rgba(61,220,151,0.88)";
+      ctx.fillRect(x, upY, barW, upH);
+    }
+
+    ctx.fillStyle = "rgba(139,149,167,0.95)";
+    ctx.font = "11px 'Microsoft JhengHei UI', sans-serif";
+    ctx.textAlign = "center";
+    ctx.fillText(`${day.date.getMonth() + 1}/${day.date.getDate()}`, x + barW / 2, h - 9);
+    ctx.fillStyle = "rgba(232,237,246,0.8)";
+    ctx.font = "10px 'Microsoft JhengHei UI', sans-serif";
+    if (total > 0) ctx.fillText(fmtBytes(total), x + barW / 2, Math.max(11, upY - 5));
+  });
 }
 
 /* ---------- proxies ---------- */
@@ -435,6 +645,10 @@ function switchPage(name) {
   if (name === "proxies") refreshGroups();
   if (name === "logs") refreshLogs();
   if (name === "settings") renderAll();
+  if (name === "stats") {
+    renderStatsPage();
+    tickLive();
+  }
 }
 
 function bindNav() {
@@ -631,16 +845,28 @@ document.addEventListener("DOMContentLoaded", async () => {
     }
     sparkDown = Array.from({ length: 60 }, () => Math.random() * 320000);
     sparkUp = Array.from({ length: 60 }, () => Math.random() * 42000);
+    if (!Object.keys(usageData.days).length) seedDemoStats();
   }
 
   await refreshState();
   drawSpark();
+  renderStatsPage();
 
   const wanted = new URLSearchParams(location.search).get("page");
   if (wanted && document.getElementById("page-" + wanted)) switchPage(wanted);
 
-  setInterval(() => { if (page === "overview") tickLive(); }, 1000);
+  setInterval(tickLive, 1000);
   setInterval(refreshState, 5000);
   setInterval(() => { if (page === "logs") refreshLogs(); }, 2000);
   setInterval(() => { if (page === "proxies" && state && state.running) refreshGroups(); }, 6000);
+
+  window.addEventListener("resize", () => {
+    drawSpark();
+    if (page === "stats") drawStatsChart();
+  });
+  document.addEventListener("visibilitychange", () => {
+    if (document.hidden) saveUsageData(true);
+  });
+  window.addEventListener("pagehide", () => saveUsageData(true));
+  window.addEventListener("beforeunload", () => saveUsageData(true));
 });

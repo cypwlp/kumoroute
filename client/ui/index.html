@@ -13,7 +13,7 @@
       <img src="icon.png" alt="KumoRoute" class="brand-icon">
       <div>
         <div class="brand-name">KumoRoute</div>
-        <div class="brand-ver" id="app-version">v0.2.1</div>
+        <div class="brand-ver" id="app-version">v0.2.2</div>
       </div>
     </div>
 
@@ -21,6 +21,10 @@
       <button class="nav-item active" data-page="overview">
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><rect x="3" y="3" width="7.5" height="7.5" rx="1.8"/><rect x="13.5" y="3" width="7.5" height="7.5" rx="1.8"/><rect x="3" y="13.5" width="7.5" height="7.5" rx="1.8"/><rect x="13.5" y="13.5" width="7.5" height="7.5" rx="1.8"/></svg>
         <span>概覽</span>
+      </button>
+      <button class="nav-item" data-page="stats">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M4 20V10"/><path d="M10 20V4"/><path d="M16 20v-7"/><path d="M22 20H2"/></svg>
+        <span>統計</span>
       </button>
       <button class="nav-item" data-page="proxies">
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M12 3l9 5-9 5-9-5 9-5z"/><path d="M3 12l9 5 9-5"/><path d="M3 16l9 5 9-5"/></svg>
@@ -126,6 +130,58 @@
             <li>需要換節點時，到「代理」分組裡點選即可。</li>
           </ol>
         </div>
+      </div>
+    </section>
+
+    <section id="page-stats" class="page">
+      <header class="page-head">
+        <h1>統計</h1>
+        <p>只記錄 KumoRoute 開啟期間的流量；資料保存在本機，不會上傳。</p>
+      </header>
+
+      <div class="grid stats-grid">
+        <div class="card stat-card">
+          <div class="card-title">今日流量</div>
+          <div class="stat-value" id="stats-today-total">0 B</div>
+          <div class="stat-sub">
+            <span class="stat-down">↓ <b id="stats-today-down">0 B</b></span>
+            <span class="stat-up">↑ <b id="stats-today-up">0 B</b></span>
+          </div>
+        </div>
+        <div class="card stat-card">
+          <div class="card-title">本次開啟</div>
+          <div class="stat-value" id="stats-session-time">0 秒</div>
+          <div class="stat-sub">工作階段計時</div>
+        </div>
+        <div class="card stat-card">
+          <div class="card-title">峰值連線</div>
+          <div class="stat-value" id="stats-peak-conn">0</div>
+          <div class="stat-sub">本次開啟期間</div>
+        </div>
+        <div class="card stat-card">
+          <div class="card-title">峰值速度</div>
+          <div class="stat-value" id="stats-peak-speed">0 B/s</div>
+          <div class="stat-sub" id="stats-peak-speed-sub">上傳峰值 0 B/s</div>
+        </div>
+      </div>
+
+      <div class="card stats-chart-card">
+        <div class="card-title">最近 7 天</div>
+        <canvas id="stats-chart" height="180"></canvas>
+        <div class="stats-legend">
+          <span><i class="legend-down"></i>下載</span>
+          <span><i class="legend-up"></i>上傳</span>
+        </div>
+      </div>
+
+      <div class="card stats-total-card">
+        <div class="card-title">近 30 天累計</div>
+        <div class="stats-summary">
+          <div><span>下載</span><b id="stats-total-down">0 B</b></div>
+          <div><span>上傳</span><b id="stats-total-up">0 B</b></div>
+          <div><span>合計</span><b id="stats-total-sum">0 B</b></div>
+        </div>
+        <p class="hint">統計為本機近似值；切換節點、重啟核心或應用程式未開啟期間不會完整計入。</p>
       </div>
     </section>
 

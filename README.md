@@ -14,6 +14,7 @@
 - Clash 訂閱管理（遠端訂閱 / 本機 YAML）
 - 節點選擇、整組測速、模式切換（規則 / 全局 / 直連）
 - 即時上下行速度、連線數、日誌
+- 本機流量統計：今日、近 7 日趨勢、近 30 日累計、峰值連線與速度
 - 內置 GeoIP/GeoSite 資料庫，導入訂閱即用（免從 GitHub 下載 geodata）
 - 核心崩潰自動重啟（60 秒內最多 5 次）＋日誌自動輪轉
 - 托盤常駐、關窗不退出、單實例
@@ -66,8 +67,8 @@ python app.py
 推送 `v*` tag 即由 GitHub Actions 自動編譯、打包並建立 Release（含 `KumoRoute-win-x64.zip` 與 `SHA256SUMS.txt`）：
 
 ```powershell
-git tag v0.2.1
-git push origin v0.2.1
+git tag v0.2.2
+git push origin v0.2.2
 ```
 
 下載站按鈕指向 `releases/latest/download/KumoRoute-win-x64.zip`（見 `site/app.js`）。
