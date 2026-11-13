@@ -87,7 +87,7 @@ jobs:
             } >> "$GITHUB_STEP_SUMMARY"
             while IFS= read -r line; do
               [ -n "$line" ] && echo "::error title=Rust test failure::$line"
-            done < <(tail -n 40 "$log")
+            done < <(grep -nE 'error(\[|:)|FAILED|panicked|assertion|test result|failures:|--- .* stdout' "$log" | tail -n 80)
           fi
 
       - name: Build Tauri binary
