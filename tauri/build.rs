@@ -16,6 +16,8 @@ const COMMANDS: &[&str] = &[
     "get_logs",
     "save_stats_export",
     "check_update",
+    "install_update",
+    "run_update_installer",
     "record_ui_error",
     "diagnostics_preview",
     "export_diagnostics",
