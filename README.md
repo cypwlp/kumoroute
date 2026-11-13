@@ -13,6 +13,7 @@
 - 一鍵系統代理（退出自動還原；Windows 登錄檔 / GNOME gsettings / macOS networksetup）
 - Clash 訂閱管理（遠端訂閱 / 本機 YAML）
 - 代理頁以「目前策略組 → 實際出口」呈現，策略組側欄＋節點搜尋／篩選，避免大型訂閱清單失焦
+- 介面個人化：跟隨系統／深色／淺色主題，繁體中文／简体中文／English 即時切換並保存偏好；自訂配置與節點名稱不被翻譯
 - 節點選擇、整組測速、模式切換（規則 / 全局 / 直連）
 - 即時上下行速度、連線數、日誌
 - 本機流量統計：今日、近 7 日趨勢、近 30 日累計、峰值連線與速度
@@ -82,8 +83,8 @@ python app.py
 推送 `v*` tag 即由 GitHub Actions 自動編譯、打包並建立 Release（含 `KumoRoute-win-x64.zip` 與 `SHA256SUMS.txt`）：
 
 ```powershell
-git tag v0.5.3
-git push origin v0.5.3
+git tag v0.6.0
+git push origin v0.6.0
 ```
 
 下載站按鈕指向 `releases/latest/download/KumoRoute-win-x64.zip`（見 `site/app.js`）。

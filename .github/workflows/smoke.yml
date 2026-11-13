@@ -60,6 +60,8 @@ jobs:
       - name: Check frontend syntax
         run: |
           node --check client/ui/app.js
+          node --check client/ui/i18n.js
+          node --check client/ui/theme-boot.js
           node --check site/app.js
 
       - name: Use official crates.io in CI

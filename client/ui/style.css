@@ -540,3 +540,100 @@ main::-webkit-scrollbar-thumb { background: var(--line2); border-radius: 8px; bo
   .brand-name, .brand-ver, .nav-item span, .sidebar-foot { display: none; }
   .brand { justify-content: center; padding: 4px 0 18px; }
 }
+
+/* ---------- appearance ---------- */
+
+.settings-select {
+  width: 100%; background: var(--bg2); border: 1px solid var(--line2);
+  color: var(--text); border-radius: 10px; padding: 9px 12px;
+  font-size: 13.5px; outline: none; font-family: inherit;
+}
+.settings-select:focus { border-color: var(--accent); }
+
+:root[data-theme="light"] {
+  --bg: #f3f6fb;
+  --bg2: #eef2f8;
+  --card: #ffffff;
+  --card2: #f5f8fc;
+  --line: #d8e0eb;
+  --line2: #bdc9da;
+  --text: #1d2939;
+  --muted: #68778e;
+  --green: #138a60;
+  --red: #d84150;
+  --yellow: #a87312;
+  color-scheme: light;
+}
+:root[data-theme="light"] body {
+  background:
+    radial-gradient(1200px 600px at 85% -10%, rgba(91, 140, 255, 0.13), transparent 60%),
+    radial-gradient(950px 560px at -10% 40%, rgba(139, 92, 246, 0.08), transparent 60%),
+    var(--bg);
+}
+:root[data-theme="light"] .nav { background: rgba(255, 255, 255, 0.82); border-bottom-color: var(--line); }
+:root[data-theme="light"] .nav-item:hover,
+:root[data-theme="light"] .proxy-filter:hover { background: rgba(29, 41, 57, 0.06); }
+:root[data-theme="light"] .pill,
+:root[data-theme="light"] .proxy-chain-part { background: rgba(29, 41, 57, 0.04); }
+:root[data-theme="light"] .health-row { background: rgba(29, 41, 57, 0.025); }
+:root[data-theme="light"] .logbox,
+:root[data-theme="light"] .diagnostics-preview { background: #f8fafc; color: #40516a; }
+:root[data-theme="light"] .modal { background: rgba(15, 23, 42, 0.30); }
+:root[data-theme="light"] .switch .slider { background: #c4cfdd; }
+@media (prefers-color-scheme: light) {
+  :root[data-theme="system"] {
+    --bg: #f3f6fb;
+    --bg2: #eef2f8;
+    --card: #ffffff;
+    --card2: #f5f8fc;
+    --line: #d8e0eb;
+    --line2: #bdc9da;
+    --text: #1d2939;
+    --muted: #68778e;
+    --green: #138a60;
+    --red: #d84150;
+    --yellow: #a87312;
+    color-scheme: light;
+  }
+  :root[data-theme="system"] body {
+    background:
+      radial-gradient(1200px 600px at 85% -10%, rgba(91, 140, 255, 0.13), transparent 60%),
+      radial-gradient(950px 560px at -10% 40%, rgba(139, 92, 246, 0.08), transparent 60%),
+      var(--bg);
+  }
+  :root[data-theme="system"] .nav { background: rgba(255, 255, 255, 0.82); border-bottom-color: var(--line); }
+  :root[data-theme="system"] .nav-item:hover,
+  :root[data-theme="system"] .proxy-filter:hover { background: rgba(29, 41, 57, 0.06); }
+  :root[data-theme="system"] .pill,
+  :root[data-theme="system"] .proxy-chain-part { background: rgba(29, 41, 57, 0.04); }
+  :root[data-theme="system"] .health-row { background: rgba(29, 41, 57, 0.025); }
+  :root[data-theme="system"] .logbox,
+  :root[data-theme="system"] .diagnostics-preview { background: #f8fafc; color: #40516a; }
+  :root[data-theme="system"] .modal { background: rgba(15, 23, 42, 0.30); }
+  :root[data-theme="system"] .switch .slider { background: #c4cfdd; }
+}
+:root[data-theme="light"] .sidebar { background: rgba(255, 255, 255, 0.84); }
+:root[data-theme="light"] .steps,
+:root[data-theme="light"] .attr-name,
+:root[data-theme="light"] .proxy-group-now b,
+:root[data-theme="light"] .proxy-node-subtitle b { color: var(--text); }
+:root[data-theme="light"] .health-dot { background: #d1dbe7; }
+:root[data-theme="light"] .proxy-summary .eyebrow { color: #3e6fd8; }
+:root[data-theme="light"] .proxy-filter.active { color: #315dbf; }
+:root[data-theme="light"] .usage-alert { background: #fff8df; color: #7a570b; }
+:root[data-theme="light"] .toast { box-shadow: 0 10px 30px rgba(29, 41, 57, 0.18); }
+:root[data-theme="light"] .modal-card { box-shadow: 0 22px 70px rgba(29, 41, 57, 0.24); }
+
+@media (prefers-color-scheme: light) {
+  :root[data-theme="system"] .sidebar { background: rgba(255, 255, 255, 0.84); }
+  :root[data-theme="system"] .steps,
+  :root[data-theme="system"] .attr-name,
+  :root[data-theme="system"] .proxy-group-now b,
+  :root[data-theme="system"] .proxy-node-subtitle b { color: var(--text); }
+  :root[data-theme="system"] .health-dot { background: #d1dbe7; }
+  :root[data-theme="system"] .proxy-summary .eyebrow { color: #3e6fd8; }
+  :root[data-theme="system"] .proxy-filter.active { color: #315dbf; }
+  :root[data-theme="system"] .usage-alert { background: #fff8df; color: #7a570b; }
+  :root[data-theme="system"] .toast { box-shadow: 0 10px 30px rgba(29, 41, 57, 0.18); }
+  :root[data-theme="system"] .modal-card { box-shadow: 0 22px 70px rgba(29, 41, 57, 0.24); }
+}

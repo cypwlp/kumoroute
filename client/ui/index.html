@@ -4,6 +4,7 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>KumoRoute</title>
+<script src="theme-boot.js"></script>
 <link rel="stylesheet" href="style.css">
 </head>
 <body>
@@ -13,7 +14,7 @@
       <img src="icon.png" alt="KumoRoute" class="brand-icon">
       <div>
         <div class="brand-name">KumoRoute</div>
-        <div class="brand-ver" id="app-version">v0.5.3</div>
+        <div class="brand-ver" id="app-version">v0.6.0</div>
       </div>
     </div>
 
@@ -115,7 +116,7 @@
           <div class="card-title">當前配置</div>
           <div class="profile-line">
             <div>
-              <div class="profile-name" id="cur-profile">—</div>
+              <div class="profile-name" id="cur-profile" data-no-i18n>—</div>
               <div class="hint" id="cur-profile-kind">—</div>
             </div>
             <button class="btn ghost" id="btn-update-profile">更新訂閱</button>
@@ -283,7 +284,7 @@
           <label class="check"><input type="checkbox" id="log-autoscroll" checked> 自動滾動到底部</label>
           <button class="btn ghost small" id="btn-copy-logs">複製全部</button>
         </div>
-        <pre id="logbox" class="logbox">（尚無日誌）</pre>
+        <pre id="logbox" class="logbox" data-no-i18n>（尚無日誌）</pre>
       </div>
     </section>
 
@@ -312,7 +313,31 @@
       </div>
 
       <div class="card">
-        <div class="card-title">更新</div>
+        <div class="card-title">外觀與語言</div>
+        <div class="settings-grid">
+          <label class="field">
+            <span>主題</span>
+            <select id="select-theme" class="settings-select">
+              <option value="system">跟隨系統</option>
+              <option value="dark">深色</option>
+              <option value="light">淺色</option>
+            </select>
+          </label>
+          <label class="field">
+            <span>語言</span>
+            <select id="select-language" class="settings-select">
+              <option value="system">跟隨系統</option>
+              <option value="zh-Hant">繁體中文</option>
+              <option value="zh-Hans">简体中文</option>
+              <option value="en">English</option>
+            </select>
+          </label>
+        </div>
+        <p class="hint">選擇介面主題與顯示語言；切換會立即生效。</p>
+      </div>
+
+      <div class="card">
+        <div class="card-title">軟體更新</div>
         <div class="about-row"><span class="muted">目前版本</span><span id="update-current">—</span></div>
         <div class="about-row"><span class="muted">最新版本</span><span id="update-latest">尚未檢查</span></div>
         <label class="check privacy-check"><input type="checkbox" id="sw-auto-update" checked> 啟動時自動檢查更新</label>
@@ -327,7 +352,7 @@
         <div class="card-title">關於</div>
         <div class="about-row"><span class="muted">客戶端版本</span><span id="about-appver">—</span></div>
         <div class="about-row"><span class="muted">核心版本</span><span id="about-corever">—</span></div>
-        <div class="about-row"><span class="muted">資料目錄</span><span id="about-datadir" class="mono">—</span></div>
+        <div class="about-row"><span class="muted">資料目錄</span><span id="about-datadir" class="mono" data-no-i18n>—</span></div>
         <div class="row-actions">
           <button class="btn ghost small" data-open-url="https://github.com/MetaCubeX/mihomo">mihomo 專案（GPL-3.0）</button>
           <button class="btn ghost small" data-open-url="https://cypwlp.github.io/kumoroute/privacy.html">隱私政策</button>
@@ -349,7 +374,7 @@
         </div>
         <button class="modal-close" id="btn-close-diagnostics" aria-label="關閉預覽">×</button>
       </div>
-      <pre id="diagnostics-preview" class="diagnostics-preview" tabindex="0"></pre>
+      <pre id="diagnostics-preview" class="diagnostics-preview" tabindex="0" data-no-i18n></pre>
       <div class="modal-actions">
         <button class="btn ghost" id="btn-copy-diagnostics">複製內容</button>
         <button class="btn primary" id="btn-confirm-export-diagnostics">確認匯出</button>
@@ -360,6 +385,7 @@
 
   <div id="toast" class="toast hidden"></div>
 </div>
+<script src="i18n.js"></script>
 <script src="app.js"></script>
 </body>
 </html>

@@ -59,7 +59,7 @@ function localDayKey(date = new Date()) {
 }
 
 function loadPreferences() {
-  const defaults = { autoUpdateCheck: true, lastUpdateCheck: 0 };
+  const defaults = { autoUpdateCheck: true, lastUpdateCheck: 0, theme: "system", language: "system" };
   try {
     const raw = localStorage.getItem(PREFS_KEY);
     if (!raw) return defaults;
@@ -67,6 +67,8 @@ function loadPreferences() {
     return {
       autoUpdateCheck: parsed.autoUpdateCheck !== false,
       lastUpdateCheck: Number(parsed.lastUpdateCheck || 0),
+      theme: ["system", "dark", "light"].includes(parsed.theme) ? parsed.theme : "system",
+      language: ["system", "zh-Hant", "zh-Hans", "en"].includes(parsed.language) ? parsed.language : "system",
     };
   } catch (e) {
     return defaults;
@@ -75,6 +77,61 @@ function loadPreferences() {
 
 function savePreferences() {
   try { localStorage.setItem(PREFS_KEY, JSON.stringify(prefs)); } catch (e) { /* ignore */ }
+}
+
+function tr(text) {
+  return window.KumoI18n ? window.KumoI18n.translate(text) : text;
+}
+
+function applyTheme(theme) {
+  const value = ["system", "dark", "light"].includes(theme) ? theme : "system";
+  document.documentElement.dataset.theme = value;
+  document.documentElement.style.colorScheme = value === "light" ? "light" : value === "dark" ? "dark" : "light dark";
+}
+
+function applyLanguage(language) {
+  if (!window.KumoI18n) return;
+  const value = window.KumoI18n.setLanguage(language);
+  document.documentElement.lang = value;
+}
+
+function currentLocale() {
+  const lang = window.KumoI18n ? window.KumoI18n.language : "zh-Hant";
+  return lang === "en" ? "en-US" : lang === "zh-Hans" ? "zh-CN" : "zh-TW";
+}
+
+function isLightTheme() {
+  const value = document.documentElement.dataset.theme || "system";
+  return value === "light" || (value === "system" && window.matchMedia("(prefers-color-scheme: light)").matches);
+}
+
+function chartPalette() {
+  return isLightTheme() ? {
+    grid: "rgba(29, 41, 57, 0.10)",
+    axis: "#68778e",
+    value: "#40516a",
+    down: "rgba(82, 139, 226, 0.92)",
+    up: "rgba(28, 164, 112, 0.90)",
+    sparkDown: "#4f8fe5",
+    sparkUp: "#16a66f",
+    sparkFill: "rgba(79, 143, 229, 0.24)",
+    sparkFillEnd: "rgba(79, 143, 229, 0)",
+  } : {
+    grid: "rgba(255, 255, 255, 0.055)",
+    axis: "rgba(139, 149, 167, 0.95)",
+    value: "rgba(232, 237, 246, 0.80)",
+    down: "rgba(110, 168, 255, 0.90)",
+    up: "rgba(61, 220, 151, 0.88)",
+    sparkDown: "#6ea8ff",
+    sparkUp: "rgba(61, 220, 151, 0.90)",
+    sparkFill: "rgba(110, 168, 255, 0.28)",
+    sparkFillEnd: "rgba(110, 168, 255, 0)",
+  };
+}
+
+function redrawCharts() {
+  drawSpark();
+  if (page === "stats") drawStatsChart();
 }
 
 function renderUpdateUi() {
@@ -381,9 +438,20 @@ function esc(s) {
   return String(s ?? "").replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
 }
 
-function toast(msg, type = "") {
+function toast(msg, type = "", detail = "") {
   const t = $("#toast");
-  t.textContent = msg;
+  t.dataset.noI18n = "";
+  t.replaceChildren();
+  const label = document.createElement("span");
+  label.textContent = tr(msg);
+  t.appendChild(label);
+  if (detail) {
+    t.appendChild(document.createTextNode(" "));
+    const value = document.createElement("span");
+    value.dataset.noI18n = "";
+    value.textContent = String(detail);
+    t.appendChild(value);
+  }
   t.className = "toast " + type;
   clearTimeout(toastTimer);
   toastTimer = setTimeout(() => t.classList.add("hidden"), 3200);
@@ -440,7 +508,7 @@ const demoCfg = {
   mixed_port: 7890,
   controller_port: 9090,
   core_version: "v1.19.33",
-  app_version: "0.5.3",
+  app_version: "0.6.0",
   data_dir: "C:\\Users\\…\\AppData\\Roaming\\KumoRoute",
   test_url: "https://cp.cloudflare.com/generate_204",
   profiles: [
@@ -597,6 +665,10 @@ function renderAll() {
   $("#foot-core").textContent = state.running ? "核心運行中" : "核心未啟動";
   $("#foot-proxy").textContent = "系統代理：" + (state.sys_proxy ? "開" : "關");
   $("#app-version").textContent = "v" + state.app_version;
+  const themeSelect = $("#select-theme");
+  const languageSelect = $("#select-language");
+  if (themeSelect) themeSelect.value = prefs.theme || "system";
+  if (languageSelect) languageSelect.value = prefs.language || "system";
 
   $("#st-dot").className = "dot big" + (state.running ? " on" : "");
   $("#st-text").textContent = state.running ? "核心運行中" : state.core_found ? "核心已停止" : "找不到 mihomo 核心";
@@ -644,7 +716,7 @@ function renderProfiles() {
     return `
     <div class="profile-row${active ? " active" : ""}" data-id="${esc(p.id)}">
       <div class="profile-info">
-        <div class="name">${esc(p.name)} ${active ? '<span class="badge-active">使用中</span>' : ""}</div>
+        <div class="name"><span data-no-i18n>${esc(p.name)}</span> ${active ? '<span class="badge-active">使用中</span>' : ""}</div>
         <div class="meta">${kind} · ${esc(p.updated_at || "")}</div>
       </div>
       <div class="profile-actions">
@@ -736,10 +808,11 @@ function drawSpark() {
     ctx.stroke();
   };
 
+  const palette = chartPalette();
   if (sparkDown.length > 1) {
     const grad = ctx.createLinearGradient(0, 0, 0, h);
-    grad.addColorStop(0, "rgba(110,168,255,0.28)");
-    grad.addColorStop(1, "rgba(110,168,255,0)");
+    grad.addColorStop(0, palette.sparkFill);
+    grad.addColorStop(1, palette.sparkFillEnd);
     ctx.beginPath();
     sparkDown.forEach((_, i) => {
       const [x, y] = toXY(sparkDown, i);
@@ -751,8 +824,8 @@ function drawSpark() {
     ctx.fillStyle = grad;
     ctx.fill();
   }
-  drawLine(sparkDown, "#6ea8ff");
-  drawLine(sparkUp, "rgba(61,220,151,0.9)");
+  drawLine(sparkDown, palette.sparkDown);
+  drawLine(sparkUp, palette.sparkUp);
 }
 
 function recordDelayHistory(groupName, delays) {
@@ -821,20 +894,20 @@ function renderNodeHealth() {
       }).join("");
       return `
         <div class="health-row">
-          <div class="health-node" title="${esc(entry.name)}">${esc(entry.name)}</div>
+          <div class="health-node" data-no-i18n title="${esc(entry.name)}">${esc(entry.name)}</div>
           <div class="health-history">${dots}</div>
           <div class="health-stat">${avg} · ${timeout} · 穩定 ${s.stability}</div>
           <span class="health-grade ${s.grade}">${s.grade === "good" ? "穩定" : s.grade === "mid" ? "普通" : "不穩"}</span>
         </div>`;
     }).join("");
     const bestHtml = best
-      ? `<span class="health-best">推薦：${esc(best.name)} · ${Math.round(best.summary.avg)} ms</span>
+      ? `<span class="health-best">推薦：<span data-no-i18n>${esc(best.name)}</span> · ${Math.round(best.summary.avg)} ms</span>
          <button class="btn ghost small health-use" data-use-node="1" data-group="${esc(groupName)}" data-node="${esc(best.name)}">套用</button>`
       : '<span class="health-best muted">再測速幾次即可推薦</span>';
     return `
       <details class="health-group" ${groupIndex === 0 ? "open" : ""}>
         <summary>
-          <span class="health-group-name">${esc(groupName)}</span>
+          <span class="health-group-name" data-no-i18n>${esc(groupName)}</span>
           ${bestHtml}
         </summary>
         <div class="health-list">${rows}</div>
@@ -958,7 +1031,7 @@ function renderAttrList(selector, bucket, mode = "bytes", disabled = false) {
   }
   box.innerHTML = rows.map((row) => `
     <div class="attr-row">
-      <span class="attr-name" title="${esc(row.name)}">${esc(row.name)}</span>
+      <span class="attr-name" data-no-i18n title="${esc(row.name)}">${esc(row.name)}</span>
       <span class="attr-val">${mode === "count" ? `${Number(row.count || 0)} 次` : fmtBytes(Number(row.down || 0) + Number(row.up || 0))}</span>
     </div>`).join("");
 }
@@ -1050,7 +1123,7 @@ async function exportStats(format) {
   }
   try {
     const res = await api("save_stats_export", format, content);
-    if (res && res.ok) toast(`統計已匯出：${res.path}`, "ok");
+    if (res && res.ok) toast("統計已匯出：", "ok", res.path);
     else toast((res && res.error) || "匯出失敗", "error");
   } catch (e) {
     toast(String(e), "error");
@@ -1150,7 +1223,7 @@ function seedDemoStats() {
 
 function formatEventTime(value) {
   try {
-    return new Date(value).toLocaleString("zh-TW", { month: "2-digit", day: "2-digit", hour: "2-digit", minute: "2-digit" });
+    return new Date(value).toLocaleString(currentLocale(), { month: "2-digit", day: "2-digit", hour: "2-digit", minute: "2-digit" });
   } catch (e) {
     return "";
   }
@@ -1168,7 +1241,7 @@ function renderEventList() {
     ? events.map((event) => `
       <div class="event-row">
         <span class="event-type ${esc(event.type)}">${esc(eventTypeName(event.type))}</span>
-        <span class="event-title" title="${esc(event.detail || "")}">${esc(event.title)}${event.detail ? " · " + esc(event.detail) : ""}</span>
+        <span class="event-title" title="${esc(event.detail || "")}" data-no-i18n-attrs>${esc(event.title)}${event.detail ? " · <span data-no-i18n>" + esc(event.detail) + "</span>" : ""}</span>
         <span class="event-time">${esc(formatEventTime(event.t))}</span>
       </div>`).join("")
     : '<div class="attr-empty">尚無事件紀錄</div>';
@@ -1222,6 +1295,7 @@ function drawStatsChart() {
   ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
   ctx.clearRect(0, 0, w, h);
 
+  const palette = chartPalette();
   const series = recentDays(7);
   const totals = series.map((d) => d.down + d.up);
   const max = Math.max(1, ...totals);
@@ -1234,7 +1308,7 @@ function drawStatsChart() {
   const baseline = top + plotH;
   const slot = plotW / series.length;
 
-  ctx.strokeStyle = "rgba(255,255,255,0.055)";
+  ctx.strokeStyle = palette.grid;
   ctx.lineWidth = 1;
   for (let i = 0; i <= 3; i++) {
     const y = top + (plotH * i) / 3;
@@ -1255,19 +1329,19 @@ function drawStatsChart() {
     const downY = upY + upH;
 
     if (downH > 0) {
-      ctx.fillStyle = "rgba(110,168,255,0.9)";
+      ctx.fillStyle = palette.down;
       ctx.fillRect(x, downY, barW, downH);
     }
     if (upH > 0) {
-      ctx.fillStyle = "rgba(61,220,151,0.88)";
+      ctx.fillStyle = palette.up;
       ctx.fillRect(x, upY, barW, upH);
     }
 
-    ctx.fillStyle = "rgba(139,149,167,0.95)";
+    ctx.fillStyle = palette.axis;
     ctx.font = "11px 'Microsoft JhengHei UI', sans-serif";
     ctx.textAlign = "center";
     ctx.fillText(`${day.date.getMonth() + 1}/${day.date.getDate()}`, x + barW / 2, h - 9);
-    ctx.fillStyle = "rgba(232,237,246,0.8)";
+    ctx.fillStyle = palette.value;
     ctx.font = "10px 'Microsoft JhengHei UI', sans-serif";
     if (total > 0) ctx.fillText(fmtBytes(total), x + barW / 2, Math.max(11, upY - 5));
   });
@@ -1358,10 +1432,10 @@ function renderProxyNodeList() {
     const active = node.name === group.now;
     const type = isGroup ? "策略組" : (node.type || "節點");
     return `
-      <button class="node${active ? " active" : ""}" data-group="${esc(group.name)}" data-node="${esc(node.name)}" title="${esc(node.name)}">
+      <button class="node${active ? " active" : ""}" data-group="${esc(group.name)}" data-node="${esc(node.name)}" title="${esc(node.name)}" data-no-i18n-attrs>
         <span class="node-state">${active ? "✓" : isGroup ? "↗" : ""}</span>
         <span class="node-copy">
-          <span class="node-name">${esc(node.name)}</span>
+          <span class="node-name" data-no-i18n>${esc(node.name)}</span>
           <span class="node-type">${esc(type)}</span>
         </span>
         ${active ? '<span class="node-active-label">使用中</span>' : delayBadge(group.name, node)}
@@ -1387,12 +1461,12 @@ function renderGroups() {
     <div class="proxy-summary card">
       <div class="proxy-summary-main">
         <div class="eyebrow">目前策略組</div>
-        <h2>${esc(group.name)}</h2>
-        <div class="proxy-chain">${chain.map((part, index) => `<span class="proxy-chain-part${index === chain.length - 1 ? " final" : ""}">${esc(part)}</span>`).join('<span class="proxy-arrow">→</span>')}</div>
+        <h2 data-no-i18n>${esc(group.name)}</h2>
+        <div class="proxy-chain">${chain.map((part, index) => `<span class="proxy-chain-part${index === chain.length - 1 ? " final" : ""}" data-no-i18n>${esc(part)}</span>`).join('<span class="proxy-arrow">→</span>')}</div>
       </div>
       <div class="proxy-summary-node">
         <span class="proxy-summary-label">實際出口</span>
-        <strong>${esc(effective)}</strong>
+        <strong data-no-i18n>${esc(effective)}</strong>
         <span class="proxy-summary-type">${esc(currentType)}</span>
       </div>
       <button class="btn primary" data-test="${proxyGroupIndex}">測速目前組</button>
@@ -1405,8 +1479,8 @@ function renderGroups() {
             const now = proxyEffectiveNode(g);
             const isActive = index === proxyGroupIndex;
             return `<button class="proxy-group-item${isActive ? " active" : ""}" data-select-group="${index}">
-              <span class="proxy-group-top"><span class="proxy-group-name">${esc(g.name)}</span><span class="proxy-type">${esc(g.type || "Selector")}</span></span>
-              <span class="proxy-group-now">出口：<b>${esc(now)}</b></span>
+              <span class="proxy-group-top"><span class="proxy-group-name" data-no-i18n>${esc(g.name)}</span><span class="proxy-type">${esc(g.type || "Selector")}</span></span>
+              <span class="proxy-group-now">出口：<b data-no-i18n>${esc(now)}</b></span>
             </button>`;
           }).join("")}
         </div>
@@ -1414,8 +1488,8 @@ function renderGroups() {
       <section class="proxy-node-pane card">
         <div class="proxy-node-head">
           <div>
-            <div class="proxy-node-title">${esc(group.name)}</div>
-            <div class="proxy-node-subtitle">目前：<b>${esc(group.now || "—")}</b>${effective !== group.now ? ` · 實際出口：<b>${esc(effective)}</b>` : ""}</div>
+            <div class="proxy-node-title" data-no-i18n>${esc(group.name)}</div>
+            <div class="proxy-node-subtitle">目前：<b data-no-i18n>${esc(group.now || "—")}</b>${effective !== group.now ? ` · 實際出口：<b data-no-i18n>${esc(effective)}</b>` : ""}</div>
           </div>
           <div class="proxy-node-actions">
             <input id="proxy-node-search" class="proxy-search" type="search" placeholder="搜尋節點…" value="${esc(proxySearch)}">
@@ -1664,7 +1738,7 @@ function bindActions() {
       if (res && res.ok === false) toast(res.error || "切換失敗", "error");
       else {
         addEvent("profile", "已套用推薦節點", `${btn.dataset.group} → ${btn.dataset.node}`);
-        toast(`已套用：${btn.dataset.node}`, "ok");
+        toast("已套用：", "ok", btn.dataset.node);
       }
       await refreshState();
       await refreshGroups();
@@ -1729,6 +1803,21 @@ function bindActions() {
     prefs.autoUpdateCheck = ev.target.checked;
     savePreferences();
   });
+  $("#select-theme").addEventListener("change", (ev) => {
+    prefs.theme = ev.target.value;
+    savePreferences();
+    applyTheme(prefs.theme);
+    redrawCharts();
+  });
+  $("#select-language").addEventListener("change", async (ev) => {
+    prefs.language = ev.target.value;
+    savePreferences();
+    applyLanguage(prefs.language);
+    renderAll();
+    if (page === "proxies") await refreshGroups();
+    if (page === "stats") renderStatsPage();
+    if (window.KumoI18n) window.KumoI18n.refresh();
+  });
   $("#btn-open-update").addEventListener("click", () => {
     if (!latestUpdate || !latestUpdate.url) return;
     if (demo) window.open(latestUpdate.url, "_blank");
@@ -1772,7 +1861,7 @@ function bindActions() {
     try {
       const res = await api("export_diagnostics");
       if (res && res.ok) {
-        toast(`診斷資料已匯出：${res.path}`, "ok");
+        toast("診斷資料已匯出：", "ok", res.path);
         closeDiagnostics();
       } else {
         toast((res && res.error) || "匯出失敗", "error");
@@ -1813,6 +1902,15 @@ document.addEventListener("DOMContentLoaded", async () => {
   bindNav();
   bindActions();
   installUiCrashHandlers();
+  applyTheme(prefs.theme);
+  applyLanguage(prefs.language);
+  if (window.KumoI18n) window.KumoI18n.observe();
+  const systemTheme = window.matchMedia("(prefers-color-scheme: light)");
+  const onSystemThemeChange = () => {
+    if (document.documentElement.dataset.theme === "system") redrawCharts();
+  };
+  if (systemTheme.addEventListener) systemTheme.addEventListener("change", onSystemThemeChange);
+  else if (systemTheme.addListener) systemTheme.addListener(onSystemThemeChange);
   await waitBridge();
   demo = !((window.pywebview && window.pywebview.api) || (window.__TAURI__ && window.__TAURI__.core));
   if (demo) {
@@ -1825,6 +1923,8 @@ document.addEventListener("DOMContentLoaded", async () => {
   }
 
   await refreshState();
+  if (page === "proxies") await refreshGroups();
+  if (page === "logs") await refreshLogs();
   drawSpark();
   renderStatsPage();
   initUpdateChecker();
