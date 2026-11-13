@@ -62,7 +62,7 @@ class StatsExportTests(unittest.TestCase):
                         result = api.export_diagnostics()
             self.assertTrue(result["ok"])
             text = Path(result["path"]).read_text(encoding="utf-8")
-            self.assertIn("app_version: 0.5.0", text)
+            self.assertIn("app_version: 0.5.1", text)
             self.assertIn("<redacted-url>", text)
             self.assertIn("<redacted-endpoint>", text)
             self.assertNotIn("token=secret", text)

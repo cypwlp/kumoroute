@@ -11,6 +11,18 @@ use serde_json::{json, Value};
 use crate::state::{app_log, core_binary, data_dir, ensure_geo_files};
 
 #[cfg(windows)]
+use std::os::windows::io::AsRawHandle;
+#[cfg(windows)]
+use windows::core::PCWSTR;
+#[cfg(windows)]
+use windows::Win32::Foundation::{CloseHandle, HANDLE};
+#[cfg(windows)]
+use windows::Win32::System::JobObjects::{
+    AssignProcessToJobObject, CreateJobObjectW, JobObjectExtendedLimitInformation, SetInformationJobObject,
+    JOBOBJECT_EXTENDED_LIMIT_INFORMATION, JOB_OBJECT_LIMIT_KILL_ON_JOB_CLOSE,
+};
+
+#[cfg(windows)]
 const CREATE_NO_WINDOW: u32 = 0x0800_0000;
 const MAX_LOG_BYTES: u64 = 2 * 1024 * 1024;
 pub fn base_url(port: u16) -> String {
@@ -51,11 +63,68 @@ pub fn is_up(port: u16) -> bool {
     version(port).is_some()
 }
 
+#[cfg(windows)]
+struct JobHandle {
+    raw: isize,
+}
+
+#[cfg(windows)]
+unsafe impl Send for JobHandle {}
+#[cfg(windows)]
+unsafe impl Sync for JobHandle {}
+
+#[cfg(windows)]
+impl JobHandle {
+    fn create() -> Result<Self, String> {
+        unsafe {
+            let handle = CreateJobObjectW(None, PCWSTR::null())
+                .map_err(|e| format!("建立 Windows Job Object 失敗：{e}"))?;
+            let mut limits = JOBOBJECT_EXTENDED_LIMIT_INFORMATION::default();
+            limits.BasicLimitInformation.LimitFlags = JOB_OBJECT_LIMIT_KILL_ON_JOB_CLOSE;
+            let result = SetInformationJobObject(
+                handle,
+                JobObjectExtendedLimitInformation,
+                &limits as *const _ as *const core::ffi::c_void,
+                std::mem::size_of::<JOBOBJECT_EXTENDED_LIMIT_INFORMATION>() as u32,
+            );
+            if let Err(e) = result {
+                let _ = CloseHandle(handle);
+                return Err(format!("設定 Windows Job Object 失敗：{e}"));
+            }
+            Ok(Self {
+                raw: handle.0 as isize,
+            })
+        }
+    }
+
+    fn as_handle(&self) -> HANDLE {
+        HANDLE(self.raw as *mut core::ffi::c_void)
+    }
+
+    fn assign(&self, child: &Child) -> Result<(), String> {
+        unsafe {
+            AssignProcessToJobObject(self.as_handle(), HANDLE(child.as_raw_handle()))
+                .map_err(|e| format!("將 mihomo 加入 Windows Job Object 失敗：{e}"))
+        }
+    }
+}
+
+#[cfg(windows)]
+impl Drop for JobHandle {
+    fn drop(&mut self) {
+        unsafe {
+            let _ = CloseHandle(self.as_handle());
+        }
+    }
+}
+
 #[derive(Clone)]
 struct SpawnArgs {
     bin: PathBuf,
     dd: PathBuf,
     runtime: PathBuf,
+    #[cfg(windows)]
+    job: Option<Arc<JobHandle>>,
 }
 
 fn spawn_child(args: &SpawnArgs) -> Result<Child, String> {
@@ -91,7 +160,14 @@ fn spawn_child(args: &SpawnArgs) -> Result<Child, String> {
             }
         }
     }
-    cmd.spawn().map_err(|e| e.to_string())
+    let child = cmd.spawn().map_err(|e| e.to_string())?;
+    #[cfg(windows)]
+    if let Some(job) = &args.job {
+        if let Err(e) = job.assign(&child) {
+            app_log(&format!("{e}；這次啟動將退回一般父子程序清理"));
+        }
+    }
+    Ok(child)
 }
 
 fn rotate_core_log(dd: &Path) {
@@ -161,6 +237,8 @@ pub struct Core {
     alive: Arc<AtomicBool>,
     #[allow(dead_code)]
     args: Option<SpawnArgs>,
+    #[cfg(windows)]
+    job: Option<Arc<JobHandle>>,
 }
 
 impl Core {
@@ -169,6 +247,8 @@ impl Core {
             child: Arc::new(StdMutex::new(None)),
             alive: Arc::new(AtomicBool::new(false)),
             args: None,
+            #[cfg(windows)]
+            job: None,
         }
     }
 
@@ -181,10 +261,28 @@ impl Core {
         let bin = core_binary().ok_or("找不到 mihomo 核心（core/mihomo.exe）")?;
         let dd = data_dir();
         rotate_core_log(&dd);
-        let args = SpawnArgs { bin, dd, runtime };
+        #[cfg(windows)]
+        let job = match JobHandle::create() {
+            Ok(job) => Some(Arc::new(job)),
+            Err(e) => {
+                app_log(&format!("{e}；這次啟動將退回一般父子程序清理"));
+                None
+            }
+        };
+        let args = SpawnArgs {
+            bin,
+            dd,
+            runtime,
+            #[cfg(windows)]
+            job: job.clone(),
+        };
         let child = spawn_child(&args)?;
         *self.child.lock().unwrap() = Some(child);
         self.args = Some(args.clone());
+        #[cfg(windows)]
+        {
+            self.job = job;
+        }
         for _ in 0..48 {
             std::thread::sleep(Duration::from_millis(250));
             if is_up(port) {
@@ -224,6 +322,10 @@ impl Core {
             }
         }
         self.args = None;
+        #[cfg(windows)]
+        {
+            self.job = None;
+        }
     }
 
     pub fn reload(&mut self, port: u16, runtime: PathBuf) -> Result<(), String> {
@@ -282,4 +384,38 @@ pub fn log_lines(max: usize) -> Vec<String> {
         .map(|l| re.replace_all(l, "").to_string())
         .collect();
     lines[lines.len().saturating_sub(max)..].to_vec()
+}
+#[cfg(all(test, windows))]
+mod windows_job_tests {
+    use super::*;
+    use std::os::windows::process::CommandExt;
+
+    #[test]
+    fn job_object_kills_child_when_dropped() {
+        let job = JobHandle::create().expect("create job object");
+        let mut command = Command::new("cmd.exe");
+        command
+            .args(["/C", "timeout", "/T", "30", "/NOBREAK"])
+            .stdin(Stdio::null())
+            .stdout(Stdio::null())
+            .stderr(Stdio::null())
+            .creation_flags(CREATE_NO_WINDOW);
+        let mut child = command.spawn().expect("spawn test child");
+        if let Err(e) = job.assign(&child) {
+            let _ = child.kill();
+            let _ = child.wait();
+            eprintln!("job assignment unavailable in this environment: {e}");
+            return;
+        }
+        drop(job);
+        for _ in 0..30 {
+            if child.try_wait().expect("poll child").is_some() {
+                return;
+            }
+            std::thread::sleep(Duration::from_millis(100));
+        }
+        let _ = child.kill();
+        let _ = child.wait();
+        panic!("child process survived Windows Job Object close");
+    }
 }

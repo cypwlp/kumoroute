@@ -30,6 +30,8 @@
 - 內置 GeoIP/GeoSite 資料庫，導入訂閱即用（免從 GitHub 下載 geodata）
 - 核心崩潰自動重啟（60 秒內最多 5 次）＋日誌自動輪轉
 - 托盤常駐、關窗不退出、單實例
+- Windows Job Object 綁定 mihomo：主程序被強制終止時核心由系統一併結束
+- NSIS 安裝／卸載前檢查 `core\mihomo.exe`，避免核心鎖檔造成覆寫失敗
 - 發佈形態：Windows 安裝包（NSIS）＋免安裝 zip；Linux AppImage＋deb；macOS Universal dmg
 
 > KumoRoute 只提供客戶端，不包含、不販售任何節點或訂閱服務。
@@ -79,8 +81,8 @@ python app.py
 推送 `v*` tag 即由 GitHub Actions 自動編譯、打包並建立 Release（含 `KumoRoute-win-x64.zip` 與 `SHA256SUMS.txt`）：
 
 ```powershell
-git tag v0.5.0
-git push origin v0.5.0
+git tag v0.5.1
+git push origin v0.5.1
 ```
 
 下載站按鈕指向 `releases/latest/download/KumoRoute-win-x64.zip`（見 `site/app.js`）。

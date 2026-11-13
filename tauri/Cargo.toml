@@ -1,6 +1,6 @@
 [package]
 name = "kumoroute"
-version = "0.5.0"
+version = "0.5.1"
 description = "Lightweight Mihomo-compatible desktop client"
 edition = "2021"
 rust-version = "1.77"
@@ -26,7 +26,7 @@ url = "2"
 
 [target.'cfg(windows)'.dependencies]
 winreg = "0.52"
-windows = { version = "0.58", features = ["Win32_Networking_WinInet", "Win32_Foundation"] }
+windows = { version = "0.58", features = ["Win32_Networking_WinInet", "Win32_Foundation", "Win32_Security", "Win32_System_JobObjects", "Win32_System_Threading"] }
 
 [profile.release]
 codegen-units = 1
