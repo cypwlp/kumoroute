@@ -34,6 +34,9 @@ let lastSeenSysProxy = null;
 let proxyOnSince = null;
 let connectionSnapshots = new Map();
 let knownGroupNames = new Set();
+let proxyGroupIndex = 0;
+let proxySearch = "";
+let proxyFilter = "all";
 let clearStatsPending = false;
 let clearStatsTimer = null;
 
@@ -437,7 +440,7 @@ const demoCfg = {
   mixed_port: 7890,
   controller_port: 9090,
   core_version: "v1.19.33",
-  app_version: "0.5.2",
+  app_version: "0.5.3",
   data_dir: "C:\\Users\\…\\AppData\\Roaming\\KumoRoute",
   test_url: "https://cp.cloudflare.com/generate_204",
   profiles: [
@@ -1274,15 +1277,57 @@ function drawStatsChart() {
 
 async function refreshGroups() {
   try {
-    if (!state || !state.running) { groups = []; renderGroups(); return; }
+    if (!state || !state.running) {
+      groups = [];
+      proxyGroupIndex = 0;
+      renderGroups();
+      return;
+    }
+    const previousName = groups[proxyGroupIndex] ? groups[proxyGroupIndex].name : "";
     const res = demo ? await demoApi("get_proxy_groups") : await api("get_proxy_groups");
     groups = (res && res.groups) || [];
     knownGroupNames = new Set(groups.map((g) => g.name));
+    const previousIndex = groups.findIndex((g) => g.name === previousName);
+    proxyGroupIndex = previousIndex >= 0 ? previousIndex : defaultProxyGroupIndex();
     renderGroups();
     if (page === "stats") renderNodeHealth();
   } catch (e) {
     console.error(e);
   }
+}
+
+function defaultProxyGroupIndex() {
+  const preferred = ["♻️ 自动选择", "♻️ 自動選擇", "🔰 节点选择", "🔰 節點選擇", "🌍 国外媒体", "🌍 國外媒體"];
+  for (const name of preferred) {
+    const index = groups.findIndex((g) => g.name === name);
+    if (index >= 0) return index;
+  }
+  const firstNonGlobal = groups.findIndex((g) => g.name !== "GLOBAL");
+  return firstNonGlobal >= 0 ? firstNonGlobal : 0;
+}
+
+function proxyChainFor(group) {
+  if (!group) return [];
+  const chain = [group.name];
+  const seen = new Set([group.name]);
+  let current = group.now || "";
+  while (current && !seen.has(current)) {
+    chain.push(current);
+    seen.add(current);
+    const next = groups.find((g) => g.name === current);
+    if (!next) break;
+    current = next.now || "";
+  }
+  return chain;
+}
+
+function proxyEffectiveNode(group) {
+  const chain = proxyChainFor(group);
+  return chain.length ? chain[chain.length - 1] : "—";
+}
+
+function proxyIsGroup(name) {
+  return knownGroupNames.has(name);
 }
 
 function delayBadge(groupName, node) {
@@ -1291,6 +1336,37 @@ function delayBadge(groupName, node) {
   if (!d) return '<span class="delay bad">逾時</span>';
   const cls = d <= 200 ? "good" : d <= 500 ? "mid" : "bad";
   return `<span class="delay ${cls}">${d} ms</span>`;
+}
+
+function renderProxyNodeList() {
+  const box = $("#proxy-node-list");
+  const group = groups[proxyGroupIndex];
+  if (!box || !group) return;
+  const query = proxySearch.trim().toLowerCase();
+  const nodes = (group.nodes || []).filter((node) => {
+    const isGroup = proxyIsGroup(node.name);
+    if (proxyFilter === "nodes" && isGroup) return false;
+    if (proxyFilter === "groups" && !isGroup) return false;
+    return !query || node.name.toLowerCase().includes(query);
+  });
+  if (!nodes.length) {
+    box.innerHTML = `<div class="proxy-node-empty">${query ? "找不到符合的節點或策略組。" : "此策略組沒有可顯示的節點。"}</div>`;
+    return;
+  }
+  box.innerHTML = nodes.map((node) => {
+    const isGroup = proxyIsGroup(node.name);
+    const active = node.name === group.now;
+    const type = isGroup ? "策略組" : (node.type || "節點");
+    return `
+      <button class="node${active ? " active" : ""}" data-group="${esc(group.name)}" data-node="${esc(node.name)}" title="${esc(node.name)}">
+        <span class="node-state">${active ? "✓" : isGroup ? "↗" : ""}</span>
+        <span class="node-copy">
+          <span class="node-name">${esc(node.name)}</span>
+          <span class="node-type">${esc(type)}</span>
+        </span>
+        ${active ? '<span class="node-active-label">使用中</span>' : delayBadge(group.name, node)}
+      </button>`;
+  }).join("");
 }
 
 function renderGroups() {
@@ -1303,23 +1379,58 @@ function renderGroups() {
     return;
   }
   empty.classList.add("hidden");
-  box.innerHTML = groups.map((g, gi) => `
-    <div class="card group-card">
-      <div class="group-head">
-        <span class="group-name">${esc(g.name)}</span>
-        <span class="pill">${esc(g.type)}</span>
-        <span class="pill">當前：${esc(g.now || "—")}</span>
-        <button class="btn ghost small" data-test="${gi}">測速</button>
+  const group = groups[proxyGroupIndex] || groups[0];
+  const chain = proxyChainFor(group);
+  const effective = proxyEffectiveNode(group);
+  const currentType = group.type || "Selector";
+  box.innerHTML = `
+    <div class="proxy-summary card">
+      <div class="proxy-summary-main">
+        <div class="eyebrow">目前策略組</div>
+        <h2>${esc(group.name)}</h2>
+        <div class="proxy-chain">${chain.map((part, index) => `<span class="proxy-chain-part${index === chain.length - 1 ? " final" : ""}">${esc(part)}</span>`).join('<span class="proxy-arrow">→</span>')}</div>
       </div>
-      <div class="node-list">
-        ${(g.nodes || []).map((n) => `
-          <div class="node${n.name === g.now ? " active" : ""}" data-group="${esc(g.name)}" data-node="${esc(n.name)}">
-            <span class="node-name">${esc(n.name)}</span>
-            <span class="node-type">${esc(n.type)}</span>
-            ${delayBadge(g.name, n)}
-          </div>`).join("")}
+      <div class="proxy-summary-node">
+        <span class="proxy-summary-label">實際出口</span>
+        <strong>${esc(effective)}</strong>
+        <span class="proxy-summary-type">${esc(currentType)}</span>
       </div>
-    </div>`).join("");
+      <button class="btn primary" data-test="${proxyGroupIndex}">測速目前組</button>
+    </div>
+    <div class="proxy-workspace">
+      <aside class="proxy-group-pane card">
+        <div class="proxy-pane-head"><span>策略組</span><span class="proxy-count">${groups.length}</span></div>
+        <div class="proxy-group-list">
+          ${groups.map((g, index) => {
+            const now = proxyEffectiveNode(g);
+            const isActive = index === proxyGroupIndex;
+            return `<button class="proxy-group-item${isActive ? " active" : ""}" data-select-group="${index}">
+              <span class="proxy-group-top"><span class="proxy-group-name">${esc(g.name)}</span><span class="proxy-type">${esc(g.type || "Selector")}</span></span>
+              <span class="proxy-group-now">出口：<b>${esc(now)}</b></span>
+            </button>`;
+          }).join("")}
+        </div>
+      </aside>
+      <section class="proxy-node-pane card">
+        <div class="proxy-node-head">
+          <div>
+            <div class="proxy-node-title">${esc(group.name)}</div>
+            <div class="proxy-node-subtitle">目前：<b>${esc(group.now || "—")}</b>${effective !== group.now ? ` · 實際出口：<b>${esc(effective)}</b>` : ""}</div>
+          </div>
+          <div class="proxy-node-actions">
+            <input id="proxy-node-search" class="proxy-search" type="search" placeholder="搜尋節點…" value="${esc(proxySearch)}">
+            <button class="btn ghost small" data-test="${proxyGroupIndex}">測速</button>
+          </div>
+        </div>
+        <div class="proxy-filters">
+          <button class="proxy-filter${proxyFilter === "all" ? " active" : ""}" data-node-filter="all">全部</button>
+          <button class="proxy-filter${proxyFilter === "nodes" ? " active" : ""}" data-node-filter="nodes">節點</button>
+          <button class="proxy-filter${proxyFilter === "groups" ? " active" : ""}" data-node-filter="groups">策略組</button>
+        </div>
+        <div id="proxy-node-list" class="node-list"></div>
+      </section>
+    </div>`;
+  renderProxyNodeList();
 }
 
 /* ---------- logs ---------- */
@@ -1411,6 +1522,18 @@ function bindActions() {
   });
 
   $("#groups").addEventListener("click", async (ev) => {
+    const groupButton = ev.target.closest("[data-select-group]");
+    if (groupButton) {
+      proxyGroupIndex = Number(groupButton.dataset.selectGroup) || 0;
+      renderGroups();
+      return;
+    }
+    const filterButton = ev.target.closest("[data-node-filter]");
+    if (filterButton) {
+      proxyFilter = filterButton.dataset.nodeFilter || "all";
+      renderGroups();
+      return;
+    }
     const t = ev.target.closest("button[data-test]");
     if (t) {
       const g = groups[Number(t.dataset.test)];
@@ -1432,8 +1555,14 @@ function bindActions() {
     if (n) {
       const res = demo ? await demoApi("select_proxy", n.dataset.group, n.dataset.node) : await api("select_proxy", n.dataset.group, n.dataset.node);
       if (res && res.ok === false) toast(res.error || "切換失敗", "error");
+      else toast("已切換節點", "ok");
       await refreshGroups();
     }
+  });
+  $("#groups").addEventListener("input", (ev) => {
+    if (ev.target.id !== "proxy-node-search") return;
+    proxySearch = ev.target.value;
+    renderProxyNodeList();
   });
 
   $("#sub-form").addEventListener("submit", async (ev) => {
