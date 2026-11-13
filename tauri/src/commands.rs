@@ -1,7 +1,11 @@
-use std::fs;
+use std::fs::{self, File};
+use std::io::{Read, Write};
+use std::path::Path;
 use std::sync::Mutex;
+use std::time::Duration;
 
 use serde_json::{json, Value};
+use sha2::{Digest, Sha256};
 use tauri::State;
 
 use crate::core::{self, Core};
@@ -22,6 +26,75 @@ fn ok() -> Value {
 }
 fn err(msg: impl Into<String>) -> Value {
     json!({"ok": false, "error": msg.into()})
+}
+
+fn safe_update_url(value: &str) -> bool {
+    let Ok(parsed) = url::Url::parse(value.trim()) else {
+        return false;
+    };
+    matches!(parsed.scheme(), "https")
+        && matches!(parsed.host_str(), Some("github.com" | "objects.githubusercontent.com" | "release-assets.githubusercontent.com"))
+        && parsed.username().is_empty()
+        && parsed.password().is_none()
+}
+
+fn update_asset_score(filename: &str, os: &str) -> Option<u8> {
+    let name = filename.to_ascii_lowercase();
+    if !name.starts_with("kumoroute-") {
+        return None;
+    }
+    match os {
+        "windows" if name.ends_with("-setup.exe") => Some(0),
+        "windows" if name.ends_with(".zip") => Some(1),
+        "macos" if name.ends_with(".dmg") => Some(0),
+        "linux" if name.ends_with(".appimage") => Some(0),
+        "linux" if name.ends_with(".deb") => Some(1),
+        _ => None,
+    }
+}
+
+fn update_asset(release: &Value) -> Option<Value> {
+    let assets = release.get("assets")?.as_array()?;
+    let os = std::env::consts::OS;
+    let mut checksum_url: Option<String> = None;
+    let mut selected: Option<(u8, String, String, u64)> = None;
+    for item in assets {
+        let name = item.get("name").and_then(Value::as_str).unwrap_or("").to_string();
+        let url = item.get("browser_download_url").and_then(Value::as_str).unwrap_or("");
+        if name == "SHA256SUMS.txt" && safe_update_url(url) {
+            checksum_url = Some(url.to_string());
+        }
+        let Some(score) = update_asset_score(&name, os) else {
+            continue;
+        };
+        if !safe_update_url(url) {
+            continue;
+        }
+        let size = item.get("size").and_then(Value::as_u64).unwrap_or(0);
+        if selected.as_ref().map(|v| score < v.0).unwrap_or(true) {
+            selected = Some((score, name, url.to_string(), size));
+        }
+    }
+    let (_, filename, download_url, size) = selected?;
+    Some(json!({
+        "filename": filename,
+        "download_url": download_url,
+        "size": size,
+        "size_mb": (size as f64 / 1048576.0 * 10.0).round() / 10.0,
+        "sha256_url": checksum_url.unwrap_or_default(),
+    }))
+}
+
+fn parse_sha256sums(text: &str, filename: &str) -> Option<String> {
+    for line in text.lines() {
+        let mut parts = line.split_whitespace();
+        let digest = parts.next()?.trim_start_matches('*');
+        let name = parts.next()?.trim_start_matches('*');
+        if name == filename && digest.len() == 64 && digest.chars().all(|c| c.is_ascii_hexdigit()) {
+            return Some(digest.to_ascii_lowercase());
+        }
+    }
+    None
 }
 
 fn public_entry(e: &Entry) -> Value {
@@ -410,7 +483,128 @@ pub fn check_update() -> Value {
         "url": release.get("html_url").and_then(|v| v.as_str()).unwrap_or("https://github.com/cypwlp/kumoroute/releases/latest"),
         "published_at": release.get("published_at").and_then(|v| v.as_str()).unwrap_or(""),
         "notes": release.get("body").and_then(|v| v.as_str()).unwrap_or("").chars().take(4000).collect::<String>(),
+        "asset": update_asset(&release),
     })
+}
+
+fn download_update(url: &str, filename: &str, checksum_url: &str) -> Result<std::path::PathBuf, String> {
+    let safe_name = Path::new(filename)
+        .file_name()
+        .and_then(|v| v.to_str())
+        .ok_or_else(|| "更新檔名無效".to_string())?;
+    if safe_name != filename || update_asset_score(safe_name, std::env::consts::OS).is_none() {
+        return Err("更新檔名或平台不相符".to_string());
+    }
+    if !safe_update_url(url) || !safe_update_url(checksum_url) {
+        return Err("不安全的更新下載網址".to_string());
+    }
+    let folder = dirs::download_dir()
+        .or_else(|| dirs::home_dir().map(|p| p.join("Downloads")))
+        .unwrap_or_else(data_dir);
+    fs::create_dir_all(&folder).map_err(|e| format!("無法建立下載資料夾：{e}"))?;
+    let destination = folder.join(safe_name);
+    let partial = folder.join(format!("{safe_name}.part"));
+
+    let sums = ureq::get(checksum_url)
+        .set("User-Agent", SUB_UA)
+        .timeout(Duration::from_secs(30))
+        .call()
+        .map_err(|e| format!("下載校驗檔失敗：{e}"))?
+        .into_string()
+        .map_err(|e| format!("讀取校驗檔失敗：{e}"))?;
+    let expected = parse_sha256sums(&sums, safe_name).ok_or_else(|| "找不到更新檔的 SHA256 校驗值".to_string())?;
+
+    let response = ureq::get(url)
+        .set("User-Agent", SUB_UA)
+        .timeout(Duration::from_secs(120))
+        .call()
+        .map_err(|e| format!("下載更新失敗：{e}"))?;
+    let status = response.status();
+    if !(200..300).contains(&status) {
+        return Err(format!("更新伺服器回應 HTTP {status}"));
+    }
+    let total = response
+        .header("Content-Length")
+        .and_then(|v| v.parse::<u64>().ok())
+        .ok_or_else(|| "更新檔缺少有效的 Content-Length".to_string())?;
+    if total == 0 || total > 700 * 1024 * 1024 {
+        return Err("更新檔大小無效或超過安全上限".to_string());
+    }
+    let mut reader = response.into_reader();
+    let mut file = File::create(&partial).map_err(|e| format!("建立更新檔失敗：{e}"))?;
+    let mut hasher = Sha256::new();
+    let mut buffer = [0u8; 262144];
+    let mut written = 0u64;
+    let result = (|| -> Result<(), String> {
+        loop {
+            let read = reader.read(&mut buffer).map_err(|e| format!("讀取更新失敗：{e}"))?;
+            if read == 0 {
+                break;
+            }
+            written += read as u64;
+            if written > total {
+                return Err("更新檔大小超出宣告值".to_string());
+            }
+            hasher.update(&buffer[..read]);
+            file.write_all(&buffer[..read]).map_err(|e| format!("寫入更新失敗：{e}"))?;
+        }
+        file.sync_all().map_err(|e| format!("同步更新檔失敗：{e}"))?;
+        if written != total {
+            return Err("更新檔下載不完整".to_string());
+        }
+        let actual = format!("{:x}", hasher.finalize());
+        if actual != expected {
+            return Err("更新檔 SHA256 校驗失敗".to_string());
+        }
+        fs::rename(&partial, &destination).map_err(|e| format!("儲存更新檔失敗：{e}"))
+    })();
+    if result.is_err() {
+        let _ = fs::remove_file(&partial);
+    }
+    result?;
+    Ok(destination)
+}
+
+fn open_update_installer(path: &str) -> Result<(), String> {
+    let target = fs::canonicalize(path).map_err(|e| format!("找不到更新安裝檔：{e}"))?;
+    let downloads = dirs::download_dir()
+        .or_else(|| dirs::home_dir().map(|p| p.join("Downloads")))
+        .unwrap_or_else(data_dir);
+    let downloads = fs::canonicalize(downloads).map_err(|e| format!("找不到下載資料夾：{e}"))?;
+    if target.parent() != Some(downloads.as_path()) || !target.is_file() {
+        return Err("更新安裝檔位置不安全或不存在".to_string());
+    }
+    let extension = target.extension().and_then(|v| v.to_str()).unwrap_or("").to_ascii_lowercase();
+    let valid = match std::env::consts::OS {
+        "windows" => extension == "exe",
+        "macos" => extension == "dmg",
+        "linux" => extension == "appimage" || extension == "deb",
+        _ => false,
+    };
+    if !valid {
+        return Err("不支援的更新安裝檔格式".to_string());
+    }
+    open::that(&target).map_err(|e| format!("啟動更新安裝檔失敗：{e}"))
+}
+
+#[tauri::command]
+pub fn install_update(url: String, filename: String, sha256_url: String) -> Value {
+    match download_update(&url, &filename, &sha256_url) {
+        Ok(path) => json!({"ok": true, "path": path.to_string_lossy()}),
+        Err(e) => err(e),
+    }
+}
+
+#[tauri::command]
+pub fn run_update_installer(app: tauri::AppHandle, path: String) -> Value {
+    if let Err(e) = open_update_installer(&path) {
+        return err(e);
+    }
+    std::thread::spawn(move || {
+        std::thread::sleep(Duration::from_millis(800));
+        app.exit(0);
+    });
+    ok()
 }
 
 #[tauri::command]
@@ -555,4 +749,45 @@ pub fn quit_app(app: tauri::AppHandle, state: State<'_, Shared>) -> Value {
     cleanup(&state);
     app.exit(0);
     ok()
+}
+
+
+#[cfg(test)]
+mod update_tests {
+    use super::*;
+
+    fn release() -> Value {
+        json!({
+            "assets": [
+                {"name": "KumoRoute-win-x64-setup.exe", "browser_download_url": "https://github.com/cypwlp/kumoroute/releases/download/v0.6.1/KumoRoute-win-x64-setup.exe", "size": 23000000},
+                {"name": "KumoRoute-win-x64.zip", "browser_download_url": "https://github.com/cypwlp/kumoroute/releases/download/v0.6.1/KumoRoute-win-x64.zip", "size": 30000000},
+                {"name": "KumoRoute-macos-universal.dmg", "browser_download_url": "https://github.com/cypwlp/kumoroute/releases/download/v0.6.1/KumoRoute-macos-universal.dmg", "size": 54000000},
+                {"name": "KumoRoute-linux-x86_64.AppImage", "browser_download_url": "https://github.com/cypwlp/kumoroute/releases/download/v0.6.1/KumoRoute-linux-x86_64.AppImage", "size": 108000000},
+                {"name": "SHA256SUMS.txt", "browser_download_url": "https://github.com/cypwlp/kumoroute/releases/download/v0.6.1/SHA256SUMS.txt", "size": 600}
+            ]
+        })
+    }
+
+    #[test]
+    fn selects_asset_for_current_platform() {
+        let asset = update_asset(&release()).expect("asset");
+        let name = asset.get("filename").and_then(Value::as_str).unwrap_or("");
+        match std::env::consts::OS {
+            "windows" => assert_eq!(name, "KumoRoute-win-x64-setup.exe"),
+            "macos" => assert_eq!(name, "KumoRoute-macos-universal.dmg"),
+            "linux" => assert_eq!(name, "KumoRoute-linux-x86_64.AppImage"),
+            _ => panic!("unexpected platform"),
+        }
+        assert!(asset.get("sha256_url").and_then(Value::as_str).unwrap_or("").ends_with("SHA256SUMS.txt"));
+    }
+
+    #[test]
+    fn parses_checksum_and_rejects_unsafe_urls() {
+        let digest = "a".repeat(64);
+        let sums = format!("{digest}  KumoRoute-win-x64-setup.exe\n");
+        assert_eq!(parse_sha256sums(&sums, "KumoRoute-win-x64-setup.exe"), Some(digest));
+        assert!(safe_update_url("https://github.com/cypwlp/kumoroute/releases/download/v0.6.1/file.exe"));
+        assert!(!safe_update_url("https://evil.example/file.exe"));
+        assert!(!safe_update_url("http://github.com/file.exe"));
+    }
 }

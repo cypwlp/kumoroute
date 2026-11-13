@@ -237,6 +237,12 @@
           "markdownDescription": "Enables the import_profile command without any pre-configured scope."
         },
         {
+          "description": "Enables the install_update command without any pre-configured scope.",
+          "type": "string",
+          "const": "allow-install-update",
+          "markdownDescription": "Enables the install_update command without any pre-configured scope."
+        },
+        {
           "description": "Enables the open_data_dir command without any pre-configured scope.",
           "type": "string",
           "const": "allow-open-data-dir",
@@ -259,6 +265,12 @@
           "type": "string",
           "const": "allow-record-ui-error",
           "markdownDescription": "Enables the record_ui_error command without any pre-configured scope."
+        },
+        {
+          "description": "Enables the run_update_installer command without any pre-configured scope.",
+          "type": "string",
+          "const": "allow-run-update-installer",
+          "markdownDescription": "Enables the run_update_installer command without any pre-configured scope."
         },
         {
           "description": "Enables the save_settings command without any pre-configured scope.",
@@ -381,6 +393,12 @@
           "markdownDescription": "Denies the import_profile command without any pre-configured scope."
         },
         {
+          "description": "Denies the install_update command without any pre-configured scope.",
+          "type": "string",
+          "const": "deny-install-update",
+          "markdownDescription": "Denies the install_update command without any pre-configured scope."
+        },
+        {
           "description": "Denies the open_data_dir command without any pre-configured scope.",
           "type": "string",
           "const": "deny-open-data-dir",
@@ -403,6 +421,12 @@
           "type": "string",
           "const": "deny-record-ui-error",
           "markdownDescription": "Denies the record_ui_error command without any pre-configured scope."
+        },
+        {
+          "description": "Denies the run_update_installer command without any pre-configured scope.",
+          "type": "string",
+          "const": "deny-run-update-installer",
+          "markdownDescription": "Denies the run_update_installer command without any pre-configured scope."
         },
         {
           "description": "Denies the save_settings command without any pre-configured scope.",

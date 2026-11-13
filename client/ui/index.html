@@ -14,7 +14,7 @@
       <img src="icon.png" alt="KumoRoute" class="brand-icon">
       <div>
         <div class="brand-name">KumoRoute</div>
-        <div class="brand-ver" id="app-version">v0.6.0</div>
+        <div class="brand-ver" id="app-version">v0.6.1</div>
       </div>
     </div>
 
@@ -343,9 +343,10 @@
         <label class="check privacy-check"><input type="checkbox" id="sw-auto-update" checked> 啟動時自動檢查更新</label>
         <div class="row-actions">
           <button class="btn primary" id="btn-check-update">檢查更新</button>
+          <button class="btn primary" id="btn-install-update" disabled>立即更新</button>
           <button class="btn ghost" id="btn-open-update" disabled>查看更新</button>
         </div>
-        <p class="hint" id="update-status">只檢查版本並提示；不會自動下載或執行安裝檔。</p>
+        <p class="hint" id="update-status">可手動下載並安裝新版本；應用程式不會在背景自動執行安裝檔。</p>
       </div>
 
       <div class="card">

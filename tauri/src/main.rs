@@ -105,6 +105,8 @@ fn main() {
             commands::get_logs,
             commands::save_stats_export,
             commands::check_update,
+            commands::install_update,
+            commands::run_update_installer,
             commands::record_ui_error,
             commands::diagnostics_preview,
             commands::export_diagnostics,

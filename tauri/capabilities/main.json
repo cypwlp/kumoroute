@@ -28,6 +28,8 @@
     "allow-get-logs",
     "allow-save-stats-export",
     "allow-check-update",
+    "allow-install-update",
+    "allow-run-update-installer",
     "allow-record-ui-error",
     "allow-diagnostics-preview",
     "allow-export-diagnostics",

@@ -1,6 +1,6 @@
 [package]
 name = "kumoroute"
-version = "0.6.0"
+version = "0.6.1"
 description = "Lightweight Mihomo-compatible desktop client"
 edition = "2021"
 rust-version = "1.77"
@@ -19,6 +19,7 @@ dirs = "5"
 uuid = { version = "1", features = ["v4"] }
 chrono = "0.4"
 regex = "1"
+sha2 = "0.10"
 rfd = "0.14"
 open = "5"
 urlencoding = "2"

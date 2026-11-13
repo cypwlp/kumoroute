@@ -1,6 +1,7 @@
 """KumoRoute - lightweight Clash/mihomo desktop client."""
 
 import ctypes
+import hashlib
 import json
 import os
 import platform
@@ -25,7 +26,7 @@ import yaml
 
 APP_NAME = "KumoRoute"
 LEGACY_APP_NAME = "MyClash"
-APP_VERSION = "0.6.0"
+APP_VERSION = "0.6.1"
 CREATE_NO_WINDOW = 0x08000000
 SUB_UA = f"KumoRoute/{APP_VERSION}"
 TEST_URL = "https://cp.cloudflare.com/generate_204"
@@ -194,6 +195,43 @@ def message_box(text: str) -> None:
 
 def _now() -> str:
     return datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+
+
+def update_asset_matches(filename: str, system: str) -> bool:
+    name = (filename or "").lower()
+    if not name.startswith("kumoroute-"):
+        return False
+    if system == "windows":
+        return name.endswith(("-setup.exe", ".zip"))
+    if system == "darwin":
+        return name.endswith(".dmg")
+    if system == "linux":
+        return name.endswith((".appimage", ".deb"))
+    return False
+
+
+def safe_update_url(url: str) -> bool:
+    try:
+        parsed = urllib.parse.urlsplit((url or "").strip())
+    except ValueError:
+        return False
+    return (
+        parsed.scheme.lower() == "https"
+        and parsed.hostname in {"github.com", "objects.githubusercontent.com", "release-assets.githubusercontent.com"}
+        and not parsed.username
+        and not parsed.password
+    )
+
+
+def parse_sha256sums(text: str, filename: str) -> str | None:
+    wanted = Path(filename or "").name
+    for line in (text or "").splitlines():
+        parts = line.strip().split()
+        if len(parts) >= 2:
+            digest = parts[0].lstrip("*").lower()
+            if parts[-1].lstrip("*") == wanted and re.fullmatch(r"[0-9a-f]{64}", digest):
+                return digest
+    return None
 
 
 DEFAULT_SETTINGS = {
@@ -1044,9 +1082,117 @@ class Api:
                 "url": str(release.get("html_url") or "https://github.com/cypwlp/kumoroute/releases/latest"),
                 "published_at": str(release.get("published_at") or ""),
                 "notes": str(release.get("body") or "")[:4000],
+                "asset": self._update_asset(release),
             }
         except Exception as exc:
             return {"ok": False, "error": str(exc)}
+
+    @staticmethod
+    def _update_asset(release: dict) -> dict | None:
+        assets = release.get("assets") if isinstance(release.get("assets"), list) else []
+        clean = []
+        checksum_url = ""
+        for item in assets:
+            if not isinstance(item, dict):
+                continue
+            name = Path(str(item.get("name") or "")).name
+            url = str(item.get("browser_download_url") or "")
+            if not name or not safe_update_url(url):
+                continue
+            clean.append({
+                "filename": name,
+                "download_url": url,
+                "size": int(item.get("size") or 0),
+            })
+            if name == "SHA256SUMS.txt":
+                checksum_url = url
+        system = platform.system().lower()
+        selected = next((item for item in clean if update_asset_matches(item["filename"], system)), None)
+        if selected is None:
+            return None
+        return {
+            "filename": selected["filename"],
+            "download_url": selected["download_url"],
+            "size": selected["size"],
+            "size_mb": round(selected["size"] / 1048576, 1),
+            "sha256_url": checksum_url,
+        }
+
+    def install_update(self, url: str, filename: str, sha256_url: str = "") -> dict:
+        if not safe_update_url(url) or not safe_update_url(sha256_url):
+            return {"ok": False, "error": "不安全的更新下載網址"}
+        safe_name = Path(filename or "").name
+        if not safe_name or not update_asset_matches(safe_name, platform.system().lower()):
+            return {"ok": False, "error": "更新檔名或平台不相符"}
+        folder = Path.home() / "Downloads"
+        if not folder.is_dir():
+            folder = data_dir()
+        folder.mkdir(parents=True, exist_ok=True)
+        destination = folder / safe_name
+        partial = destination.with_name(destination.name + ".part")
+        try:
+            with urllib.request.urlopen(urllib.request.Request(sha256_url, headers={"User-Agent": SUB_UA}), timeout=30) as response:
+                sums = response.read(128 * 1024).decode("utf-8", "replace")
+            expected = parse_sha256sums(sums, safe_name)
+            if not expected:
+                return {"ok": False, "error": "找不到更新檔的 SHA256 校驗值"}
+            request = urllib.request.Request(url, headers={"User-Agent": SUB_UA})
+            with urllib.request.urlopen(request, timeout=90) as response:
+                status = int(getattr(response, "status", 200))
+                if status < 200 or status >= 300:
+                    return {"ok": False, "error": f"更新伺服器回應 HTTP {status}"}
+                total = int(response.headers.get("Content-Length") or 0)
+                if total <= 0 or total > 700 * 1024 * 1024:
+                    return {"ok": False, "error": "更新檔大小無效或超過安全上限"}
+                digest = hashlib.sha256()
+                written = 0
+                with partial.open("wb") as handle:
+                    while True:
+                        chunk = response.read(1024 * 256)
+                        if not chunk:
+                            break
+                        written += len(chunk)
+                        if written > total:
+                            raise ValueError("更新檔大小超出宣告值")
+                        digest.update(chunk)
+                        handle.write(chunk)
+                if written != total:
+                    raise ValueError("更新檔下載不完整")
+                if digest.hexdigest().lower() != expected:
+                    raise ValueError("更新檔 SHA256 校驗失敗")
+                partial.replace(destination)
+            return {"ok": True, "path": str(destination), "filename": safe_name}
+        except Exception as exc:
+            try:
+                partial.unlink(missing_ok=True)
+            except OSError:
+                pass
+            return {"ok": False, "error": f"下載更新失敗：{exc}"}
+
+    def run_update_installer(self, path: str) -> dict:
+        try:
+            target = Path(path).resolve()
+            allowed_roots = [(Path.home() / "Downloads").resolve(), data_dir().resolve()]
+            if not any(target.parent == root for root in allowed_roots) or not target.is_file():
+                return {"ok": False, "error": "更新安裝檔位置不安全或不存在"}
+            suffix = target.suffix.lower()
+            if platform.system().lower() == "windows" and suffix == ".exe":
+                subprocess.Popen([str(target)], cwd=str(target.parent))
+            elif platform.system().lower() == "darwin" and suffix == ".dmg":
+                subprocess.Popen(["open", str(target)])
+            elif platform.system().lower() == "linux" and suffix in (".appimage", ".deb"):
+                subprocess.Popen(["xdg-open", str(target)])
+            else:
+                return {"ok": False, "error": "不支援的更新安裝檔格式"}
+            threading.Thread(target=self._quit_after_update, daemon=True).start()
+            return {"ok": True}
+        except Exception as exc:
+            return {"ok": False, "error": str(exc)}
+
+    def _quit_after_update(self) -> None:
+        time.sleep(0.8)
+        if self._on_quit:
+            self._on_quit()
 
     def record_ui_error(self, message: str, stack: str = "") -> dict:
         write_crash("ui", f"{message}\n{stack}")

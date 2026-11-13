@@ -140,14 +140,19 @@ function renderUpdateUi() {
   $("#sw-auto-update").checked = prefs.autoUpdateCheck !== false;
   const latest = latestUpdate?.latest ? "v" + latestUpdate.latest : "尚未檢查";
   $("#update-latest").textContent = latest;
-  const btn = $("#btn-open-update");
-  btn.disabled = !(latestUpdate && latestUpdate.update_available && latestUpdate.url);
-  if (latestUpdate && latestUpdate.update_available) {
-    $("#update-status").textContent = `有新版本 ${latest} 可用。`;
+  const hasUpdate = !!(latestUpdate && latestUpdate.update_available);
+  const asset = latestUpdate?.asset || null;
+  $("#btn-open-update").disabled = !(hasUpdate && latestUpdate.url);
+  $("#btn-install-update").disabled = !(hasUpdate && asset?.download_url && asset?.sha256_url);
+  $("#btn-install-update").textContent = hasUpdate
+    ? "立即更新（" + (asset?.size_mb || 0) + " MB）"
+    : "立即更新";
+  if (hasUpdate) {
+    $("#update-status").textContent = "有新版本 " + latest + " 可用。可下載並啟動安裝檔，或自行從更新頁安裝。";
   } else if (latestUpdate && latestUpdate.latest) {
     $("#update-status").textContent = "目前已是最新版本。";
   } else {
-    $("#update-status").textContent = "只檢查版本並提示；不會自動下載或執行安裝檔。";
+    $("#update-status").textContent = "可手動下載並安裝新版本；應用程式不會在背景自動執行安裝檔。";
   }
 }
 
@@ -167,7 +172,7 @@ async function checkForUpdates(manual = true) {
       prefs.lastUpdateCheck = Date.now();
       savePreferences();
       renderUpdateUi();
-      if (res.update_available) toast(`發現新版本 v${res.latest}`, "ok");
+      if (res.update_available) toast("發現新版本 v" + res.latest + "，可選擇立即更新", "ok");
       else if (manual) toast("目前已是最新版本", "ok");
       return res;
     }
@@ -486,6 +491,8 @@ const TAURI_SIG = {
   save_stats_export: ["format", "content"],
   record_ui_error: ["message", "stack"],
   open_url: ["url"],
+  install_update: ["url", "filename", "sha256Url"],
+  run_update_installer: ["path"],
 };
 
 async function api(fn, ...args) {
@@ -508,7 +515,7 @@ const demoCfg = {
   mixed_port: 7890,
   controller_port: 9090,
   core_version: "v1.19.33",
-  app_version: "0.6.0",
+  app_version: "0.6.1",
   data_dir: "C:\\Users\\…\\AppData\\Roaming\\KumoRoute",
   test_url: "https://cp.cloudflare.com/generate_204",
   profiles: [
@@ -1822,6 +1829,36 @@ function bindActions() {
     if (!latestUpdate || !latestUpdate.url) return;
     if (demo) window.open(latestUpdate.url, "_blank");
     else api("open_url", latestUpdate.url);
+  });
+  $("#btn-install-update").addEventListener("click", async () => {
+    const asset = latestUpdate && latestUpdate.asset;
+    if (!asset || !asset.download_url) {
+      if (latestUpdate && latestUpdate.url) {
+        if (demo) window.open(latestUpdate.url, "_blank");
+        else api("open_url", latestUpdate.url);
+      }
+      return;
+    }
+    const btn = $("#btn-install-update");
+    btn.disabled = true;
+    try {
+      toast("正在下載更新…", "ok");
+      const res = await api("install_update", asset.download_url, asset.filename, asset.sha256_url || "");
+      if (!res || !res.ok) {
+        toast((res && res.error) || "下載更新失敗", "error");
+        return;
+      }
+      toast("更新已下載：", "ok", res.path);
+      $("#update-status").textContent = "更新安裝檔已下載，請確認後由系統安裝。";
+      if (confirm(tr("更新安裝檔已下載完成。是否立即啟動安裝程式？\nKumoRoute 會在安裝程式啟動後自動退出。"))) {
+        const run = await api("run_update_installer", res.path);
+        if (!run || !run.ok) toast((run && run.error) || "啟動更新安裝檔失敗", "error");
+      }
+    } catch (e) {
+      toast(String(e), "error");
+    } finally {
+      renderUpdateUi();
+    }
   });
   const closeDiagnostics = () => {
     $("#diagnostics-modal").classList.add("hidden");
