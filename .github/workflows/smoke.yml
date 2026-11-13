@@ -68,7 +68,27 @@ jobs:
         run: python -c "from pathlib import Path; Path('tauri/.cargo/config.toml').unlink(missing_ok=True)"
 
       - name: Run Rust unit and integration tests
-        run: cargo test --manifest-path tauri/Cargo.toml -- --test-threads=1
+        shell: bash
+        run: |
+          set -o pipefail
+          cargo test --manifest-path tauri/Cargo.toml -- --test-threads=1 2>&1 | tee "$RUNNER_TEMP/rust-tests.log"
+
+      - name: Surface Rust test failure
+        if: failure()
+        shell: bash
+        run: |
+          log="$RUNNER_TEMP/rust-tests.log"
+          if [ -s "$log" ]; then
+            {
+              echo "### Rust test failure"
+              echo '```'
+              tail -n 160 "$log"
+              echo '```'
+            } >> "$GITHUB_STEP_SUMMARY"
+            while IFS= read -r line; do
+              [ -n "$line" ] && echo "::error title=Rust test failure::$line"
+            done < <(tail -n 40 "$log")
+          fi
 
       - name: Build Tauri binary
         working-directory: tauri
