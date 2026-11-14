@@ -39,6 +39,10 @@ let proxySearch = "";
 let proxyFilter = "all";
 let clearStatsPending = false;
 let clearStatsTimer = null;
+let vpnData = null;
+let vpnRefreshing = false;
+let vpnAdvancedBusy = false;
+let vpnRefreshTimer = null;
 
 /* ---------- helpers ---------- */
 
@@ -493,6 +497,9 @@ const TAURI_SIG = {
   open_url: ["url"],
   install_update: ["url", "filename", "sha256Url"],
   run_update_installer: ["path"],
+  vpn_connect: ["name"],
+  vpn_disconnect: ["name"],
+  vpn_set_advanced: ["setting", "enabled"],
 };
 
 async function api(fn, ...args) {
@@ -511,6 +518,8 @@ async function api(fn, ...args) {
 const demoCfg = {
   running: true,
   sys_proxy: false,
+  vpnConnected: true,
+  vpnAdvanced: { metered: true, roaming: true },
   mode: "rule",
   mixed_port: 7890,
   controller_port: 9090,
@@ -641,6 +650,16 @@ async function demoApi(fn, ...args) {
     case "save_settings": demoCfg.mixed_port = Number(args[0]); demoCfg.controller_port = Number(args[1]); return { ok: true };
     case "open_data_dir": return { ok: true };
     case "open_url": return { ok: true };
+    case "vpn_list": return {
+      ok: true,
+      supported: true,
+      connections: [{ name: "vn", server: "192.168.86.18", type: "Pptp", status: demoCfg.vpnConnected ? "Connected" : "Disconnected", connected: demoCfg.vpnConnected, remember_credential: true, all_user: false }],
+      advanced: { allow_metered: demoCfg.vpnAdvanced.metered, allow_roaming: demoCfg.vpnAdvanced.roaming },
+    };
+    case "vpn_connect": demoCfg.vpnConnected = true; return { ok: true, connected: true };
+    case "vpn_disconnect": demoCfg.vpnConnected = false; return { ok: true, disconnected: true };
+    case "vpn_set_advanced": demoCfg.vpnAdvanced[args[0]] = !!args[1]; return { ok: true, pending: false };
+    case "vpn_open_settings": return { ok: true };
     default: return { ok: true };
   }
 }
@@ -708,6 +727,7 @@ function renderAll() {
 
   renderProfiles();
   if (!state.running) { setSpeeds(0, 0, 0); }
+  if (page === "vpn") renderVpnPage();
 }
 
 function renderProfiles() {
@@ -1514,6 +1534,181 @@ function renderGroups() {
   renderProxyNodeList();
 }
 
+/* ---------- VPN ---------- */
+
+function vpnTypeLabel(type) {
+  const key = String(type || "").toLowerCase();
+  if (key === "pptp") return "PPTP";
+  if (key === "l2tp") return "L2TP";
+  if (key === "ikev2") return "IKEv2";
+  if (key === "sstp") return "SSTP";
+  if (key === "automatic") return "自動";
+  return String(type || "");
+}
+
+function vpnStatusInfo(item) {
+  const status = String(item && item.status || "").toLowerCase();
+  if (item && item.connected) return { label: "已連線", cls: "on" };
+  if (status === "connecting" || status === "authenticating") return { label: "連線中", cls: "warn" };
+  if (status === "disconnecting") return { label: "斷線中", cls: "warn" };
+  return { label: "未連線", cls: "" };
+}
+
+function renderVpnAdvanced() {
+  const available = !!(vpnData && vpnData.ok && vpnData.supported !== false);
+  const advanced = vpnData && vpnData.advanced ? vpnData.advanced : {};
+  [["metered", "allow_metered"], ["roaming", "allow_roaming"]].forEach(([setting, key]) => {
+    const btn = $(`#toggle-vpn-${setting}`);
+    if (!btn) return;
+    const value = available && !!advanced[key];
+    btn.setAttribute("aria-checked", value ? "true" : "false");
+    btn.disabled = !available || vpnAdvancedBusy;
+  });
+}
+
+async function refreshVpn(silent = false) {
+  if (vpnRefreshing) return vpnData;
+  vpnRefreshing = true;
+  const btn = $("#btn-vpn-refresh");
+  if (btn && !silent) btn.disabled = true;
+  try {
+    const res = demo ? await demoApi("vpn_list") : await api("vpn_list");
+    vpnData = res || { ok: false, supported: true, connections: [], error: "無法讀取 Windows VPN" };
+    renderVpnPage();
+    return vpnData;
+  } catch (e) {
+    vpnData = { ok: false, supported: true, connections: [], error: String(e) };
+    renderVpnPage();
+    if (!silent) toast(String(e), "error");
+    return vpnData;
+  } finally {
+    vpnRefreshing = false;
+    if (btn && !silent) btn.disabled = false;
+  }
+}
+
+function renderVpnPage() {
+  const box = $("#vpn-list");
+  const summary = $("#vpn-summary");
+  const warning = $("#vpn-warning");
+  if (!box || !summary || !warning) return;
+  renderVpnAdvanced();
+
+  const connections = vpnData && Array.isArray(vpnData.connections) ? vpnData.connections : [];
+  const connected = connections.filter((item) => item.connected);
+  warning.classList.toggle("hidden", !(connected.length && state && state.sys_proxy));
+  warning.textContent = connected.length && state && state.sys_proxy
+    ? "VPN 與系統代理同時開啟，路由可能衝突。建議只保留其中一種接管方式。"
+    : "";
+
+  if (vpnData && vpnData.supported === false) {
+    summary.textContent = "Windows VPN 無法使用。";
+    box.innerHTML = '<div class="vpn-empty">此功能僅支援 Windows 內建 VPN。</div>';
+    return;
+  }
+  if (vpnData && vpnData.ok === false) {
+    summary.textContent = "讀取 VPN 失敗。";
+    box.innerHTML = `<div class="vpn-empty">${esc(vpnData.error || "無法讀取 Windows VPN")}</div>`;
+    return;
+  }
+
+  summary.textContent = connected.length
+    ? "已連線 VPN：" + connected.length
+    : connections.length
+      ? "目前沒有 VPN 連線。"
+      : "尚未建立 VPN 連線。";
+  if (!connections.length) {
+    box.innerHTML = '<div class="vpn-empty">尚未建立 VPN 連線。點「新增 VPN」開啟 Windows 設定。</div>';
+    return;
+  }
+  box.innerHTML = connections.map((item) => {
+    const status = vpnStatusInfo(item);
+    const detail = [vpnTypeLabel(item.type), item.remember_credential ? "Windows 已記住登入資訊" : "連線時可能要求登入"].filter(Boolean).join(" · ");
+    return `<div class="vpn-row" data-vpn-name="${esc(item.name)}">
+      <div class="vpn-icon" aria-hidden="true">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M12 3l7 3v5c0 4.5-2.9 8.2-7 10-4.1-1.8-7-5.5-7-10V6l7-3z"/><path d="M9.5 12.5l1.7 1.7 3.5-3.8"/></svg>
+      </div>
+      <div class="vpn-copy">
+        <div class="vpn-name" data-no-i18n data-no-i18n-attrs title="${esc(item.name)}">${esc(item.name)}</div>
+        <div class="vpn-meta"><span data-no-i18n>${esc(item.server || "—")}</span>${detail ? " · " + esc(detail) : ""}</div>
+      </div>
+      <span class="vpn-status ${status.cls}">${status.label}</span>
+      <div class="vpn-actions">
+        <button class="btn ghost small" data-vpn-action="${item.connected ? "disconnect" : "connect"}" data-vpn-name="${esc(item.name)}">${item.connected ? "斷開" : "連線"}</button>
+      </div>
+    </div>`;
+  }).join("");
+}
+
+async function vpnAction(name, action) {
+  try {
+    const res = demo ? await demoApi("vpn_" + action, name) : await api("vpn_" + action, name);
+    if (!res || !res.ok) {
+      toast((res && res.error) || "VPN 操作失敗", "error");
+      return;
+    }
+    if (action === "connect") {
+      toast(res.opened ? (res.message || "請在 Windows VPN 視窗完成登入。") : "VPN 已連線", "ok");
+      if (res.opened) {
+        window.setTimeout(() => refreshVpn(true), 1800);
+        window.setTimeout(() => refreshVpn(true), 5000);
+      }
+    } else {
+      toast("VPN 已斷開", "ok");
+    }
+    await refreshVpn(true);
+  } catch (e) {
+    toast(String(e), "error");
+  }
+}
+
+async function setVpnAdvanced(setting, enabled) {
+  if (vpnAdvancedBusy || !vpnData || !vpnData.ok || vpnData.supported === false) return;
+  const btn = $(`#toggle-vpn-${setting}`);
+  const key = setting === "metered" ? "allow_metered" : "allow_roaming";
+  vpnAdvancedBusy = true;
+  if (btn) {
+    btn.disabled = true;
+    btn.setAttribute("aria-checked", enabled ? "true" : "false");
+  }
+  try {
+    const res = demo ? await demoApi("vpn_set_advanced", setting, enabled) : await api("vpn_set_advanced", setting, enabled);
+    if (!res || !res.ok) {
+      toast((res && res.error) || "VPN 進階設定更新失敗", "error");
+      return;
+    }
+    if (res.pending) {
+      if (!vpnData.advanced) vpnData.advanced = {};
+      vpnData.advanced[key] = enabled;
+      toast(res.message || "請在 Windows 的 UAC 提示中允許變更。", "ok");
+      window.setTimeout(() => refreshVpn(true), 1600);
+      window.setTimeout(() => refreshVpn(true), 4800);
+    } else {
+      toast("VPN 進階設定已更新", "ok");
+      await refreshVpn(true);
+    }
+  } catch (e) {
+    toast(String(e), "error");
+  } finally {
+    vpnAdvancedBusy = false;
+    renderVpnAdvanced();
+  }
+}
+
+function startVpnPolling() {
+  if (vpnRefreshTimer !== null) window.clearInterval(vpnRefreshTimer);
+  vpnRefreshTimer = window.setInterval(() => {
+    if (page === "vpn" && !document.hidden && !vpnRefreshing) refreshVpn(true);
+  }, 8000);
+}
+
+function stopVpnPolling() {
+  if (vpnRefreshTimer !== null) {
+    window.clearInterval(vpnRefreshTimer);
+    vpnRefreshTimer = null;
+  }
+}
+
 /* ---------- logs ---------- */
 
 async function refreshLogs() {
@@ -1535,6 +1730,12 @@ function switchPage(name) {
   $$(".nav-item").forEach((b) => b.classList.toggle("active", b.dataset.page === name));
   $$(".page").forEach((p) => p.classList.toggle("active", p.id === "page-" + name));
   if (name === "proxies") refreshGroups();
+  if (name === "vpn") {
+    refreshVpn();
+    startVpnPolling();
+  } else {
+    stopVpnPolling();
+  }
   if (name === "logs") refreshLogs();
   if (name === "settings") renderAll();
   if (name === "stats") {
@@ -1822,6 +2023,7 @@ function bindActions() {
     applyLanguage(prefs.language);
     renderAll();
     if (page === "proxies") await refreshGroups();
+    if (page === "vpn") renderVpnPage();
     if (page === "stats") renderStatsPage();
     if (window.KumoI18n) window.KumoI18n.refresh();
   });
@@ -1926,6 +2128,32 @@ function bindActions() {
     if (ev.key === "Escape" && !$("#diagnostics-modal").classList.contains("hidden")) closeDiagnostics();
   });
 
+  $("#btn-vpn-refresh").addEventListener("click", () => refreshVpn());
+  $("#btn-vpn-settings").addEventListener("click", async () => {
+    if (demo) {
+      toast("DEMO 模式不開啟 Windows VPN 設定", "error");
+      return;
+    }
+    const res = await api("vpn_open_settings");
+    if (!res || !res.ok) toast((res && res.error) || "無法開啟 Windows VPN 設定", "error");
+  });
+  $("#vpn-list").addEventListener("click", async (ev) => {
+    const btn = ev.target.closest("[data-vpn-action]");
+    if (!btn || btn.disabled) return;
+    btn.disabled = true;
+    try {
+      await vpnAction(btn.dataset.vpnName, btn.dataset.vpnAction);
+    } finally {
+      btn.disabled = false;
+    }
+  });
+  $$(".toggle-switch[data-vpn-setting]").forEach((btn) => {
+    btn.addEventListener("click", () => {
+      const next = btn.getAttribute("aria-checked") !== "true";
+      setVpnAdvanced(btn.dataset.vpnSetting, next);
+    });
+  });
+
   $$("[data-open-url]").forEach((b) => b.addEventListener("click", () => {
     const url = b.dataset.openUrl;
     if (demo) window.open(url, "_blank");
@@ -1961,6 +2189,7 @@ document.addEventListener("DOMContentLoaded", async () => {
 
   await refreshState();
   if (page === "proxies") await refreshGroups();
+  if (page === "vpn") await refreshVpn();
   if (page === "logs") await refreshLogs();
   drawSpark();
   renderStatsPage();
@@ -1980,6 +2209,7 @@ document.addEventListener("DOMContentLoaded", async () => {
   });
   document.addEventListener("visibilitychange", () => {
     if (document.hidden) saveUsageData(true);
+    else if (page === "vpn") refreshVpn(true);
   });
   window.addEventListener("pagehide", () => saveUsageData(true));
   window.addEventListener("beforeunload", () => saveUsageData(true));

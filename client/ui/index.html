@@ -31,6 +31,10 @@
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M12 3l9 5-9 5-9-5 9-5z"/><path d="M3 12l9 5 9-5"/><path d="M3 16l9 5 9-5"/></svg>
         <span>代理</span>
       </button>
+      <button class="nav-item" data-page="vpn">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M12 3l7 3v5c0 4.5-2.9 8.2-7 10-4.1-1.8-7-5.5-7-10V6l7-3z"/><path d="M9.5 12.5l1.7 1.7 3.5-3.8"/></svg>
+        <span>VPN</span>
+      </button>
       <button class="nav-item" data-page="profiles">
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M4 19.5V5a2 2 0 012-2h14v18H6.5a2.5 2.5 0 010-5H20"/></svg>
         <span>訂閱</span>
@@ -246,6 +250,48 @@
       </header>
       <div id="groups" class="groups"></div>
       <div id="proxies-empty" class="empty hidden">核心未啟動或配置中沒有策略組。</div>
+    </section>
+
+    <section id="page-vpn" class="page">
+      <header class="page-head">
+        <h1>VPN</h1>
+        <p>管理 Windows 內建 VPN 連線；帳號與密碼由 Windows 保管。</p>
+      </header>
+
+      <div id="vpn-warning" class="usage-alert vpn-warning hidden"></div>
+      <div class="card">
+        <div class="vpn-toolbar">
+          <div>
+            <div class="card-title">VPN 連線</div>
+            <div class="hint" id="vpn-summary">正在讀取 Windows VPN…</div>
+          </div>
+          <div class="row-actions vpn-toolbar-actions">
+            <button class="btn ghost small" id="btn-vpn-refresh">重新整理</button>
+            <button class="btn primary small" id="btn-vpn-settings">新增 VPN</button>
+          </div>
+        </div>
+        <div id="vpn-list" class="vpn-list">
+          <div class="vpn-empty">正在讀取 Windows VPN…</div>
+        </div>
+        <p class="hint vpn-note">KumoRoute 不保存 VPN 密碼；若 Windows 沒有記住登入資訊，會開啟系統 VPN 視窗。VPN 與系統代理同時開啟時可能發生路由衝突。</p>
+      </div>
+
+      <div class="vpn-section-label">所有 VPN 連線的進階設定</div>
+      <div class="card vpn-advanced-card">
+        <div class="vpn-option-row">
+          <div class="vpn-option-title">允許透過按流量計費的網路進行 VPN 連線</div>
+          <button class="toggle-switch" id="toggle-vpn-metered" data-vpn-setting="metered" role="switch" aria-checked="false" aria-label="允許透過按流量計費的網路進行 VPN 連線" disabled>
+            <span></span>
+          </button>
+        </div>
+        <div class="vpn-option-row">
+          <div class="vpn-option-title">允許漫遊時進行 VPN 連線</div>
+          <button class="toggle-switch" id="toggle-vpn-roaming" data-vpn-setting="roaming" role="switch" aria-checked="false" aria-label="允許漫遊時進行 VPN 連線" disabled>
+            <span></span>
+          </button>
+        </div>
+      </div>
+      <p class="hint vpn-admin-note">變更進階設定時，Windows 會要求系統管理員權限。</p>
     </section>
 
     <section id="page-profiles" class="page">

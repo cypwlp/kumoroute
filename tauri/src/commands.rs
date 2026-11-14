@@ -1,6 +1,7 @@
 use std::fs::{self, File};
 use std::io::{Read, Write};
 use std::path::Path;
+use std::process::Command;
 use std::sync::Mutex;
 use std::time::Duration;
 
@@ -95,6 +96,107 @@ fn parse_sha256sums(text: &str, filename: &str) -> Option<String> {
         }
     }
     None
+}
+
+fn hidden_command(program: &str) -> Command {
+    #[allow(unused_mut)]
+    let mut command = Command::new(program);
+    #[cfg(windows)]
+    {
+        use std::os::windows::process::CommandExt;
+        command.creation_flags(0x0800_0000);
+    }
+    command
+}
+
+const VPN_REGISTRY_KEY: &str =
+    r"SYSTEM\CurrentControlSet\Services\RasMan\Parameters\Config\VpnCostedNetworkSettings";
+
+const VPN_POWERSHELL_SCRIPT: &str = r#"
+$ErrorActionPreference = 'SilentlyContinue'
+$items = @()
+$items += Get-VpnConnection
+$items += Get-VpnConnection -AllUserConnection
+$advanced = Get-ItemProperty -Path 'HKLM:\SYSTEM\CurrentControlSet\Services\RasMan\Parameters\Config\VpnCostedNetworkSettings'
+[pscustomobject]@{
+  Connections = @($items | Sort-Object Name -Unique | Select-Object Name,ServerAddress,TunnelType,ConnectionStatus,RememberCredential,AllUserConnection)
+  AllowMetered = -not [bool]$advanced.NoCostedNetwork
+  AllowRoaming = -not [bool]$advanced.NoRoamingNetwork
+} | ConvertTo-Json -Depth 5 -Compress
+"#;
+
+fn vpn_snapshot() -> Result<(Vec<Value>, Value), String> {
+    if std::env::consts::OS != "windows" {
+        return Ok((Vec::new(), json!({"allow_metered": true, "allow_roaming": true})));
+    }
+    let output = hidden_command("powershell.exe")
+        .args(["-NoLogo", "-NoProfile", "-NonInteractive", "-Command", VPN_POWERSHELL_SCRIPT])
+        .output()
+        .map_err(|e| format!("讀取 Windows VPN 失敗：{e}"))?;
+    let raw = String::from_utf8_lossy(&output.stdout).trim().to_string();
+    if raw.is_empty() {
+        if !output.status.success() {
+            let detail = String::from_utf8_lossy(&output.stderr).trim().to_string();
+            return Err(if detail.is_empty() {
+                format!("讀取 Windows VPN 失敗（代碼 {}）", output.status.code().unwrap_or(-1))
+            } else {
+                format!("讀取 Windows VPN 失敗：{detail}")
+            });
+        }
+        return Ok((Vec::new(), json!({"allow_metered": true, "allow_roaming": true})));
+    }
+    let parsed: Value = serde_json::from_str(&raw).map_err(|e| format!("解析 Windows VPN 失敗：{e}"))?;
+    let allow_metered = parsed.get("AllowMetered").and_then(Value::as_bool).unwrap_or(true);
+    let allow_roaming = parsed.get("AllowRoaming").and_then(Value::as_bool).unwrap_or(true);
+    let raw_connections = parsed
+        .get("Connections")
+        .cloned()
+        .or_else(|| if parsed.is_array() { Some(parsed.clone()) } else { None })
+        .unwrap_or_else(|| Value::Array(Vec::new()));
+    let items = raw_connections.as_array().cloned().unwrap_or_else(|| {
+        if raw_connections.is_object() { vec![raw_connections] } else { Vec::new() }
+    });
+
+    let mut connections = Vec::new();
+    for item in items {
+        let name = item.get("Name").and_then(Value::as_str).unwrap_or("").trim().to_string();
+        if name.is_empty() {
+            continue;
+        }
+        let status = item.get("ConnectionStatus").and_then(Value::as_str).unwrap_or("Disconnected").to_string();
+        connections.push(json!({
+            "name": name,
+            "server": item.get("ServerAddress").and_then(Value::as_str).unwrap_or(""),
+            "type": item.get("TunnelType").and_then(Value::as_str).unwrap_or(""),
+            "status": status,
+            "connected": status.eq_ignore_ascii_case("connected"),
+            "remember_credential": item.get("RememberCredential").and_then(Value::as_bool).unwrap_or(false),
+            "all_user": item.get("AllUserConnection").and_then(Value::as_bool).unwrap_or(false),
+        }));
+    }
+    connections.sort_by(|a, b| {
+        let ac = a.get("connected").and_then(Value::as_bool).unwrap_or(false);
+        let bc = b.get("connected").and_then(Value::as_bool).unwrap_or(false);
+        bc.cmp(&ac).then_with(|| {
+            let an = a.get("name").and_then(Value::as_str).unwrap_or("").to_ascii_lowercase();
+            let bn = b.get("name").and_then(Value::as_str).unwrap_or("").to_ascii_lowercase();
+            an.cmp(&bn)
+        })
+    });
+    Ok((connections, json!({
+        "allow_metered": allow_metered,
+        "allow_roaming": allow_roaming,
+    })))
+}
+
+fn vpn_profile(name: &str) -> Result<Option<Value>, String> {
+    let wanted = name.trim().to_ascii_lowercase();
+    Ok(vpn_snapshot()?.0.into_iter().find(|item| {
+        item.get("name")
+            .and_then(Value::as_str)
+            .map(|value| value.to_ascii_lowercase() == wanted)
+            .unwrap_or(false)
+    }))
 }
 
 fn public_entry(e: &Entry) -> Value {
@@ -605,6 +707,125 @@ pub fn run_update_installer(app: tauri::AppHandle, path: String) -> Value {
         app.exit(0);
     });
     ok()
+}
+
+#[tauri::command]
+pub fn vpn_list() -> Value {
+    if std::env::consts::OS != "windows" {
+        return json!({
+            "ok": true,
+            "supported": false,
+            "connections": [],
+            "advanced": {"allow_metered": true, "allow_roaming": true}
+        });
+    }
+    match vpn_snapshot() {
+        Ok((connections, advanced)) => json!({
+            "ok": true,
+            "supported": true,
+            "connections": connections,
+            "advanced": advanced
+        }),
+        Err(e) => json!({
+            "ok": false,
+            "supported": true,
+            "connections": [],
+            "advanced": {"allow_metered": true, "allow_roaming": true},
+            "error": e
+        }),
+    }
+}
+
+#[tauri::command]
+pub fn vpn_connect(name: String) -> Value {
+    if std::env::consts::OS != "windows" {
+        return err("Windows VPN 僅支援 Windows");
+    }
+    let profile = match vpn_profile(&name) {
+        Ok(Some(profile)) => profile,
+        Ok(None) => return err("找不到該 VPN 連線"),
+        Err(e) => return err(e),
+    };
+    let Some(profile_name) = profile.get("name").and_then(Value::as_str) else {
+        return err("VPN 連線名稱無效");
+    };
+    match hidden_command("rasdial.exe").arg(profile_name).output() {
+        Ok(output) if output.status.success() => json!({"ok": true, "connected": true}),
+        Ok(_) => match Command::new("rasphone.exe").args(["-d", profile_name]).spawn() {
+            Ok(_) => json!({"ok": true, "opened": true, "message": "請在 Windows VPN 視窗完成登入。"}),
+            Err(e) => err(format!("啟動 VPN 連線視窗失敗：{e}")),
+        },
+        Err(e) => err(format!("啟動 VPN 連線失敗：{e}")),
+    }
+}
+
+#[tauri::command]
+pub fn vpn_disconnect(name: String) -> Value {
+    if std::env::consts::OS != "windows" {
+        return err("Windows VPN 僅支援 Windows");
+    }
+    let profile = match vpn_profile(&name) {
+        Ok(Some(profile)) => profile,
+        Ok(None) => return err("找不到該 VPN 連線"),
+        Err(e) => return err(e),
+    };
+    let Some(profile_name) = profile.get("name").and_then(Value::as_str) else {
+        return err("VPN 連線名稱無效");
+    };
+    match hidden_command("rasdial.exe").args([profile_name, "/disconnect"]).output() {
+        Ok(output) if output.status.success() => json!({"ok": true, "disconnected": true}),
+        Ok(output) => err(format!("VPN 斷線失敗（代碼 {}）", output.status.code().unwrap_or(-1))),
+        Err(e) => err(format!("VPN 斷線失敗：{e}")),
+    }
+}
+
+#[tauri::command]
+pub fn vpn_open_settings() -> Value {
+    if std::env::consts::OS != "windows" {
+        return err("Windows VPN 僅支援 Windows");
+    }
+    match open::that("ms-settings:network-vpn") {
+        Ok(_) => ok(),
+        Err(e) => err(format!("無法開啟 Windows VPN 設定：{e}")),
+    }
+}
+
+#[tauri::command]
+pub fn vpn_set_advanced(setting: String, enabled: bool) -> Value {
+    if std::env::consts::OS != "windows" {
+        return err("Windows VPN 僅支援 Windows");
+    }
+    let value_name = match setting.trim().to_ascii_lowercase().as_str() {
+        "metered" => "NoCostedNetwork",
+        "roaming" => "NoRoamingNetwork",
+        _ => return err("無效的 VPN 進階設定"),
+    };
+    let data = if enabled { "0" } else { "1" };
+    let direct = hidden_command("reg.exe")
+        .args([
+            "add", VPN_REGISTRY_KEY,
+            "/v", value_name, "/t", "REG_DWORD", "/d", data, "/f",
+        ])
+        .output();
+    if matches!(&direct, Ok(output) if output.status.success()) {
+        return json!({"ok": true, "pending": false});
+    }
+    let script = format!(
+        "Start-Process -FilePath 'reg.exe' -Verb RunAs -WindowStyle Hidden -Wait \
+         -ArgumentList @('add','{}','/v','{}','/t','REG_DWORD','/d','{}','/f')",
+        VPN_REGISTRY_KEY, value_name, data
+    );
+    match hidden_command("powershell.exe")
+        .args(["-NoLogo", "-NoProfile", "-NonInteractive", "-Command", script.as_str()])
+        .spawn()
+    {
+        Ok(_) => json!({
+            "ok": true,
+            "pending": true,
+            "message": "請在 Windows 的 UAC 提示中允許變更。"
+        }),
+        Err(e) => err(format!("更新 VPN 進階設定失敗：{e}")),
+    }
 }
 
 #[tauri::command]

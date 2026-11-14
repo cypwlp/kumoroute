@@ -11,6 +11,7 @@
 正式客戶端為 **Rust / Tauri 2**（`tauri/`），圖形介面與 Python 後備版（`client/`）共用同一套 HTML/CSS/JS。
 
 - 一鍵系統代理（退出自動還原；Windows 登錄檔 / GNOME gsettings / macOS networksetup）
+- Windows 內建 VPN 管理：連線／中斷、狀態同步、計量網路與漫遊進階設定；變更進階設定時由 Windows UAC 確認
 - Clash 訂閱管理（遠端訂閱 / 本機 YAML）
 - 代理頁以「目前策略組 → 實際出口」呈現，策略組側欄＋節點搜尋／篩選，避免大型訂閱清單失焦
 - 介面個人化：跟隨系統／深色／淺色主題，繁體中文／简体中文／English 即時切換並保存偏好；自訂配置與節點名稱不被翻譯

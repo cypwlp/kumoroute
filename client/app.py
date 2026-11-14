@@ -234,6 +234,26 @@ def parse_sha256sums(text: str, filename: str) -> str | None:
     return None
 
 
+VPN_REGISTRY_KEY = r"SYSTEM\CurrentControlSet\Services\RasMan\Parameters\Config\VpnCostedNetworkSettings"
+VPN_ADVANCED_VALUES = {
+    "metered": "NoCostedNetwork",
+    "roaming": "NoRoamingNetwork",
+}
+
+VPN_POWERSHELL_SCRIPT = r"""
+$ErrorActionPreference = 'SilentlyContinue'
+$items = @()
+$items += Get-VpnConnection
+$items += Get-VpnConnection -AllUserConnection
+$advanced = Get-ItemProperty -Path 'HKLM:\SYSTEM\CurrentControlSet\Services\RasMan\Parameters\Config\VpnCostedNetworkSettings'
+[pscustomobject]@{
+  Connections = @($items | Sort-Object Name -Unique | Select-Object Name,ServerAddress,TunnelType,ConnectionStatus,RememberCredential,AllUserConnection)
+  AllowMetered = -not [bool]$advanced.NoCostedNetwork
+  AllowRoaming = -not [bool]$advanced.NoRoamingNetwork
+} | ConvertTo-Json -Depth 5 -Compress
+"""
+
+
 DEFAULT_SETTINGS = {
     "mixed_port": 7890,
     "controller_port": 9090,
@@ -1193,6 +1213,176 @@ class Api:
         time.sleep(0.8)
         if self._on_quit:
             self._on_quit()
+
+    def vpn_list(self) -> dict:
+        if platform.system().lower() != "windows":
+            return {
+                "ok": True,
+                "supported": False,
+                "connections": [],
+                "advanced": {"allow_metered": True, "allow_roaming": True},
+            }
+        try:
+            result = subprocess.run(
+                ["powershell.exe", "-NoLogo", "-NoProfile", "-NonInteractive", "-Command", VPN_POWERSHELL_SCRIPT],
+                capture_output=True,
+                text=True,
+                timeout=20,
+                creationflags=CREATE_NO_WINDOW,
+            )
+            raw = (result.stdout or "").strip()
+            if not raw:
+                detail = (result.stderr or "").strip()
+                if result.returncode != 0:
+                    raise RuntimeError(detail or f"PowerShell 結束代碼 {result.returncode}")
+                return {
+                    "ok": True,
+                    "supported": True,
+                    "connections": [],
+                    "advanced": {"allow_metered": True, "allow_roaming": True},
+                }
+
+            data = json.loads(raw)
+            if isinstance(data, list):
+                items = data
+                advanced = {"allow_metered": True, "allow_roaming": True}
+            elif isinstance(data, dict):
+                items = data.get("Connections") or []
+                if isinstance(items, dict):
+                    items = [items]
+                advanced = {
+                    "allow_metered": bool(data.get("AllowMetered", True)),
+                    "allow_roaming": bool(data.get("AllowRoaming", True)),
+                }
+            else:
+                items = []
+                advanced = {"allow_metered": True, "allow_roaming": True}
+
+            connections = []
+            for item in items:
+                if not isinstance(item, dict):
+                    continue
+                name = str(item.get("Name") or "").strip()
+                if not name:
+                    continue
+                status = str(item.get("ConnectionStatus") or "Disconnected").strip()
+                connections.append({
+                    "name": name,
+                    "server": str(item.get("ServerAddress") or ""),
+                    "type": str(item.get("TunnelType") or ""),
+                    "status": status,
+                    "connected": status.lower() == "connected",
+                    "remember_credential": bool(item.get("RememberCredential")),
+                    "all_user": bool(item.get("AllUserConnection")),
+                })
+            connections.sort(key=lambda item: (not item["connected"], item["name"].lower()))
+            return {"ok": True, "supported": True, "connections": connections, "advanced": advanced}
+        except Exception as exc:
+            return {
+                "ok": False,
+                "supported": True,
+                "connections": [],
+                "advanced": {"allow_metered": True, "allow_roaming": True},
+                "error": f"讀取 Windows VPN 失敗：{exc}",
+            }
+
+    def list_vpn_connections(self) -> dict:
+        return self.vpn_list()
+
+    def _vpn_profile(self, name: str) -> dict | None:
+        result = self.vpn_list()
+        if not result.get("ok"):
+            return None
+        wanted = str(name or "").strip().lower()
+        return next((item for item in result.get("connections", []) if item["name"].lower() == wanted), None)
+
+    def vpn_connect(self, name: str) -> dict:
+        if platform.system().lower() != "windows":
+            return {"ok": False, "error": "Windows VPN 僅支援 Windows"}
+        profile = self._vpn_profile(name)
+        if not profile:
+            return {"ok": False, "error": "找不到該 VPN 連線"}
+        try:
+            result = subprocess.run(
+                ["rasdial.exe", profile["name"]],
+                capture_output=True,
+                text=True,
+                timeout=40,
+                creationflags=CREATE_NO_WINDOW,
+            )
+            if result.returncode == 0:
+                return {"ok": True, "connected": True}
+            subprocess.Popen(["rasphone.exe", "-d", profile["name"]])
+            return {"ok": True, "opened": True, "message": "請在 Windows VPN 視窗完成登入。"}
+        except Exception as exc:
+            return {"ok": False, "error": f"啟動 VPN 連線失敗：{exc}"}
+
+    def vpn_disconnect(self, name: str) -> dict:
+        if platform.system().lower() != "windows":
+            return {"ok": False, "error": "Windows VPN 僅支援 Windows"}
+        profile = self._vpn_profile(name)
+        if not profile:
+            return {"ok": False, "error": "找不到該 VPN 連線"}
+        try:
+            result = subprocess.run(
+                ["rasdial.exe", profile["name"], "/disconnect"],
+                capture_output=True,
+                text=True,
+                timeout=20,
+                creationflags=CREATE_NO_WINDOW,
+            )
+            if result.returncode != 0:
+                return {"ok": False, "error": f"VPN 斷線失敗（代碼 {result.returncode}）"}
+            return {"ok": True, "disconnected": True}
+        except Exception as exc:
+            return {"ok": False, "error": f"VPN 斷線失敗：{exc}"}
+
+    def vpn_set_advanced(self, setting: str, enabled: bool) -> dict:
+        if platform.system().lower() != "windows":
+            return {"ok": False, "error": "Windows VPN 僅支援 Windows"}
+        value_name = VPN_ADVANCED_VALUES.get(str(setting or "").strip().lower())
+        if not value_name:
+            return {"ok": False, "error": "無效的 VPN 進階設定"}
+        data = "0" if bool(enabled) else "1"
+        try:
+            result = subprocess.run(
+                [
+                    "reg.exe", "add", VPN_REGISTRY_KEY,
+                    "/v", value_name, "/t", "REG_DWORD", "/d", data, "/f",
+                ],
+                capture_output=True,
+                text=True,
+                timeout=15,
+                creationflags=CREATE_NO_WINDOW,
+            )
+            if result.returncode == 0:
+                return {"ok": True, "pending": False}
+
+            elevation_script = (
+                "Start-Process -FilePath 'reg.exe' -Verb RunAs -WindowStyle Hidden -Wait "
+                f"-ArgumentList @('add','{VPN_REGISTRY_KEY}','/v','{value_name}',"
+                f"'/t','REG_DWORD','/d','{data}','/f')"
+            )
+            subprocess.Popen(
+                ["powershell.exe", "-NoLogo", "-NoProfile", "-NonInteractive", "-Command", elevation_script],
+                creationflags=CREATE_NO_WINDOW,
+            )
+            return {
+                "ok": True,
+                "pending": True,
+                "message": "請在 Windows 的 UAC 提示中允許變更。",
+            }
+        except Exception as exc:
+            return {"ok": False, "error": f"更新 VPN 進階設定失敗：{exc}"}
+
+    def vpn_open_settings(self) -> dict:
+        if platform.system().lower() != "windows":
+            return {"ok": False, "error": "Windows VPN 僅支援 Windows"}
+        try:
+            os.startfile("ms-settings:network-vpn")
+            return {"ok": True}
+        except Exception as exc:
+            return {"ok": False, "error": f"無法開啟 Windows VPN 設定：{exc}"}
 
     def record_ui_error(self, message: str, stack: str = "") -> dict:
         write_crash("ui", f"{message}\n{stack}")
