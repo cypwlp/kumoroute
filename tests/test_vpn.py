@@ -34,12 +34,15 @@ class WindowsVpnTests(unittest.TestCase):
         })
         completed = mock.Mock(returncode=0, stdout=payload, stderr="")
         with mock.patch.object(app.platform, "system", return_value="Windows"), \
-             mock.patch.object(app.subprocess, "run", return_value=completed):
+             mock.patch.object(app.subprocess, "run", return_value=completed), \
+             mock.patch.object(app, "_vpn_credential_read", return_value={"username": "super", "password": "secret"}):
             result = app.Api.__new__(app.Api).vpn_list()
         self.assertTrue(result["ok"])
         self.assertTrue(result["supported"])
         self.assertEqual(result["connections"][0]["name"], "vn")
         self.assertTrue(result["connections"][0]["connected"])
+        self.assertTrue(result["connections"][0]["credential_saved"])
+        self.assertEqual(result["connections"][0]["saved_username"], "super")
         self.assertEqual(result["advanced"], {"allow_metered": False, "allow_roaming": True})
 
     def test_legacy_list_payload_is_still_accepted(self):
@@ -53,12 +56,60 @@ class WindowsVpnTests(unittest.TestCase):
         }])
         completed = mock.Mock(returncode=0, stdout=payload, stderr="")
         with mock.patch.object(app.platform, "system", return_value="Windows"), \
-             mock.patch.object(app.subprocess, "run", return_value=completed):
+             mock.patch.object(app.subprocess, "run", return_value=completed), \
+             mock.patch.object(app, "_vpn_credential_read", return_value=None):
             result = app.Api.__new__(app.Api).list_vpn_connections()
         self.assertTrue(result["ok"])
         self.assertEqual(result["connections"][0]["type"], "Ikev2")
         self.assertTrue(result["connections"][0]["all_user"])
         self.assertEqual(result["advanced"], {"allow_metered": True, "allow_roaming": True})
+
+    def test_connect_without_saved_credential_requests_login(self):
+        api = app.Api.__new__(app.Api)
+        profile = {"name": "vn", "saved_username": ""}
+        with mock.patch.object(app.platform, "system", return_value="Windows"), \
+             mock.patch.object(api, "_vpn_profile", return_value=profile), \
+             mock.patch.object(app, "_vpn_credential_read", return_value=None):
+            result = api.vpn_connect("vn")
+        self.assertFalse(result["ok"])
+        self.assertTrue(result["needs_credentials"])
+
+    def test_connect_uses_saved_credential_and_native_rasdial(self):
+        api = app.Api.__new__(app.Api)
+        profile = {"name": "vn", "saved_username": "super"}
+        with mock.patch.object(app.platform, "system", return_value="Windows"), \
+             mock.patch.object(api, "_vpn_profile", return_value=profile), \
+             mock.patch.object(app, "_vpn_credential_read", return_value={"username": "super", "password": "secret"}), \
+             mock.patch.object(app, "_vpn_ras_dial", return_value=(0, "")) as dial:
+            result = api.vpn_connect("vn")
+        self.assertTrue(result["ok"])
+        dial.assert_called_once_with("vn", "super", "secret")
+
+    def test_stale_saved_credential_is_deleted_and_requests_login(self):
+        api = app.Api.__new__(app.Api)
+        profile = {"name": "vn", "saved_username": "super"}
+        with mock.patch.object(app.platform, "system", return_value="Windows"), \
+             mock.patch.object(api, "_vpn_profile", return_value=profile), \
+             mock.patch.object(app, "_vpn_credential_read", return_value={"username": "super", "password": "old"}), \
+             mock.patch.object(app, "_vpn_ras_dial", return_value=(691, "bad password")), \
+             mock.patch.object(app, "_vpn_credential_delete") as delete:
+            result = api.vpn_connect("vn")
+        self.assertTrue(result["needs_credentials"])
+        self.assertTrue(result["stale_credentials"])
+        delete.assert_called_once_with("vn")
+
+    def test_connect_with_credentials_saves_in_windows_credential_manager(self):
+        api = app.Api.__new__(app.Api)
+        profile = {"name": "vn"}
+        with mock.patch.object(app.platform, "system", return_value="Windows"), \
+             mock.patch.object(api, "_vpn_profile", return_value=profile), \
+             mock.patch.object(app, "_vpn_ras_dial", return_value=(0, "")) as dial, \
+             mock.patch.object(app, "_vpn_credential_write", return_value=True) as save:
+            result = api.vpn_connect_with_credentials("vn", " super ", "secret", True)
+        self.assertTrue(result["ok"])
+        self.assertTrue(result["credentials_saved"])
+        dial.assert_called_once_with("vn", "super", "secret")
+        save.assert_called_once_with("vn", "super", "secret")
 
     def test_advanced_setting_rejects_unknown_name(self):
         with mock.patch.object(app.platform, "system", return_value="Windows"):
@@ -102,11 +153,16 @@ class WindowsVpnTests(unittest.TestCase):
         self.assertIn('id="btn-vpn-settings"', html)
         self.assertIn('id="toggle-vpn-metered"', html)
         self.assertIn('id="toggle-vpn-roaming"', html)
+        self.assertIn('id="vpn-credential-modal"', html)
+        self.assertIn('id="vpn-credential-form"', html)
         self.assertIn('api("vpn_list")', js)
         self.assertIn('api("vpn_open_settings")', js)
         self.assertIn('api("vpn_set_advanced", setting, enabled)', js)
+        self.assertIn('api("vpn_connect_with_credentials", name, username, password, remember)', js)
+        self.assertIn('vpn_connect_with_credentials: ["name", "username", "password", "remember"]', js)
         self.assertIn('vpn_set_advanced: ["setting", "enabled"]', js)
         self.assertIn('allow-vpn-set-advanced', capabilities)
+        self.assertIn('allow-vpn-connect-with-credentials', capabilities)
 
 
 if __name__ == "__main__":

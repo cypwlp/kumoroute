@@ -14,7 +14,7 @@
       <img src="icon.png" alt="KumoRoute" class="brand-icon">
       <div>
         <div class="brand-name">KumoRoute</div>
-        <div class="brand-ver" id="app-version">v0.7.0</div>
+        <div class="brand-ver" id="app-version">v0.7.1</div>
       </div>
     </div>
 
@@ -273,7 +273,7 @@
         <div id="vpn-list" class="vpn-list">
           <div class="vpn-empty">正在讀取 Windows VPN…</div>
         </div>
-        <p class="hint vpn-note">KumoRoute 不保存 VPN 密碼；若 Windows 沒有記住登入資訊，會開啟系統 VPN 視窗。VPN 與系統代理同時開啟時可能發生路由衝突。</p>
+        <p class="hint vpn-note">KumoRoute 使用 Windows 認證管理員加密保存 VPN 憑證；首次連線需輸入一次。VPN 與系統代理同時開啟時可能發生路由衝突。</p>
       </div>
 
       <div class="vpn-section-label">所有 VPN 連線的進階設定</div>
@@ -428,6 +428,34 @@
         <button class="btn ghost" id="btn-cancel-diagnostics">取消</button>
       </div>
     </div>
+  </div>
+
+  <div id="vpn-credential-modal" class="modal hidden" role="dialog" aria-modal="true" aria-labelledby="vpn-credential-title">
+    <form id="vpn-credential-form" class="modal-card vpn-credential-card">
+      <div class="modal-head">
+        <div>
+          <div class="card-title" id="vpn-credential-title">VPN 登入資訊</div>
+          <p class="hint" id="vpn-credential-summary">首次連線需要輸入一次；儲存後由 Windows 認證管理員保管。</p>
+        </div>
+        <button type="button" class="modal-close" id="btn-close-vpn-credential" aria-label="關閉 VPN 登入視窗">×</button>
+      </div>
+      <div class="vpn-credential-fields">
+        <div class="about-row"><span class="muted">VPN 連線</span><strong id="vpn-credential-name" data-no-i18n>—</strong></div>
+        <label class="field">使用者名稱
+          <input type="text" id="vpn-credential-user" autocomplete="username" spellcheck="false" required>
+        </label>
+        <label class="field">密碼
+          <input type="password" id="vpn-credential-password" autocomplete="current-password" required>
+        </label>
+        <label class="check privacy-check"><input type="checkbox" id="vpn-credential-remember" checked> 儲存在 Windows 認證管理員</label>
+        <p class="hint">KumoRoute 不以明文保存密碼；憑證由 Windows 加密保管，之後可直接連線。</p>
+        <div class="form-error hidden" id="vpn-credential-error"></div>
+      </div>
+      <div class="modal-actions">
+        <button type="button" class="btn ghost" id="btn-cancel-vpn-credential">取消</button>
+        <button type="submit" class="btn primary" id="btn-submit-vpn-credential">連線</button>
+      </div>
+    </form>
   </div>
 
   <div id="toast" class="toast hidden"></div>

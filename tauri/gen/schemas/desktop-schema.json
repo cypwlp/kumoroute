@@ -339,6 +339,12 @@
           "markdownDescription": "Enables the vpn_connect command without any pre-configured scope."
         },
         {
+          "description": "Enables the vpn_connect_with_credentials command without any pre-configured scope.",
+          "type": "string",
+          "const": "allow-vpn-connect-with-credentials",
+          "markdownDescription": "Enables the vpn_connect_with_credentials command without any pre-configured scope."
+        },
+        {
           "description": "Enables the vpn_disconnect command without any pre-configured scope.",
           "type": "string",
           "const": "allow-vpn-disconnect",
@@ -523,6 +529,12 @@
           "type": "string",
           "const": "deny-vpn-connect",
           "markdownDescription": "Denies the vpn_connect command without any pre-configured scope."
+        },
+        {
+          "description": "Denies the vpn_connect_with_credentials command without any pre-configured scope.",
+          "type": "string",
+          "const": "deny-vpn-connect-with-credentials",
+          "markdownDescription": "Denies the vpn_connect_with_credentials command without any pre-configured scope."
         },
         {
           "description": "Denies the vpn_disconnect command without any pre-configured scope.",

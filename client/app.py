@@ -26,7 +26,7 @@ import yaml
 
 APP_NAME = "KumoRoute"
 LEGACY_APP_NAME = "MyClash"
-APP_VERSION = "0.7.0"
+APP_VERSION = "0.7.1"
 CREATE_NO_WINDOW = 0x08000000
 SUB_UA = f"KumoRoute/{APP_VERSION}"
 TEST_URL = "https://cp.cloudflare.com/generate_204"
@@ -252,6 +252,132 @@ $advanced = Get-ItemProperty -Path 'HKLM:\SYSTEM\CurrentControlSet\Services\RasM
   AllowRoaming = -not [bool]$advanced.NoRoamingNetwork
 } | ConvertTo-Json -Depth 5 -Compress
 """
+
+
+VPN_CREDENTIAL_PREFIX = "KumoRoute/VPN/"
+VPN_RAS_ERRORS = {
+    645: "Windows VPN 驗證失敗",
+    691: "使用者名稱或密碼錯誤",
+    720: "PPP 連線協商失敗",
+    809: "VPN 連線逾時或伺服器無回應",
+    868: "找不到 VPN 伺服器",
+}
+
+
+class _RasDialParamsW(ctypes.Structure):
+    _pack_ = 4
+    _fields_ = [
+        ("dwSize", ctypes.c_uint32),
+        ("szEntryName", ctypes.c_wchar * 257),
+        ("szPhoneNumber", ctypes.c_wchar * 129),
+        ("szCallbackNumber", ctypes.c_wchar * 129),
+        ("szUserName", ctypes.c_wchar * 257),
+        ("szPassword", ctypes.c_wchar * 257),
+        ("szDomain", ctypes.c_wchar * 16),
+        ("dwSubEntry", ctypes.c_uint32),
+        ("dwCallbackId", ctypes.c_size_t),
+        ("dwIfIndex", ctypes.c_uint32),
+        ("szEncPassword", ctypes.c_void_p),
+    ]
+
+
+class _FileTime(ctypes.Structure):
+    _fields_ = [("dwLowDateTime", ctypes.c_uint32), ("dwHighDateTime", ctypes.c_uint32)]
+
+
+class _CredentialW(ctypes.Structure):
+    _fields_ = [
+        ("Flags", ctypes.c_uint32),
+        ("Type", ctypes.c_uint32),
+        ("TargetName", ctypes.c_wchar_p),
+        ("Comment", ctypes.c_wchar_p),
+        ("LastWritten", _FileTime),
+        ("CredentialBlobSize", ctypes.c_uint32),
+        ("CredentialBlob", ctypes.POINTER(ctypes.c_ubyte)),
+        ("Persist", ctypes.c_uint32),
+        ("AttributeCount", ctypes.c_uint32),
+        ("Attributes", ctypes.c_void_p),
+        ("TargetAlias", ctypes.c_wchar_p),
+        ("UserName", ctypes.c_wchar_p),
+    ]
+
+
+def _vpn_credential_target(name: str) -> str:
+    return VPN_CREDENTIAL_PREFIX + str(name or "").strip()
+
+
+def _advapi32():
+    api = ctypes.WinDLL("advapi32")
+    api.CredWriteW.argtypes = [ctypes.POINTER(_CredentialW), ctypes.c_uint32]
+    api.CredWriteW.restype = ctypes.c_int
+    api.CredReadW.argtypes = [ctypes.c_wchar_p, ctypes.c_uint32, ctypes.c_uint32, ctypes.POINTER(ctypes.POINTER(_CredentialW))]
+    api.CredReadW.restype = ctypes.c_int
+    api.CredDeleteW.argtypes = [ctypes.c_wchar_p, ctypes.c_uint32, ctypes.c_uint32]
+    api.CredDeleteW.restype = ctypes.c_int
+    api.CredFree.argtypes = [ctypes.c_void_p]
+    api.CredFree.restype = None
+    return api
+
+
+def _vpn_credential_read(name: str) -> dict | None:
+    api = _advapi32()
+    target = _vpn_credential_target(name)
+    credential = ctypes.POINTER(_CredentialW)()
+    if not api.CredReadW(target, 1, 0, ctypes.byref(credential)) or not credential:
+        return None
+    try:
+        item = credential.contents
+        raw = ctypes.string_at(item.CredentialBlob, item.CredentialBlobSize)
+        return {
+            "username": str(item.UserName or ""),
+            "password": raw.decode("utf-16-le", "replace"),
+        }
+    finally:
+        api.CredFree(ctypes.cast(credential, ctypes.c_void_p))
+
+
+def _vpn_credential_write(name: str, username: str, password: str) -> bool:
+    api = _advapi32()
+    blob = password.encode("utf-16-le")
+    buffer = ctypes.create_string_buffer(blob)
+    item = _CredentialW()
+    item.Type = 1
+    item.TargetName = _vpn_credential_target(name)
+    item.CredentialBlobSize = len(blob)
+    item.CredentialBlob = ctypes.cast(buffer, ctypes.POINTER(ctypes.c_ubyte))
+    item.Persist = 2
+    item.UserName = str(username or "")
+    return bool(api.CredWriteW(ctypes.byref(item), 0))
+
+
+def _vpn_credential_delete(name: str) -> None:
+    try:
+        _advapi32().CredDeleteW(_vpn_credential_target(name), 1, 0)
+    except Exception:
+        pass
+
+
+def _vpn_ras_dial(name: str, username: str, password: str) -> tuple[int, str]:
+    api = ctypes.WinDLL("rasapi32")
+    api.RasDialW.argtypes = [
+        ctypes.c_void_p, ctypes.c_wchar_p, ctypes.POINTER(_RasDialParamsW), ctypes.c_uint32,
+        ctypes.c_void_p, ctypes.POINTER(ctypes.c_void_p),
+    ]
+    api.RasDialW.restype = ctypes.c_uint32
+    api.RasHangUpW.argtypes = [ctypes.c_void_p]
+    api.RasHangUpW.restype = ctypes.c_uint32
+    params = _RasDialParamsW()
+    params.dwSize = ctypes.sizeof(params)
+    params.szEntryName = name
+    params.szUserName = username
+    params.szPassword = password
+    connection = ctypes.c_void_p()
+    code = int(api.RasDialW(None, None, ctypes.byref(params), 0, None, ctypes.byref(connection)))
+    if code:
+        if connection.value:
+            api.RasHangUpW(connection)
+        return code, VPN_RAS_ERRORS.get(code, f"VPN 連線失敗（錯誤 {code}）")
+    return 0, ""
 
 
 DEFAULT_SETTINGS = {
@@ -1266,6 +1392,10 @@ class Api:
                 if not name:
                     continue
                 status = str(item.get("ConnectionStatus") or "Disconnected").strip()
+                try:
+                    credential = _vpn_credential_read(name)
+                except Exception:
+                    credential = None
                 connections.append({
                     "name": name,
                     "server": str(item.get("ServerAddress") or ""),
@@ -1274,6 +1404,8 @@ class Api:
                     "connected": status.lower() == "connected",
                     "remember_credential": bool(item.get("RememberCredential")),
                     "all_user": bool(item.get("AllUserConnection")),
+                    "credential_saved": credential is not None,
+                    "saved_username": credential.get("username", "") if credential else "",
                 })
             connections.sort(key=lambda item: (not item["connected"], item["name"].lower()))
             return {"ok": True, "supported": True, "connections": connections, "advanced": advanced}
@@ -1303,17 +1435,46 @@ class Api:
         if not profile:
             return {"ok": False, "error": "找不到該 VPN 連線"}
         try:
-            result = subprocess.run(
-                ["rasdial.exe", profile["name"]],
-                capture_output=True,
-                text=True,
-                timeout=40,
-                creationflags=CREATE_NO_WINDOW,
+            credential = _vpn_credential_read(profile["name"])
+        except Exception as exc:
+            return {"ok": False, "error": f"讀取 Windows VPN 憑證失敗：{exc}"}
+        if not credential:
+            return {"ok": False, "needs_credentials": True, "username": profile.get("saved_username", "")}
+        try:
+            code, message = _vpn_ras_dial(
+                profile["name"], credential["username"], credential["password"]
             )
-            if result.returncode == 0:
+            if code == 0:
                 return {"ok": True, "connected": True}
-            subprocess.Popen(["rasphone.exe", "-d", profile["name"]])
-            return {"ok": True, "opened": True, "message": "請在 Windows VPN 視窗完成登入。"}
+            if code in (645, 691):
+                _vpn_credential_delete(profile["name"])
+                return {"ok": False, "needs_credentials": True, "username": credential["username"], "stale_credentials": True}
+            return {"ok": False, "error": message, "code": code}
+        except Exception as exc:
+            return {"ok": False, "error": f"啟動 VPN 連線失敗：{exc}"}
+
+    def vpn_connect_with_credentials(
+        self, name: str, username: str, password: str, remember: bool = True
+    ) -> dict:
+        if platform.system().lower() != "windows":
+            return {"ok": False, "error": "Windows VPN 僅支援 Windows"}
+        profile = self._vpn_profile(name)
+        if not profile:
+            return {"ok": False, "error": "找不到該 VPN 連線"}
+        username = str(username or "").strip()
+        password = str(password or "")
+        if not username or not password:
+            return {"ok": False, "error": "請輸入 VPN 使用者名稱與密碼"}
+        try:
+            code, message = _vpn_ras_dial(profile["name"], username, password)
+            if code != 0:
+                return {"ok": False, "error": message, "code": code}
+            if remember:
+                if not _vpn_credential_write(profile["name"], username, password):
+                    return {"ok": True, "connected": True, "credentials_saved": False, "warning": "已連線，但無法保存 VPN 憑證"}
+            else:
+                _vpn_credential_delete(profile["name"])
+            return {"ok": True, "connected": True, "credentials_saved": bool(remember)}
         except Exception as exc:
             return {"ok": False, "error": f"啟動 VPN 連線失敗：{exc}"}
 

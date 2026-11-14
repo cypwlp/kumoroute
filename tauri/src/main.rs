@@ -109,6 +109,7 @@ fn main() {
             commands::run_update_installer,
             commands::vpn_list,
             commands::vpn_connect,
+            commands::vpn_connect_with_credentials,
             commands::vpn_disconnect,
             commands::vpn_set_advanced,
             commands::vpn_open_settings,

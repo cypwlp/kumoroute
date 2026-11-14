@@ -1,4 +1,4 @@
-KumoRoute v0.7.0 — 輕量 Mihomo 桌面客戶端（Windows x64 免安裝版，Rust/Tauri；相容 Clash 配置）
+KumoRoute v0.7.1 — 輕量 Mihomo 桌面客戶端（Windows x64 免安裝版，Rust/Tauri；相容 Clash 配置）
 
 使用方法
 1. 解壓縮到任意資料夾（請保持 KumoRoute.exe、core\、與程式同層）
@@ -12,7 +12,7 @@ KumoRoute v0.7.0 — 輕量 Mihomo 桌面客戶端（Windows x64 免安裝版，
 - 若系統代理開關打開後又被關掉，是其他安全軟體在守護代理設定，請關閉其代理守護。
 - 統計資料只保存在本機；可在「統計」頁匯出 CSV／JSON 或清除。
 - 設定頁可切換跟隨系統／深色／淺色主題，以及繁體中文／简体中文／English；偏好會保存在本機。
-- Windows 版可管理系統內建 VPN：查看狀態、連線／斷線、開啟新增設定，並切換計量網路與漫遊選項。
+- Windows 版可管理系統內建 VPN：首次登入後憑證由 Windows 認證管理員加密保存，之後可直接連線；並可切換計量網路與漫遊選項。
 - 設定頁可檢查更新；使用者確認後可下載並啟動安裝檔。未簽名版本仍可能出現 SmartScreen／Gatekeeper 警告。
 - 當機紀錄保存在本機 logs 目錄，設定頁可匯出去識別化診斷資料。
 - 設定目錄：%APPDATA%\KumoRoute

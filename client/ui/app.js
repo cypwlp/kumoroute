@@ -43,6 +43,7 @@ let vpnData = null;
 let vpnRefreshing = false;
 let vpnAdvancedBusy = false;
 let vpnRefreshTimer = null;
+let pendingVpnCredential = null;
 
 /* ---------- helpers ---------- */
 
@@ -499,6 +500,7 @@ const TAURI_SIG = {
   run_update_installer: ["path"],
   vpn_connect: ["name"],
   vpn_disconnect: ["name"],
+  vpn_connect_with_credentials: ["name", "username", "password", "remember"],
   vpn_set_advanced: ["setting", "enabled"],
 };
 
@@ -518,13 +520,15 @@ async function api(fn, ...args) {
 const demoCfg = {
   running: true,
   sys_proxy: false,
-  vpnConnected: true,
+  vpnConnected: false,
   vpnAdvanced: { metered: true, roaming: true },
+  vpnCredentialSaved: false,
+  vpnUsername: "super",
   mode: "rule",
   mixed_port: 7890,
   controller_port: 9090,
   core_version: "v1.19.33",
-  app_version: "0.7.0",
+  app_version: "0.7.1",
   data_dir: "C:\\Users\\…\\AppData\\Roaming\\KumoRoute",
   test_url: "https://cp.cloudflare.com/generate_204",
   profiles: [
@@ -653,10 +657,15 @@ async function demoApi(fn, ...args) {
     case "vpn_list": return {
       ok: true,
       supported: true,
-      connections: [{ name: "vn", server: "192.168.86.18", type: "Pptp", status: demoCfg.vpnConnected ? "Connected" : "Disconnected", connected: demoCfg.vpnConnected, remember_credential: true, all_user: false }],
+      connections: [{ name: "vn", server: "192.168.86.18", type: "Pptp", status: demoCfg.vpnConnected ? "Connected" : "Disconnected", connected: demoCfg.vpnConnected, remember_credential: true, all_user: false, credential_saved: demoCfg.vpnCredentialSaved, saved_username: demoCfg.vpnCredentialSaved ? demoCfg.vpnUsername : "" }],
       advanced: { allow_metered: demoCfg.vpnAdvanced.metered, allow_roaming: demoCfg.vpnAdvanced.roaming },
     };
-    case "vpn_connect": demoCfg.vpnConnected = true; return { ok: true, connected: true };
+    case "vpn_connect":
+      if (!demoCfg.vpnCredentialSaved) return { ok: false, needs_credentials: true, username: demoCfg.vpnUsername };
+      demoCfg.vpnConnected = true; return { ok: true, connected: true };
+    case "vpn_connect_with_credentials":
+      demoCfg.vpnConnected = true; demoCfg.vpnUsername = String(args[1] || ""); demoCfg.vpnCredentialSaved = !!args[3];
+      return { ok: true, connected: true, credentials_saved: !!args[3] };
     case "vpn_disconnect": demoCfg.vpnConnected = false; return { ok: true, disconnected: true };
     case "vpn_set_advanced": demoCfg.vpnAdvanced[args[0]] = !!args[1]; return { ok: true, pending: false };
     case "vpn_open_settings": return { ok: true };
@@ -1623,7 +1632,7 @@ function renderVpnPage() {
   }
   box.innerHTML = connections.map((item) => {
     const status = vpnStatusInfo(item);
-    const detail = [vpnTypeLabel(item.type), item.remember_credential ? "Windows 已記住登入資訊" : "連線時可能要求登入"].filter(Boolean).join(" · ");
+    const detail = [vpnTypeLabel(item.type), item.credential_saved ? "Windows 已安全儲存登入資訊" : "首次連線需輸入密碼"].filter(Boolean).join(" · ");
     return `<div class="vpn-row" data-vpn-name="${esc(item.name)}">
       <div class="vpn-icon" aria-hidden="true">
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M12 3l7 3v5c0 4.5-2.9 8.2-7 10-4.1-1.8-7-5.5-7-10V6l7-3z"/><path d="M9.5 12.5l1.7 1.7 3.5-3.8"/></svg>
@@ -1643,22 +1652,80 @@ function renderVpnPage() {
 async function vpnAction(name, action) {
   try {
     const res = demo ? await demoApi("vpn_" + action, name) : await api("vpn_" + action, name);
+    if (res && res.needs_credentials) {
+      if (res.stale_credentials) toast("VPN 憑證已失效，請重新輸入密碼", "error");
+      openVpnCredentialModal(name, res.username || "");
+      return;
+    }
     if (!res || !res.ok) {
       toast((res && res.error) || "VPN 操作失敗", "error");
       return;
     }
-    if (action === "connect") {
-      toast(res.opened ? (res.message || "請在 Windows VPN 視窗完成登入。") : "VPN 已連線", "ok");
-      if (res.opened) {
-        window.setTimeout(() => refreshVpn(true), 1800);
-        window.setTimeout(() => refreshVpn(true), 5000);
-      }
-    } else {
-      toast("VPN 已斷開", "ok");
-    }
+    if (action === "connect") toast("VPN 已連線", "ok");
+    else toast("VPN 已斷開", "ok");
     await refreshVpn(true);
   } catch (e) {
     toast(String(e), "error");
+  }
+}
+
+function openVpnCredentialModal(name, username = "") {
+  pendingVpnCredential = { name };
+  $("#vpn-credential-name").textContent = name;
+  $("#vpn-credential-user").value = username || "";
+  $("#vpn-credential-password").value = "";
+  $("#vpn-credential-remember").checked = true;
+  $("#vpn-credential-error").textContent = "";
+  $("#vpn-credential-error").classList.add("hidden");
+  $("#vpn-credential-modal").classList.remove("hidden");
+  window.setTimeout(() => {
+    const target = username ? $("#vpn-credential-password") : $("#vpn-credential-user");
+    if (target) target.focus();
+  }, 0);
+}
+
+function closeVpnCredentialModal() {
+  $("#vpn-credential-modal").classList.add("hidden");
+  $("#vpn-credential-password").value = "";
+  pendingVpnCredential = null;
+}
+
+async function submitVpnCredentials(ev) {
+  ev.preventDefault();
+  if (!pendingVpnCredential) return;
+  const username = $("#vpn-credential-user").value.trim();
+  const password = $("#vpn-credential-password").value;
+  const remember = $("#vpn-credential-remember").checked;
+  const errorBox = $("#vpn-credential-error");
+  const btn = $("#btn-submit-vpn-credential");
+  if (!username || !password) {
+    errorBox.textContent = "請輸入 VPN 使用者名稱與密碼";
+    errorBox.classList.remove("hidden");
+    return;
+  }
+  btn.disabled = true;
+  btn.textContent = "連線中…";
+  errorBox.classList.add("hidden");
+  try {
+    const name = pendingVpnCredential.name;
+    const res = demo
+      ? await demoApi("vpn_connect_with_credentials", name, username, password, remember)
+      : await api("vpn_connect_with_credentials", name, username, password, remember);
+    if (!res || !res.ok) {
+      errorBox.textContent = (res && res.error) || "VPN 操作失敗";
+      errorBox.classList.remove("hidden");
+      return;
+    }
+    closeVpnCredentialModal();
+    toast(res.credentials_saved ? "VPN 已連線，登入資訊已保存" : "VPN 已連線", "ok");
+    if (res.warning) toast(res.warning, "error");
+    await refreshVpn(true);
+  } catch (e) {
+    errorBox.textContent = String(e);
+    errorBox.classList.remove("hidden");
+  } finally {
+    btn.disabled = false;
+    btn.textContent = "連線";
   }
 }
 
@@ -2125,7 +2192,9 @@ function bindActions() {
     if (ev.target === $("#diagnostics-modal")) closeDiagnostics();
   });
   document.addEventListener("keydown", (ev) => {
-    if (ev.key === "Escape" && !$("#diagnostics-modal").classList.contains("hidden")) closeDiagnostics();
+    if (ev.key !== "Escape") return;
+    if (!$("#vpn-credential-modal").classList.contains("hidden")) closeVpnCredentialModal();
+    else if (!$("#diagnostics-modal").classList.contains("hidden")) closeDiagnostics();
   });
 
   $("#btn-vpn-refresh").addEventListener("click", () => refreshVpn());
@@ -2152,6 +2221,12 @@ function bindActions() {
       const next = btn.getAttribute("aria-checked") !== "true";
       setVpnAdvanced(btn.dataset.vpnSetting, next);
     });
+  });
+  $("#vpn-credential-form").addEventListener("submit", submitVpnCredentials);
+  $("#btn-close-vpn-credential").addEventListener("click", closeVpnCredentialModal);
+  $("#btn-cancel-vpn-credential").addEventListener("click", closeVpnCredentialModal);
+  $("#vpn-credential-modal").addEventListener("click", (ev) => {
+    if (ev.target === $("#vpn-credential-modal")) closeVpnCredentialModal();
   });
 
   $$("[data-open-url]").forEach((b) => b.addEventListener("click", () => {

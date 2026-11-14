@@ -13,6 +13,20 @@ use crate::core::{self, Core};
 use crate::proxy::{self, ProxyRecovery};
 use crate::state::{data_dir, Entry, Profiles, Store, APP_VERSION, SUB_UA, TEST_URL};
 
+#[cfg(windows)]
+use windows::core::{PCWSTR, PWSTR};
+#[cfg(windows)]
+use windows::Win32::Foundation::FILETIME;
+#[cfg(windows)]
+use windows::Win32::NetworkManagement::Rras::{
+    RasDialW, RasHangUpW, HRASCONN, RASDIALPARAMSW,
+};
+#[cfg(windows)]
+use windows::Win32::Security::Credentials::{
+    CredDeleteW, CredFree, CredReadW, CredWriteW, CREDENTIALW, CRED_FLAGS,
+    CRED_PERSIST_LOCAL_MACHINE, CRED_TYPE_GENERIC,
+};
+
 pub struct AppState {
     pub store: Store,
     pub profiles: Profiles,
@@ -125,6 +139,151 @@ $advanced = Get-ItemProperty -Path 'HKLM:\SYSTEM\CurrentControlSet\Services\RasM
 } | ConvertTo-Json -Depth 5 -Compress
 "#;
 
+const VPN_CREDENTIAL_PREFIX: &str = "KumoRoute/VPN/";
+
+#[derive(Clone)]
+struct VpnCredential {
+    username: String,
+    password: String,
+}
+
+fn vpn_credential_target(name: &str) -> String {
+    format!("{VPN_CREDENTIAL_PREFIX}{}", name.trim())
+}
+
+fn vpn_ras_error(code: u32) -> String {
+    match code {
+        645 => "Windows VPN 驗證失敗".into(),
+        691 => "使用者名稱或密碼錯誤".into(),
+        720 => "PPP 連線協商失敗".into(),
+        809 => "VPN 連線逾時或伺服器無回應".into(),
+        868 => "找不到 VPN 伺服器".into(),
+        _ => format!("VPN 連線失敗（錯誤 {code}）"),
+    }
+}
+
+#[cfg(windows)]
+fn wide_string(value: &str) -> Vec<u16> {
+    value.encode_utf16().chain(std::iter::once(0)).collect()
+}
+
+#[cfg(windows)]
+fn copy_wide(dst: &mut [u16], value: &str) {
+    let limit = dst.len().saturating_sub(1);
+    for (slot, ch) in dst.iter_mut().zip(value.encode_utf16().take(limit)) {
+        *slot = ch;
+    }
+    if let Some(last) = dst.last_mut() {
+        *last = 0;
+    }
+}
+
+#[cfg(windows)]
+unsafe fn pwstr_string(value: PWSTR) -> String {
+    if value.0.is_null() {
+        return String::new();
+    }
+    let mut len = 0usize;
+    while *value.0.add(len) != 0 {
+        len += 1;
+    }
+    String::from_utf16_lossy(std::slice::from_raw_parts(value.0, len))
+}
+
+#[cfg(windows)]
+fn vpn_credential_read(name: &str) -> Result<Option<VpnCredential>, String> {
+    let target = wide_string(&vpn_credential_target(name));
+    let mut raw: *mut CREDENTIALW = std::ptr::null_mut();
+    if unsafe { CredReadW(PCWSTR(target.as_ptr()), CRED_TYPE_GENERIC, 0, &mut raw) }.is_err()
+        || raw.is_null()
+    {
+        return Ok(None);
+    }
+    let item = unsafe { &*raw };
+    let username = unsafe { pwstr_string(item.UserName) };
+    let password = if item.CredentialBlob.is_null() || item.CredentialBlobSize == 0 {
+        String::new()
+    } else {
+        let bytes = unsafe {
+            std::slice::from_raw_parts(item.CredentialBlob, item.CredentialBlobSize as usize)
+        };
+        let words: Vec<u16> = bytes
+            .chunks_exact(2)
+            .map(|chunk| u16::from_le_bytes([chunk[0], chunk[1]]))
+            .collect();
+        String::from_utf16_lossy(&words)
+    };
+    unsafe { CredFree(raw.cast()) };
+    Ok(Some(VpnCredential { username, password }))
+}
+
+#[cfg(not(windows))]
+fn vpn_credential_read(_name: &str) -> Result<Option<VpnCredential>, String> {
+    Ok(None)
+}
+
+#[cfg(windows)]
+fn vpn_credential_write(name: &str, username: &str, password: &str) -> Result<(), String> {
+    let mut target = wide_string(&vpn_credential_target(name));
+    let mut user = wide_string(username);
+    let mut blob: Vec<u8> = password
+        .encode_utf16()
+        .flat_map(|value| value.to_le_bytes())
+        .collect();
+    let item = CREDENTIALW {
+        Flags: CRED_FLAGS(0),
+        Type: CRED_TYPE_GENERIC,
+        TargetName: PWSTR(target.as_mut_ptr()),
+        Comment: PWSTR::null(),
+        LastWritten: FILETIME::default(),
+        CredentialBlobSize: blob.len() as u32,
+        CredentialBlob: blob.as_mut_ptr(),
+        Persist: CRED_PERSIST_LOCAL_MACHINE,
+        AttributeCount: 0,
+        Attributes: std::ptr::null_mut(),
+        TargetAlias: PWSTR::null(),
+        UserName: PWSTR(user.as_mut_ptr()),
+    };
+    unsafe { CredWriteW(&item, 0) }.map_err(|e| format!("保存 Windows VPN 憑證失敗：{e}"))
+}
+
+#[cfg(not(windows))]
+fn vpn_credential_write(_name: &str, _username: &str, _password: &str) -> Result<(), String> {
+    Err("Windows VPN 僅支援 Windows".into())
+}
+
+#[cfg(windows)]
+fn vpn_credential_delete(name: &str) {
+    let target = wide_string(&vpn_credential_target(name));
+    let _ = unsafe { CredDeleteW(PCWSTR(target.as_ptr()), CRED_TYPE_GENERIC, 0) };
+}
+
+#[cfg(not(windows))]
+fn vpn_credential_delete(_name: &str) {}
+
+#[cfg(windows)]
+fn vpn_ras_dial(name: &str, username: &str, password: &str) -> Result<(), (u32, String)> {
+    let mut params = RASDIALPARAMSW::default();
+    params.dwSize = std::mem::size_of::<RASDIALPARAMSW>() as u32;
+    copy_wide(&mut params.szEntryName, name);
+    copy_wide(&mut params.szUserName, username);
+    copy_wide(&mut params.szPassword, password);
+    let mut connection = HRASCONN::default();
+    let code = unsafe { RasDialW(None, PCWSTR::null(), &params, 0, None, &mut connection) };
+    if code == 0 {
+        return Ok(());
+    }
+    if !connection.is_invalid() {
+        let _ = unsafe { RasHangUpW(connection) };
+    }
+    Err((code, vpn_ras_error(code)))
+}
+
+#[cfg(not(windows))]
+fn vpn_ras_dial(_name: &str, _username: &str, _password: &str) -> Result<(), (u32, String)> {
+    Err((0, "Windows VPN 僅支援 Windows".into()))
+}
+
 fn vpn_snapshot() -> Result<(Vec<Value>, Value), String> {
     if std::env::consts::OS != "windows" {
         return Ok((Vec::new(), json!({"allow_metered": true, "allow_roaming": true})));
@@ -164,6 +323,9 @@ fn vpn_snapshot() -> Result<(Vec<Value>, Value), String> {
             continue;
         }
         let status = item.get("ConnectionStatus").and_then(Value::as_str).unwrap_or("Disconnected").to_string();
+        let credential = vpn_credential_read(&name).ok().flatten();
+        let credential_saved = credential.is_some();
+        let saved_username = credential.map(|value| value.username).unwrap_or_default();
         connections.push(json!({
             "name": name,
             "server": item.get("ServerAddress").and_then(Value::as_str).unwrap_or(""),
@@ -172,6 +334,8 @@ fn vpn_snapshot() -> Result<(Vec<Value>, Value), String> {
             "connected": status.eq_ignore_ascii_case("connected"),
             "remember_credential": item.get("RememberCredential").and_then(Value::as_bool).unwrap_or(false),
             "all_user": item.get("AllUserConnection").and_then(Value::as_bool).unwrap_or(false),
+            "credential_saved": credential_saved,
+            "saved_username": saved_username,
         }));
     }
     connections.sort_by(|a, b| {
@@ -749,13 +913,75 @@ pub fn vpn_connect(name: String) -> Value {
     let Some(profile_name) = profile.get("name").and_then(Value::as_str) else {
         return err("VPN 連線名稱無效");
     };
-    match hidden_command("rasdial.exe").arg(profile_name).output() {
-        Ok(output) if output.status.success() => json!({"ok": true, "connected": true}),
-        Ok(_) => match Command::new("rasphone.exe").args(["-d", profile_name]).spawn() {
-            Ok(_) => json!({"ok": true, "opened": true, "message": "請在 Windows VPN 視窗完成登入。"}),
-            Err(e) => err(format!("啟動 VPN 連線視窗失敗：{e}")),
-        },
-        Err(e) => err(format!("啟動 VPN 連線失敗：{e}")),
+    let credential = match vpn_credential_read(profile_name) {
+        Ok(Some(value)) => value,
+        Ok(None) => {
+            return json!({
+                "ok": false,
+                "needs_credentials": true,
+                "username": profile.get("saved_username").and_then(Value::as_str).unwrap_or("")
+            });
+        }
+        Err(e) => return err(e),
+    };
+    match vpn_ras_dial(profile_name, &credential.username, &credential.password) {
+        Ok(()) => json!({"ok": true, "connected": true}),
+        Err((code, _)) if code == 645 || code == 691 => {
+            vpn_credential_delete(profile_name);
+            json!({
+                "ok": false,
+                "needs_credentials": true,
+                "stale_credentials": true,
+                "username": credential.username
+            })
+        }
+        Err((code, message)) => json!({"ok": false, "error": message, "code": code}),
+    }
+}
+
+#[tauri::command]
+pub fn vpn_connect_with_credentials(
+    name: String,
+    username: String,
+    password: String,
+    remember: bool,
+) -> Value {
+    if std::env::consts::OS != "windows" {
+        return err("Windows VPN 僅支援 Windows");
+    }
+    let profile = match vpn_profile(&name) {
+        Ok(Some(profile)) => profile,
+        Ok(None) => return err("找不到該 VPN 連線"),
+        Err(e) => return err(e),
+    };
+    let Some(profile_name) = profile.get("name").and_then(Value::as_str) else {
+        return err("VPN 連線名稱無效");
+    };
+    let username = username.trim().to_string();
+    if username.is_empty() || password.is_empty() {
+        return err("請輸入 VPN 使用者名稱與密碼");
+    }
+    match vpn_ras_dial(profile_name, &username, &password) {
+        Ok(()) => {
+            if remember {
+                if let Err(e) = vpn_credential_write(profile_name, &username, &password) {
+                    return json!({
+                        "ok": true,
+                        "connected": true,
+                        "credentials_saved": false,
+                        "warning": format!("已連線，但{e}")
+                    });
+                }
+            } else {
+                vpn_credential_delete(profile_name);
+            }
+            json!({
+                "ok": true,
+                "connected": true,
+                "credentials_saved": remember
+            })
+        }
+        Err((code, message)) => json!({"ok": false, "error": message, "code": code}),
     }
 }
 
@@ -973,6 +1199,22 @@ pub fn quit_app(app: tauri::AppHandle, state: State<'_, Shared>) -> Value {
 }
 
 
+#[cfg(all(test, windows))]
+mod vpn_credential_tests {
+    use super::*;
+
+    #[test]
+    fn credential_manager_roundtrip() {
+        let name = format!("__test_{}", uuid::Uuid::new_v4());
+        vpn_credential_write(&name, "test-user", "test-password").unwrap();
+        let credential = vpn_credential_read(&name).unwrap().expect("credential");
+        assert_eq!(credential.username, "test-user");
+        assert_eq!(credential.password, "test-password");
+        vpn_credential_delete(&name);
+        assert!(vpn_credential_read(&name).unwrap().is_none());
+    }
+}
+
 #[cfg(test)]
 mod update_tests {
     use super::*;
@@ -980,11 +1222,11 @@ mod update_tests {
     fn release() -> Value {
         json!({
             "assets": [
-                {"name": "KumoRoute-win-x64-setup.exe", "browser_download_url": "https://github.com/cypwlp/kumoroute/releases/download/v0.7.0/KumoRoute-win-x64-setup.exe", "size": 23000000},
-                {"name": "KumoRoute-win-x64.zip", "browser_download_url": "https://github.com/cypwlp/kumoroute/releases/download/v0.7.0/KumoRoute-win-x64.zip", "size": 30000000},
-                {"name": "KumoRoute-macos-universal.dmg", "browser_download_url": "https://github.com/cypwlp/kumoroute/releases/download/v0.7.0/KumoRoute-macos-universal.dmg", "size": 54000000},
-                {"name": "KumoRoute-linux-x86_64.AppImage", "browser_download_url": "https://github.com/cypwlp/kumoroute/releases/download/v0.7.0/KumoRoute-linux-x86_64.AppImage", "size": 108000000},
-                {"name": "SHA256SUMS.txt", "browser_download_url": "https://github.com/cypwlp/kumoroute/releases/download/v0.7.0/SHA256SUMS.txt", "size": 600}
+                {"name": "KumoRoute-win-x64-setup.exe", "browser_download_url": "https://github.com/cypwlp/kumoroute/releases/download/v0.7.1/KumoRoute-win-x64-setup.exe", "size": 23000000},
+                {"name": "KumoRoute-win-x64.zip", "browser_download_url": "https://github.com/cypwlp/kumoroute/releases/download/v0.7.1/KumoRoute-win-x64.zip", "size": 30000000},
+                {"name": "KumoRoute-macos-universal.dmg", "browser_download_url": "https://github.com/cypwlp/kumoroute/releases/download/v0.7.1/KumoRoute-macos-universal.dmg", "size": 54000000},
+                {"name": "KumoRoute-linux-x86_64.AppImage", "browser_download_url": "https://github.com/cypwlp/kumoroute/releases/download/v0.7.1/KumoRoute-linux-x86_64.AppImage", "size": 108000000},
+                {"name": "SHA256SUMS.txt", "browser_download_url": "https://github.com/cypwlp/kumoroute/releases/download/v0.7.1/SHA256SUMS.txt", "size": 600}
             ]
         })
     }
@@ -1007,7 +1249,7 @@ mod update_tests {
         let digest = "a".repeat(64);
         let sums = format!("{digest}  KumoRoute-win-x64-setup.exe\n");
         assert_eq!(parse_sha256sums(&sums, "KumoRoute-win-x64-setup.exe"), Some(digest));
-        assert!(safe_update_url("https://github.com/cypwlp/kumoroute/releases/download/v0.7.0/file.exe"));
+        assert!(safe_update_url("https://github.com/cypwlp/kumoroute/releases/download/v0.7.1/file.exe"));
         assert!(!safe_update_url("https://evil.example/file.exe"));
         assert!(!safe_update_url("http://github.com/file.exe"));
     }

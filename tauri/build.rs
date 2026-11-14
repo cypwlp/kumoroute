@@ -20,6 +20,7 @@ const COMMANDS: &[&str] = &[
     "run_update_installer",
     "vpn_list",
     "vpn_connect",
+    "vpn_connect_with_credentials",
     "vpn_disconnect",
     "vpn_set_advanced",
     "vpn_open_settings",

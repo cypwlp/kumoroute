@@ -32,6 +32,7 @@
     "allow-run-update-installer",
     "allow-vpn-list",
     "allow-vpn-connect",
+    "allow-vpn-connect-with-credentials",
     "allow-vpn-disconnect",
     "allow-vpn-set-advanced",
     "allow-vpn-open-settings",
