@@ -40,6 +40,7 @@ class ProxyDelayTests(unittest.TestCase):
         result = api.get_proxy_groups()
         self.assertTrue(result["ok"])
         self.assertEqual(result["groups"][0]["nodes"][0]["delay"], 148)
+        self.assertEqual(result["groups"][0]["nodes"][0]["delay_updated_at"], "2026-11-14T10:02:00+08:00")
 
     def test_active_node_rendering_keeps_latency_badge(self):
         js = (ROOT / "client" / "ui" / "app.js").read_text(encoding="utf-8")
@@ -47,6 +48,8 @@ class ProxyDelayTests(unittest.TestCase):
         self.assertIn("${active ? '<span class=\"node-active-label\">使用中</span>' : \"\"}", js)
         self.assertIn("${delayBadge(group.name, node)}", js)
         self.assertIn("syncGroupDelaysFromGroups();", js)
+        self.assertIn('data-retest-node=', js)
+        self.assertIn('proxy-node-more', js)
 
 
 if __name__ == "__main__":

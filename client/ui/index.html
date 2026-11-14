@@ -14,7 +14,7 @@
       <img src="icon.png" alt="KumoRoute" class="brand-icon">
       <div>
         <div class="brand-name">KumoRoute</div>
-        <div class="brand-ver" id="app-version">v0.7.2</div>
+        <div class="brand-ver" id="app-version">v0.7.3</div>
       </div>
     </div>
 
@@ -290,6 +290,12 @@
             <span></span>
           </button>
         </div>
+        <div class="vpn-option-row">
+          <div class="vpn-option-title">VPN 連線時自動關閉系統代理</div>
+          <button class="toggle-switch" id="toggle-vpn-auto-proxy" data-vpn-setting="auto_proxy" role="switch" aria-checked="true" aria-label="VPN 連線時自動關閉系統代理" disabled>
+            <span></span>
+          </button>
+        </div>
       </div>
       <p class="hint vpn-admin-note">變更進階設定時，Windows 會要求系統管理員權限。</p>
     </section>
@@ -327,7 +333,11 @@
       </header>
       <div class="card log-card">
         <div class="log-toolbar">
-          <label class="check"><input type="checkbox" id="log-autoscroll" checked> 自動滾動到底部</label>
+          <div class="log-filters">
+            <input type="search" id="log-search" class="proxy-search" placeholder="搜尋日誌…">
+            <label class="check"><input type="checkbox" id="log-only-problems"> 只顯示警告／錯誤</label>
+            <label class="check"><input type="checkbox" id="log-autoscroll" checked> 自動滾動到底部</label>
+          </div>
           <button class="btn ghost small" id="btn-copy-logs">複製全部</button>
         </div>
         <pre id="logbox" class="logbox" data-no-i18n>（尚無日誌）</pre>
@@ -454,6 +464,40 @@
       <div class="modal-actions">
         <button type="button" class="btn ghost" id="btn-cancel-vpn-credential">取消</button>
         <button type="submit" class="btn primary" id="btn-submit-vpn-credential">連線</button>
+      </div>
+    </form>
+  </div>
+
+  <div id="vpn-profile-modal" class="modal hidden" role="dialog" aria-modal="true" aria-labelledby="vpn-profile-title">
+    <form id="vpn-profile-form" class="modal-card vpn-credential-card">
+      <div class="modal-head">
+        <div>
+          <div class="card-title" id="vpn-profile-title">新增 VPN 連線</div>
+          <p class="hint" id="vpn-profile-summary">建立 Windows 內建 VPN 設定檔；登入密碼會在首次連線時保存到 Windows 認證管理員。</p>
+        </div>
+        <button type="button" class="modal-close" id="btn-close-vpn-profile" aria-label="關閉 VPN 設定視窗">×</button>
+      </div>
+      <div class="vpn-credential-fields">
+        <label class="field">名稱
+          <input type="text" id="vpn-profile-name" maxlength="64" spellcheck="false" required>
+        </label>
+        <label class="field">伺服器位址
+          <input type="text" id="vpn-profile-server" maxlength="255" spellcheck="false" placeholder="vpn.example.com" required>
+        </label>
+        <label class="field">VPN 類型
+          <select id="vpn-profile-type" class="settings-select">
+            <option value="pptp">PPTP</option>
+            <option value="l2tp">L2TP/IPSec</option>
+            <option value="ikev2">IKEv2</option>
+            <option value="sstp">SSTP</option>
+            <option value="automatic">自動</option>
+          </select>
+        </label>
+        <div class="form-error hidden" id="vpn-profile-error"></div>
+      </div>
+      <div class="modal-actions">
+        <button type="button" class="btn ghost" id="btn-cancel-vpn-profile">取消</button>
+        <button type="submit" class="btn primary" id="btn-submit-vpn-profile">儲存</button>
       </div>
     </form>
   </div>

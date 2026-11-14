@@ -327,10 +327,22 @@
           "markdownDescription": "Enables the test_group_delay command without any pre-configured scope."
         },
         {
+          "description": "Enables the test_node_delay command without any pre-configured scope.",
+          "type": "string",
+          "const": "allow-test-node-delay",
+          "markdownDescription": "Enables the test_node_delay command without any pre-configured scope."
+        },
+        {
           "description": "Enables the update_profile command without any pre-configured scope.",
           "type": "string",
           "const": "allow-update-profile",
           "markdownDescription": "Enables the update_profile command without any pre-configured scope."
+        },
+        {
+          "description": "Enables the vpn_add command without any pre-configured scope.",
+          "type": "string",
+          "const": "allow-vpn-add",
+          "markdownDescription": "Enables the vpn_add command without any pre-configured scope."
         },
         {
           "description": "Enables the vpn_connect command without any pre-configured scope.",
@@ -345,10 +357,28 @@
           "markdownDescription": "Enables the vpn_connect_with_credentials command without any pre-configured scope."
         },
         {
+          "description": "Enables the vpn_delete command without any pre-configured scope.",
+          "type": "string",
+          "const": "allow-vpn-delete",
+          "markdownDescription": "Enables the vpn_delete command without any pre-configured scope."
+        },
+        {
           "description": "Enables the vpn_disconnect command without any pre-configured scope.",
           "type": "string",
           "const": "allow-vpn-disconnect",
           "markdownDescription": "Enables the vpn_disconnect command without any pre-configured scope."
+        },
+        {
+          "description": "Enables the vpn_edit command without any pre-configured scope.",
+          "type": "string",
+          "const": "allow-vpn-edit",
+          "markdownDescription": "Enables the vpn_edit command without any pre-configured scope."
+        },
+        {
+          "description": "Enables the vpn_forget_credentials command without any pre-configured scope.",
+          "type": "string",
+          "const": "allow-vpn-forget-credentials",
+          "markdownDescription": "Enables the vpn_forget_credentials command without any pre-configured scope."
         },
         {
           "description": "Enables the vpn_list command without any pre-configured scope.",
@@ -367,6 +397,12 @@
           "type": "string",
           "const": "allow-vpn-set-advanced",
           "markdownDescription": "Enables the vpn_set_advanced command without any pre-configured scope."
+        },
+        {
+          "description": "Enables the vpn_set_auto_proxy command without any pre-configured scope.",
+          "type": "string",
+          "const": "allow-vpn-set-auto-proxy",
+          "markdownDescription": "Enables the vpn_set_auto_proxy command without any pre-configured scope."
         },
         {
           "description": "Denies the add_subscription command without any pre-configured scope.",
@@ -519,10 +555,22 @@
           "markdownDescription": "Denies the test_group_delay command without any pre-configured scope."
         },
         {
+          "description": "Denies the test_node_delay command without any pre-configured scope.",
+          "type": "string",
+          "const": "deny-test-node-delay",
+          "markdownDescription": "Denies the test_node_delay command without any pre-configured scope."
+        },
+        {
           "description": "Denies the update_profile command without any pre-configured scope.",
           "type": "string",
           "const": "deny-update-profile",
           "markdownDescription": "Denies the update_profile command without any pre-configured scope."
+        },
+        {
+          "description": "Denies the vpn_add command without any pre-configured scope.",
+          "type": "string",
+          "const": "deny-vpn-add",
+          "markdownDescription": "Denies the vpn_add command without any pre-configured scope."
         },
         {
           "description": "Denies the vpn_connect command without any pre-configured scope.",
@@ -537,10 +585,28 @@
           "markdownDescription": "Denies the vpn_connect_with_credentials command without any pre-configured scope."
         },
         {
+          "description": "Denies the vpn_delete command without any pre-configured scope.",
+          "type": "string",
+          "const": "deny-vpn-delete",
+          "markdownDescription": "Denies the vpn_delete command without any pre-configured scope."
+        },
+        {
           "description": "Denies the vpn_disconnect command without any pre-configured scope.",
           "type": "string",
           "const": "deny-vpn-disconnect",
           "markdownDescription": "Denies the vpn_disconnect command without any pre-configured scope."
+        },
+        {
+          "description": "Denies the vpn_edit command without any pre-configured scope.",
+          "type": "string",
+          "const": "deny-vpn-edit",
+          "markdownDescription": "Denies the vpn_edit command without any pre-configured scope."
+        },
+        {
+          "description": "Denies the vpn_forget_credentials command without any pre-configured scope.",
+          "type": "string",
+          "const": "deny-vpn-forget-credentials",
+          "markdownDescription": "Denies the vpn_forget_credentials command without any pre-configured scope."
         },
         {
           "description": "Denies the vpn_list command without any pre-configured scope.",
@@ -559,6 +625,12 @@
           "type": "string",
           "const": "deny-vpn-set-advanced",
           "markdownDescription": "Denies the vpn_set_advanced command without any pre-configured scope."
+        },
+        {
+          "description": "Denies the vpn_set_auto_proxy command without any pre-configured scope.",
+          "type": "string",
+          "const": "deny-vpn-set-auto-proxy",
+          "markdownDescription": "Denies the vpn_set_auto_proxy command without any pre-configured scope."
         },
         {
           "description": "Default core plugins set.\n#### This default permission set includes:\n\n- `core:path:default`\n- `core:event:default`\n- `core:window:default`\n- `core:webview:default`\n- `core:app:default`\n- `core:image:default`\n- `core:resources:default`\n- `core:menu:default`\n- `core:tray:default`",

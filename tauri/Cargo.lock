@@ -2009,7 +2009,7 @@ dependencies = [
 
 [[package]]
 name = "kumoroute"
-version = "0.7.2"
+version = "0.7.3"
 dependencies = [
  "chrono",
  "dirs 5.0.1",

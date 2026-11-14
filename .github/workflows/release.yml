@@ -54,6 +54,9 @@ jobs:
       - name: Fetch mihomo core and geodata
         run: python client/tools/fetch_core.py
 
+      - name: Verify release version contract
+        run: python scripts/release.py --check
+
       - name: Use official crates.io in CI
         run: python -c "from pathlib import Path; Path('tauri/.cargo/config.toml').unlink(missing_ok=True)"
 

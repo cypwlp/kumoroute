@@ -26,7 +26,7 @@ import yaml
 
 APP_NAME = "KumoRoute"
 LEGACY_APP_NAME = "MyClash"
-APP_VERSION = "0.7.2"
+APP_VERSION = "0.7.3"
 CREATE_NO_WINDOW = 0x08000000
 SUB_UA = f"KumoRoute/{APP_VERSION}"
 TEST_URL = "https://cp.cloudflare.com/generate_204"
@@ -357,6 +357,32 @@ def _vpn_credential_delete(name: str) -> None:
         pass
 
 
+VPN_TUNNEL_TYPES = {"pptp": "Pptp", "l2tp": "L2tp", "ikev2": "Ikev2", "sstp": "Sstp", "automatic": "Automatic"}
+
+
+def _ps_quote(value: str) -> str:
+    return "'" + str(value or "").replace("'", "''") + "'"
+
+
+def _vpn_profile_command(script: str) -> tuple[bool, str]:
+    try:
+        result = subprocess.run(
+            ["powershell.exe", "-NoLogo", "-NoProfile", "-NonInteractive", "-Command",
+             "$ErrorActionPreference='Stop'; " + script],
+            capture_output=True, text=True, timeout=30, creationflags=CREATE_NO_WINDOW,
+        )
+        if result.returncode == 0:
+            return True, ""
+        detail = (result.stderr or result.stdout or "").strip()
+        return False, detail or f"PowerShell 結束代碼 {result.returncode}"
+    except Exception as exc:
+        return False, str(exc)
+
+
+def _vpn_tunnel(value: str) -> str:
+    return VPN_TUNNEL_TYPES.get(str(value or "").strip().lower(), "")
+
+
 def _vpn_ras_dial(name: str, username: str, password: str) -> tuple[int, str]:
     api = ctypes.WinDLL("rasapi32")
     api.RasDialW.argtypes = [
@@ -386,6 +412,7 @@ DEFAULT_SETTINGS = {
     "mode": "rule",
     "active_profile": "",
     "original_proxy": None,
+    "vpn_disable_system_proxy": True,
 }
 
 
@@ -713,6 +740,8 @@ class Profiles:
         cfg["log-level"] = "info"
         cfg.setdefault("unified-delay", True)
         cfg.setdefault("tcp-concurrent", True)
+        if "ipv6" not in cfg:
+            cfg["ipv6"] = _has_global_ipv6()
         prof = cfg.get("profile")
         if not isinstance(prof, dict):
             prof = {}
@@ -894,7 +923,38 @@ def _history_delay(proxy: dict) -> tuple[str, int] | None:
     return str(item.get("time") or ""), max(0, delay)
 
 
+def _windows_has_global_ipv6() -> bool:
+    try:
+        out = subprocess.run(
+            ["powershell.exe", "-NoLogo", "-NoProfile", "-NonInteractive", "-Command",
+             "(Get-NetRoute -AddressFamily IPv6 -DestinationPrefix '::/0' -ErrorAction SilentlyContinue | Measure-Object).Count"],
+            capture_output=True, text=True, timeout=10, creationflags=CREATE_NO_WINDOW,
+        )
+        return int((out.stdout or "0").strip() or 0) > 0
+    except Exception:
+        return True
+
+
+def _has_global_ipv6() -> bool:
+    if platform.system().lower() == "windows":
+        return _windows_has_global_ipv6()
+    try:
+        with open("/proc/net/ipv6_route", "r", encoding="utf-8", errors="ignore") as f:
+            for line in f:
+                parts = line.split()
+                if len(parts) >= 5 and parts[0].lower().lstrip("0") == "":
+                    return True
+    except OSError:
+        return True
+    return False
+
+
 def _proxy_last_delay(proxy: dict) -> int | None:
+    item = _proxy_last_delay_item(proxy)
+    return None if item is None else item[1]
+
+
+def _proxy_last_delay_item(proxy: dict) -> tuple[str, int] | None:
     candidates = []
     direct = _history_delay(proxy)
     if direct:
@@ -908,7 +968,7 @@ def _proxy_last_delay(proxy: dict) -> int | None:
                     candidates.append(item)
     if not candidates:
         return None
-    return max(candidates, key=lambda item: item[0])[1]
+    return max(candidates, key=lambda item: item[0])
 
 
 class Api:
@@ -1056,10 +1116,12 @@ class Api:
                 nodes = []
                 for n in p.get("all") or []:
                     np = proxies.get(n) or {}
+                    delay_item = _proxy_last_delay_item(np)
                     nodes.append({
                         "name": n,
                         "type": np.get("type", ""),
-                        "delay": _proxy_last_delay(np),
+                        "delay": delay_item[1] if delay_item else None,
+                        "delay_updated_at": delay_item[0] if delay_item else "",
                     })
                 groups.append(
                     {
@@ -1080,6 +1142,22 @@ class Api:
                 "PUT", f"/proxies/{quote(group, safe='')}", {"name": name}
             )
             return {"ok": True}
+        except Exception as exc:
+            return {"ok": False, "error": str(exc)}
+
+    def test_node_delay(self, name: str) -> dict:
+        name = str(name or "").strip()
+        if not name:
+            return {"ok": False, "error": "找不到該節點"}
+        try:
+            res = self._core.api(
+                "GET",
+                f"/proxies/{quote(name, safe='')}/delay"
+                f"?timeout=5000&url={quote(TEST_URL, safe='')}",
+                timeout=12,
+            )
+            delay = int((res or {}).get("delay") or 0)
+            return {"ok": True, "name": name, "delay": delay}
         except Exception as exc:
             return {"ok": False, "error": str(exc)}
 
@@ -1210,7 +1288,20 @@ class Api:
                 f.seek(max(0, size - 65536))
                 text = f.read().decode("utf-8", "replace")
             lines = [ANSI_RE.sub("", ln) for ln in text.splitlines()]
-            return {"ok": True, "lines": lines[-300:]}
+            deduped = []
+            last_key = None
+            for ln in lines:
+                key = re.sub(r"(?:\d+\.\d+\.\d+\.\d+|\[[0-9a-f:]+\])", "<addr>", ln)
+                key = re.sub(r"\d{4}-\d{2}-\d{2}T[^ ]+", "<time>", key)
+                if key == last_key:
+                    if deduped:
+                        deduped[-1] = ln
+                    else:
+                        deduped.append(ln)
+                else:
+                    deduped.append(ln)
+                    last_key = key
+            return {"ok": True, "lines": deduped[-300:]}
         except OSError:
             return {"ok": True, "lines": []}
 
@@ -1443,7 +1534,13 @@ class Api:
                     "saved_username": credential.get("username", "") if credential else "",
                 })
             connections.sort(key=lambda item: (not item["connected"], item["name"].lower()))
-            return {"ok": True, "supported": True, "connections": connections, "advanced": advanced}
+            return {
+                "ok": True,
+                "supported": True,
+                "connections": connections,
+                "advanced": advanced,
+                "settings": {"disable_system_proxy": bool(getattr(self, "_store", None).data.get("vpn_disable_system_proxy", True)) if getattr(self, "_store", None) else True},
+            }
         except Exception as exc:
             return {
                 "ok": False,
@@ -1463,6 +1560,15 @@ class Api:
         wanted = str(name or "").strip().lower()
         return next((item for item in result.get("connections", []) if item["name"].lower() == wanted), None)
 
+    def _vpn_prepare_proxy(self) -> dict | None:
+        store = getattr(self, "_store", None)
+        if store and store.data.get("vpn_disable_system_proxy", True) and is_system_proxy_on(store):
+            result = self.set_system_proxy(False)
+            if not result.get("ok"):
+                return {"ok": False, "error": "關閉系統代理失敗：" + str(result.get("error") or "")}
+            return {"ok": True, "proxy_disabled": True}
+        return None
+
     def vpn_connect(self, name: str) -> dict:
         if platform.system().lower() != "windows":
             return {"ok": False, "error": "Windows VPN 僅支援 Windows"}
@@ -1475,6 +1581,9 @@ class Api:
             return {"ok": False, "error": f"讀取 Windows VPN 憑證失敗：{exc}"}
         if not credential:
             return {"ok": False, "needs_credentials": True, "username": profile.get("saved_username", "")}
+        proxy_result = self._vpn_prepare_proxy()
+        if proxy_result and not proxy_result.get("ok"):
+            return proxy_result
         try:
             code, message = _vpn_ras_dial(
                 profile["name"], credential["username"], credential["password"]
@@ -1500,6 +1609,9 @@ class Api:
         password = str(password or "")
         if not username or not password:
             return {"ok": False, "error": "請輸入 VPN 使用者名稱與密碼"}
+        proxy_result = self._vpn_prepare_proxy()
+        if proxy_result and not proxy_result.get("ok"):
+            return proxy_result
         try:
             code, message = _vpn_ras_dial(profile["name"], username, password)
             if code != 0:
@@ -1570,6 +1682,64 @@ class Api:
             }
         except Exception as exc:
             return {"ok": False, "error": f"更新 VPN 進階設定失敗：{exc}"}
+
+    def vpn_add(self, name: str, server: str, tunnel_type: str) -> dict:
+        if platform.system().lower() != "windows":
+            return {"ok": False, "error": "Windows VPN 僅支援 Windows"}
+        name, server = str(name or "").strip(), str(server or "").strip()
+        tunnel = _vpn_tunnel(tunnel_type)
+        if not name or not server or not tunnel:
+            return {"ok": False, "error": "請輸入 VPN 名稱、伺服器與類型"}
+        if self._vpn_profile(name):
+            return {"ok": False, "error": "已存在同名 VPN 連線"}
+        auth = "MsChapv2" if tunnel in ("Pptp", "L2tp") else "Eap"
+        script = (
+            f"Add-VpnConnection -Name {_ps_quote(name)} -ServerAddress {_ps_quote(server)} "
+            f"-TunnelType {_ps_quote(tunnel)} -EncryptionLevel Required "
+            f"-AuthenticationMethod {_ps_quote(auth)} -RememberCredential -Force"
+        )
+        ok, message = _vpn_profile_command(script)
+        return {"ok": True, "name": name} if ok else {"ok": False, "error": f"新增 VPN 失敗：{message}"}
+
+    def vpn_edit(self, name: str, server: str, tunnel_type: str) -> dict:
+        if platform.system().lower() != "windows":
+            return {"ok": False, "error": "Windows VPN 僅支援 Windows"}
+        name, server = str(name or "").strip(), str(server or "").strip()
+        tunnel = _vpn_tunnel(tunnel_type)
+        if not name or not server or not tunnel:
+            return {"ok": False, "error": "請輸入 VPN 名稱、伺服器與類型"}
+        script = (
+            f"Set-VpnConnection -Name {_ps_quote(name)} -ServerAddress {_ps_quote(server)} "
+            f"-TunnelType {_ps_quote(tunnel)} -RememberCredential $true"
+        )
+        ok, message = _vpn_profile_command(script)
+        return {"ok": True} if ok else {"ok": False, "error": f"修改 VPN 失敗：{message}"}
+
+    def vpn_delete(self, name: str) -> dict:
+        if platform.system().lower() != "windows":
+            return {"ok": False, "error": "Windows VPN 僅支援 Windows"}
+        name = str(name or "").strip()
+        if not name:
+            return {"ok": False, "error": "找不到該 VPN 連線"}
+        ok, message = _vpn_profile_command(f"Remove-VpnConnection -Name {_ps_quote(name)} -Force")
+        if not ok:
+            return {"ok": False, "error": f"刪除 VPN 失敗：{message}"}
+        _vpn_credential_delete(name)
+        return {"ok": True}
+
+    def vpn_forget_credentials(self, name: str) -> dict:
+        if platform.system().lower() != "windows":
+            return {"ok": False, "error": "Windows VPN 僅支援 Windows"}
+        try:
+            _vpn_credential_delete(str(name or "").strip())
+            return {"ok": True}
+        except Exception as exc:
+            return {"ok": False, "error": f"刪除 VPN 憑證失敗：{exc}"}
+
+    def vpn_set_auto_proxy(self, enabled: bool) -> dict:
+        self._store.data["vpn_disable_system_proxy"] = bool(enabled)
+        self._store.save()
+        return {"ok": True, "disable_system_proxy": bool(enabled)}
 
     def vpn_open_settings(self) -> dict:
         if platform.system().lower() != "windows":

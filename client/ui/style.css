@@ -316,6 +316,7 @@ main::-webkit-scrollbar-thumb { background: var(--line2); border-radius: 8px; bo
   min-width: 0;
 }
 .node:hover { border-color: var(--line2); background: var(--card2); }
+.node:focus-visible { outline: 2px solid rgba(91, 140, 255, 0.55); outline-offset: 2px; }
 .node.active {
   border-color: rgba(91, 140, 255, 0.6);
   background: linear-gradient(135deg, rgba(91, 140, 255, 0.13), rgba(139, 92, 246, 0.10));
@@ -381,6 +382,16 @@ main::-webkit-scrollbar-thumb { background: var(--line2); border-radius: 8px; bo
 .node-copy .node-type { margin-top: 0; }
 .node-meta { display: flex; align-items: center; gap: 6px; flex: 0 0 auto; }
 .node-active-label { color: var(--green); font-size: 10.5px; white-space: nowrap; }
+.delay-time { color: var(--muted); font-size: 9.5px; font-variant-numeric: tabular-nums; }
+.delay-time.stale { color: var(--yellow); }
+.node-retest {
+  flex: 0 0 auto; border: 1px solid var(--line2); border-radius: 6px;
+  background: transparent; color: var(--muted); font: inherit; font-size: 9.5px;
+  padding: 2px 5px; cursor: pointer; opacity: 0.55;
+}
+.node:hover .node-retest, .node:focus-within .node-retest { opacity: 1; }
+.node-retest:hover:not(:disabled) { color: var(--text); border-color: var(--accent); }
+.node-retest:disabled { opacity: 0.4; cursor: default; }
 .proxy-node-empty { grid-column: 1 / -1; color: var(--muted); text-align: center; padding: 44px 12px; font-size: 12px; }
 @media (max-width: 1050px) {
   .proxy-summary { grid-template-columns: 1fr auto; }
@@ -507,7 +518,9 @@ main::-webkit-scrollbar-thumb { background: var(--line2); border-radius: 8px; bo
 /* ---------- logs ---------- */
 
 .log-card { padding: 12px; }
-.log-toolbar { display: flex; align-items: center; justify-content: space-between; padding: 2px 6px 10px; }
+.log-toolbar { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 2px 6px 10px; flex-wrap: wrap; }
+.log-filters { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; }
+.log-filters .proxy-search { width: 190px; }
 .check { font-size: 12.5px; color: var(--muted); display: flex; align-items: center; gap: 6px; cursor: pointer; }
 .logbox {
   background: #070a0f;

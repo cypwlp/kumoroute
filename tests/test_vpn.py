@@ -143,6 +143,56 @@ class WindowsVpnTests(unittest.TestCase):
         self.assertIn("NoRoamingNetwork", script)
         self.assertIn("'/d','1'", script)
 
+    def test_vpn_forget_credentials_deletes_stored_secret(self):
+        api = app.Api.__new__(app.Api)
+        with mock.patch.object(app.platform, "system", return_value="Windows"), \
+             mock.patch.object(app, "_vpn_credential_delete") as delete:
+            result = api.vpn_forget_credentials("vn")
+        self.assertTrue(result["ok"])
+        delete.assert_called_once_with("vn")
+
+    def test_vpn_auto_proxy_setting_persists(self):
+        class FakeStore:
+            data = {"vpn_disable_system_proxy": True}
+            def save(self):
+                self.saved = True
+        api = app.Api.__new__(app.Api)
+        api._store = FakeStore()
+        result = api.vpn_set_auto_proxy(False)
+        self.assertTrue(result["ok"])
+        self.assertFalse(api._store.data["vpn_disable_system_proxy"])
+        self.assertTrue(api._store.saved)
+
+    def test_vpn_add_and_delete_use_profile_commands(self):
+        api = app.Api.__new__(app.Api)
+        with mock.patch.object(app.platform, "system", return_value="Windows"), \
+             mock.patch.object(app, "_vpn_profile_command", return_value=(True, "")) as run:
+            added = api.vpn_add("office", "vpn.example.com", "pptp")
+        self.assertTrue(added["ok"])
+        script = run.call_args.args[0]
+        self.assertIn("Add-VpnConnection", script)
+        self.assertIn("office", script)
+        with mock.patch.object(app.platform, "system", return_value="Windows"), \
+             mock.patch.object(app, "_vpn_profile_command", return_value=(True, "")), \
+             mock.patch.object(app, "_vpn_credential_delete") as delete:
+            removed = api.vpn_delete("office")
+        self.assertTrue(removed["ok"])
+        delete.assert_called_once_with("office")
+
+    def test_vpn_connect_disables_system_proxy_when_enabled(self):
+        api = app.Api.__new__(app.Api)
+        api._store = type("Store", (), {"data": {"vpn_disable_system_proxy": True}})()
+        profile = {"name": "vn", "saved_username": "super"}
+        with mock.patch.object(app.platform, "system", return_value="Windows"), \
+             mock.patch.object(api, "_vpn_profile", return_value=profile), \
+             mock.patch.object(app, "_vpn_credential_read", return_value={"username": "super", "password": "secret"}), \
+             mock.patch.object(app, "is_system_proxy_on", return_value=True), \
+             mock.patch.object(api, "set_system_proxy", return_value={"ok": True}) as disable, \
+             mock.patch.object(app, "_vpn_ras_dial", return_value=(0, "")):
+            result = api.vpn_connect("vn")
+        self.assertTrue(result["ok"])
+        disable.assert_called_once_with(False)
+
     def test_vpn_ui_and_tauri_are_wired(self):
         html = (ROOT / "client" / "ui" / "index.html").read_text(encoding="utf-8")
         js = (ROOT / "client" / "ui" / "app.js").read_text(encoding="utf-8")
@@ -155,14 +205,23 @@ class WindowsVpnTests(unittest.TestCase):
         self.assertIn('id="toggle-vpn-roaming"', html)
         self.assertIn('id="vpn-credential-modal"', html)
         self.assertIn('id="vpn-credential-form"', html)
+        self.assertIn('id="vpn-profile-modal"', html)
+        self.assertIn('id="toggle-vpn-auto-proxy"', html)
         self.assertIn('api("vpn_list")', js)
-        self.assertIn('api("vpn_open_settings")', js)
+        self.assertIn('openVpnProfileModal("add")', js)
+        self.assertIn('api("vpn_add", name, server, type)', js)
+        self.assertIn('vpn_forget_credentials: ["name"]', js)
+        self.assertIn('data-vpn-action="forget_credentials"', js)
         self.assertIn('api("vpn_set_advanced", setting, enabled)', js)
         self.assertIn('api("vpn_connect_with_credentials", name, username, password, remember)', js)
         self.assertIn('vpn_connect_with_credentials: ["name", "username", "password", "remember"]', js)
         self.assertIn('vpn_set_advanced: ["setting", "enabled"]', js)
         self.assertIn('allow-vpn-set-advanced', capabilities)
         self.assertIn('allow-vpn-connect-with-credentials', capabilities)
+        self.assertIn('allow-vpn-add', capabilities)
+        self.assertIn('allow-vpn-edit', capabilities)
+        self.assertIn('allow-vpn-delete', capabilities)
+        self.assertIn('allow-test-node-delay', capabilities)
 
 
 if __name__ == "__main__":

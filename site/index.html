@@ -20,7 +20,7 @@
 <meta name="twitter:description" content="KumoRoute 是基於 mihomo 核心的輕量跨平台桌面客戶端（Windows / Linux / macOS），相容 Clash 配置，支援訂閱管理、節點切換、一鍵系統代理、Windows 內建 VPN 管理與即時流量。">
 <meta name="twitter:image" content="https://cypwlp.github.io/kumoroute/assets/screenshot-overview.png">
 <script type="application/ld+json">{"@context":"https://schema.org","@type":"SoftwareApplication","name":"KumoRoute","applicationCategory":"UtilitiesApplication","operatingSystem":"Windows 10/11, Linux, macOS","description":"KumoRoute 是基於 mihomo 核心的輕量跨平台桌面客戶端（Windows / Linux / macOS），相容 Clash 配置，支援訂閱管理、節點切換、一鍵系統代理、Windows 內建 VPN 管理與即時流量。","url":"https://cypwlp.github.io/kumoroute/","downloadUrl":"https://github.com/cypwlp/kumoroute/releases/latest","codeRepository":"https://github.com/cypwlp/kumoroute","license":"https://github.com/cypwlp/kumoroute/blob/main/LICENSE","offers":{"@type":"Offer","price":"0","priceCurrency":"USD"}}</script>
-<link rel="stylesheet" href="style.css?v=0.7.2">
+<link rel="stylesheet" href="style.css?v=0.7.3">
 </head>
 <body>
 
@@ -45,7 +45,7 @@
   <section class="hero" id="top">
     <div class="hero-inner">
       <div class="hero-copy">
-        <div class="badge">v0.7.2 · Windows / Linux / macOS · 開源免費</div>
+        <div class="badge">v0.7.3 · Windows / Linux / macOS · 開源免費</div>
         <h1>輕量的 Mihomo 桌面客戶端<br><span class="grad">一鍵接管系統流量</span></h1>
         <p class="lead">KumoRoute 把 mihomo 核心裝進一個乾淨的圖形介面：訂閱管理、節點切換、模式切換、Windows VPN 管理、即時速度，一屏搞定。</p>
         <div class="cta">
@@ -116,7 +116,7 @@
         <div class="install-body">
           <img src="assets/installer-preview.png" alt="KumoRoute 安裝精靈品牌側欄" class="install-sidebar">
           <div class="install-content">
-            <span class="eyebrow">KUMOROUTE 0.7.2</span>
+            <span class="eyebrow">KUMOROUTE 0.7.3</span>
             <h3>歡迎使用 KumoRoute</h3>
             <p>這會在你的電腦安裝 KumoRoute、mihomo 核心與必要資料檔。設定與訂閱會保留在使用者資料夾，卸載程式不會任意刪除你的配置。</p>
             <div class="install-progress"><span></span></div>
@@ -148,7 +148,12 @@
       <div class="feature">
         <div class="ficon">🛡️</div>
         <h3>Windows VPN</h3>
-        <p>首次登入後由 Windows 認證管理員加密保存憑證，之後可直接連線；支援狀態查看、計量網路與漫遊選項。</p>
+        <p>可新增、編輯、刪除 Windows VPN；首次登入後憑證由 Windows 認證管理員加密保存，並可自動關閉系統代理避免路由衝突。</p>
+      </div>
+      <div class="feature">
+        <div class="ficon">📡</div>
+        <h3>延遲與連線診斷</h3>
+        <p>節點延遲顯示更新時間、支援單節點重測與過期自動重測；IPv6 自動偵測避免無效連線，日誌可搜尋與合併重複訊息。</p>
       </div>
       <div class="feature">
         <div class="ficon">📚</div>
@@ -237,15 +242,15 @@
       </details>
       <details>
         <summary>應用程式可以直接更新嗎？</summary>
-        <p>可以。設定頁檢查到新版本後，按「立即更新」會下載對應平台的安裝檔並驗證 SHA256；下載完成後再詢問是否啟動安裝程式。若使用較舊版本，仍需先手動安裝一次 v0.7.2。</p>
+        <p>可以。設定頁檢查到新版本後，按「立即更新」會下載對應平台的安裝檔並驗證 SHA256；下載完成後再詢問是否啟動安裝程式。若使用較舊版本，仍需先手動安裝一次 v0.7.3。</p>
       </details>
       <details>
         <summary>KumoRoute 可以管理 Windows VPN 嗎？</summary>
-        <p>可以。首次連線需在 KumoRoute 輸入一次帳號密碼，憑證由 Windows 認證管理員加密保存，之後可直接連線；也能切換計量網路與漫遊選項。「新增 VPN」會開啟 Windows 設定建立設定檔。</p>
+        <p>可以。首次連線需在 KumoRoute 輸入一次帳號密碼，憑證由 Windows 認證管理員加密保存，之後可直接連線；也能新增、編輯、刪除 VPN，並切換計量網路與漫遊選項。</p>
       </details>
       <details>
         <summary>支援哪些平台？手機能用嗎？</summary>
-        <p>v0.7.2 提供 Windows（安裝包／免安裝）、Linux（AppImage／deb）、macOS（Universal dmg）。手機版目前未提供；Windows、Linux 與 macOS 可直接使用。</p>
+        <p>v0.7.3 提供 Windows（安裝包／免安裝）、Linux（AppImage／deb）、macOS（Universal dmg）。手機版目前未提供；Windows、Linux 與 macOS 可直接使用。</p>
       </details>
     </div>
   </section>
@@ -275,6 +280,6 @@
   </div>
 </footer>
 
-<script src="app.js?v=0.7.2"></script>
+<script src="app.js?v=0.7.3"></script>
 </body>
 </html>

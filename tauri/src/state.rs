@@ -8,7 +8,7 @@ use serde::{Deserialize, Serialize};
 
 pub const APP_NAME: &str = "KumoRoute";
 pub const LEGACY_APP_NAME: &str = "MyClash";
-pub const APP_VERSION: &str = "0.7.2";
+pub const APP_VERSION: &str = "0.7.3";
 pub const SUB_UA: &str = concat!("KumoRoute/", env!("CARGO_PKG_VERSION"));
 pub const TEST_URL: &str = "https://cp.cloudflare.com/generate_204";
 
@@ -214,7 +214,11 @@ pub struct Settings {
     pub mode: String,
     pub active_profile: String,
     pub original_proxy: Option<ProxySnapshot>,
+    #[serde(default = "default_true")]
+    pub vpn_disable_system_proxy: bool,
 }
+
+fn default_true() -> bool { true }
 
 impl Default for Settings {
     fn default() -> Self {
@@ -224,6 +228,7 @@ impl Default for Settings {
             mode: "rule".into(),
             active_profile: String::new(),
             original_proxy: None,
+            vpn_disable_system_proxy: true,
         }
     }
 }
@@ -519,6 +524,28 @@ impl Profiles {
         Ok(())
     }
 
+    fn ipv6_route_available() -> bool {
+        #[cfg(windows)]
+        {
+            use std::os::windows::process::CommandExt;
+            let output = std::process::Command::new("powershell.exe")
+                .args([
+                    "-NoLogo", "-NoProfile", "-NonInteractive", "-Command",
+                    "(Get-NetRoute -AddressFamily IPv6 -DestinationPrefix '::/0' -ErrorAction SilentlyContinue | Measure-Object).Count",
+                ])
+                .creation_flags(0x0800_0000)
+                .output();
+            return output
+                .ok()
+                .and_then(|out| String::from_utf8_lossy(&out.stdout).trim().parse::<u32>().ok())
+                .unwrap_or(1) > 0;
+        }
+        #[cfg(not(windows))]
+        {
+            true
+        }
+    }
+
     pub fn build_runtime(&self, store: &Store) -> Result<PathBuf, String> {
         let entry = self.active_entry(store);
         let text = fs::read_to_string(self.path_of(&entry.id)).map_err(|e| e.to_string())?;
@@ -545,6 +572,9 @@ impl Profiles {
         }
         if !m.contains_key(serde_yaml::Value::String("tcp-concurrent".into())) {
             set(m, "tcp-concurrent", true.into());
+        }
+        if !m.contains_key(serde_yaml::Value::String("ipv6".into())) && !Self::ipv6_route_available() {
+            set(m, "ipv6", false.into());
         }
         let prof = m
             .entry(serde_yaml::Value::String("profile".into()))

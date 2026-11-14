@@ -7,6 +7,8 @@ let demo = false;
 let state = null;
 let groups = [];
 let groupDelays = {};
+let nodeDelayUpdated = {};
+let lastAutoRetest = 0;
 let page = "overview";
 let prevTotals = null;
 let sparkDown = [];
@@ -37,6 +39,9 @@ let knownGroupNames = new Set();
 let proxyGroupIndex = 0;
 let proxySearch = "";
 let proxyFilter = "all";
+let logSearch = "";
+let logOnlyProblems = false;
+let proxyNodeLimit = 240;
 let clearStatsPending = false;
 let clearStatsTimer = null;
 let vpnData = null;
@@ -44,6 +49,7 @@ let vpnRefreshing = false;
 let vpnAdvancedBusy = false;
 let vpnRefreshTimer = null;
 let pendingVpnCredential = null;
+let pendingVpnProfile = null;
 
 /* ---------- helpers ---------- */
 
@@ -488,6 +494,7 @@ const TAURI_SIG = {
   set_system_proxy: ["enabled"],
   select_proxy: ["group", "name"],
   test_group_delay: ["group"],
+  test_node_delay: ["name"],
   add_subscription: ["url", "name"],
   update_profile: ["pid"],
   delete_profile: ["pid"],
@@ -502,6 +509,11 @@ const TAURI_SIG = {
   vpn_disconnect: ["name"],
   vpn_connect_with_credentials: ["name", "username", "password", "remember"],
   vpn_set_advanced: ["setting", "enabled"],
+  vpn_set_auto_proxy: ["enabled"],
+  vpn_forget_credentials: ["name"],
+  vpn_add: ["name", "server", "tunnelType"],
+  vpn_edit: ["name", "server", "tunnelType"],
+  vpn_delete: ["name"],
 };
 
 async function api(fn, ...args) {
@@ -522,13 +534,14 @@ const demoCfg = {
   sys_proxy: false,
   vpnConnected: false,
   vpnAdvanced: { metered: true, roaming: true },
+  vpnDisableSystemProxy: true,
   vpnCredentialSaved: false,
   vpnUsername: "super",
   mode: "rule",
   mixed_port: 7890,
   controller_port: 9090,
   core_version: "v1.19.33",
-  app_version: "0.7.2",
+  app_version: "0.7.3",
   data_dir: "C:\\Users\\…\\AppData\\Roaming\\KumoRoute",
   test_url: "https://cp.cloudflare.com/generate_204",
   profiles: [
@@ -659,6 +672,7 @@ async function demoApi(fn, ...args) {
       supported: true,
       connections: [{ name: "vn", server: "192.168.86.18", type: "Pptp", status: demoCfg.vpnConnected ? "Connected" : "Disconnected", connected: demoCfg.vpnConnected, remember_credential: true, all_user: false, credential_saved: demoCfg.vpnCredentialSaved, saved_username: demoCfg.vpnCredentialSaved ? demoCfg.vpnUsername : "" }],
       advanced: { allow_metered: demoCfg.vpnAdvanced.metered, allow_roaming: demoCfg.vpnAdvanced.roaming },
+      settings: { disable_system_proxy: demoCfg.vpnDisableSystemProxy },
     };
     case "vpn_connect":
       if (!demoCfg.vpnCredentialSaved) return { ok: false, needs_credentials: true, username: demoCfg.vpnUsername };
@@ -668,6 +682,7 @@ async function demoApi(fn, ...args) {
       return { ok: true, connected: true, credentials_saved: !!args[3] };
     case "vpn_disconnect": demoCfg.vpnConnected = false; return { ok: true, disconnected: true };
     case "vpn_set_advanced": demoCfg.vpnAdvanced[args[0]] = !!args[1]; return { ok: true, pending: false };
+    case "vpn_set_auto_proxy": demoCfg.vpnDisableSystemProxy = !!args[0]; return { ok: true, disable_system_proxy: !!args[0] };
     case "vpn_open_settings": return { ok: true };
     default: return { ok: true };
   }
@@ -1394,13 +1409,32 @@ async function refreshGroups() {
       return;
     }
     const previousName = groups[proxyGroupIndex] ? groups[proxyGroupIndex].name : "";
+    const nodeLimit = proxyNodeLimit;
     const res = demo ? await demoApi("get_proxy_groups") : await api("get_proxy_groups");
     groups = (res && res.groups) || [];
     knownGroupNames = new Set(groups.map((g) => g.name));
     syncGroupDelaysFromGroups();
     const previousIndex = groups.findIndex((g) => g.name === previousName);
     proxyGroupIndex = previousIndex >= 0 ? previousIndex : defaultProxyGroupIndex();
-    renderGroups();
+    const summary = document.querySelector(".proxy-summary");
+    if (summary) {
+      const group = groups[proxyGroupIndex];
+      if (group) {
+        const activeNode = (group.nodes || []).find((node) => node.name === group.now);
+        const delay = activeNode ? delayBadge(group.name, activeNode) : "";
+        summary.querySelector("h2").textContent = group.name;
+        summary.querySelector(".proxy-summary-node strong").textContent = proxyEffectiveNode(group);
+        summary.querySelector(".proxy-summary-type").textContent = group.type || "Selector";
+        summary.querySelector(".proxy-chain").innerHTML = proxyChainFor(group).map((part, index) => `<span class="proxy-chain-part${index === proxyChainFor(group).length - 1 ? " final" : ""}" data-no-i18n>${esc(part)}</span>`).join('<span class="proxy-arrow">→</span>') + (delay ? " · " + delay : "");
+      }
+      if (!updateGroupPane()) {
+        renderGroups();
+      } else {
+        updateProxyNodeCards();
+      }
+    } else {
+      renderGroups();
+    }
     if (page === "stats") renderNodeHealth();
   } catch (e) {
     console.error(e);
@@ -1441,28 +1475,85 @@ function proxyIsGroup(name) {
   return knownGroupNames.has(name);
 }
 
+function delayUpdatedLabel(groupName, node) {
+  const value = nodeDelayUpdated[groupName] && nodeDelayUpdated[groupName][node.name];
+  if (!value) return "";
+  const seconds = Math.max(0, Math.floor((Date.now() - Date.parse(value)) / 1000));
+  let text;
+  if (seconds < 5) text = "剛剛";
+  else if (seconds < 60) text = seconds + " 秒前";
+  else text = Math.floor(seconds / 60) + " 分鐘前";
+  const stale = seconds >= 120 ? " stale" : "";
+  return `<span class="delay-time${stale}" title="${esc(value)}">${text}</span>`;
+}
+
 function delayBadge(groupName, node) {
   const d = (groupDelays[groupName] || {})[node.name];
   if (d === undefined || d === null) return '<span class="delay none">—</span>';
   if (!d) return '<span class="delay bad">逾時</span>';
   const cls = d <= 200 ? "good" : d <= 500 ? "mid" : "bad";
-  return `<span class="delay ${cls}">${d} ms</span>`;
+  return `<span class="delay ${cls}">${d} ms</span>${delayUpdatedLabel(groupName, node)}`;
 }
 
 function syncGroupDelaysFromGroups() {
+  const now = new Date().toISOString();
   for (const group of groups) {
     const bucket = groupDelays[group.name] || {};
+    const stamps = nodeDelayUpdated[group.name] || {};
+    const next = {};
+    const changed = {};
+    let changedAny = false;
     for (const node of group.nodes || []) {
-      if (typeof node.delay === "number") bucket[node.name] = node.delay;
+      next[node.name] = node.name;
+      if (typeof node.delay === "number") {
+        const stamp = node.delay_updated_at || now;
+        if (bucket[node.name] !== node.delay || stamps[node.name] !== stamp) {
+          changed[node.name] = node.delay;
+          changedAny = true;
+        }
+        bucket[node.name] = node.delay;
+        stamps[node.name] = stamp;
+      }
+    }
+    for (const key of Object.keys(stamps)) {
+      if (!(key in next)) delete stamps[key];
     }
     groupDelays[group.name] = bucket;
+    nodeDelayUpdated[group.name] = stamps;
+    if (changedAny) recordDelayHistory(group.name, changed);
   }
+}
+
+async function autoRetestStaleActive() {
+  if (!state || !state.running || page !== "proxies" || document.hidden) return;
+  if (Date.now() - lastAutoRetest < 60_000) return;
+  const group = groups[proxyGroupIndex];
+  if (!group || !group.now) return;
+  const node = (group.nodes || []).find((item) => item.name === group.now);
+  if (!node || proxyIsGroup(node.name)) return;
+  const stamp = nodeDelayUpdated[group.name] && nodeDelayUpdated[group.name][node.name];
+  const age = stamp ? Date.now() - new Date(stamp).getTime() : Infinity;
+  if (Number.isFinite(age) && age < 120_000) return;
+  lastAutoRetest = Date.now();
+  try {
+    const res = demo ? await demoApi("test_node_delay", node.name) : await api("test_node_delay", node.name);
+    if (res && res.ok) {
+      groupDelays[group.name] = groupDelays[group.name] || {};
+      groupDelays[group.name][node.name] = res.delay;
+      nodeDelayUpdated[group.name] = nodeDelayUpdated[group.name] || {};
+      nodeDelayUpdated[group.name][node.name] = new Date().toISOString();
+      recordDelayHistory(group.name, { [node.name]: res.delay });
+      updateProxyNodeCards();
+      updateGroupPane();
+    }
+  } catch (e) { /* background refresh */ }
 }
 
 function renderProxyNodeList() {
   const box = $("#proxy-node-list");
   const group = groups[proxyGroupIndex];
   if (!box || !group) return;
+  const scrollTop = box.scrollTop;
   const query = proxySearch.trim().toLowerCase();
   const nodes = (group.nodes || []).filter((node) => {
     const isGroup = proxyIsGroup(node.name);
@@ -1474,12 +1565,13 @@ function renderProxyNodeList() {
     box.innerHTML = `<div class="proxy-node-empty">${query ? "找不到符合的節點或策略組。" : "此策略組沒有可顯示的節點。"}</div>`;
     return;
   }
-  box.innerHTML = nodes.map((node) => {
+  const shown = nodes.slice(0, proxyNodeLimit);
+  box.innerHTML = shown.map((node) => {
     const isGroup = proxyIsGroup(node.name);
     const active = node.name === group.now;
     const type = isGroup ? "策略組" : (node.type || "節點");
     return `
-      <button class="node${active ? " active" : ""}" data-group="${esc(group.name)}" data-node="${esc(node.name)}" title="${esc(node.name)}" data-no-i18n-attrs>
+      <div class="node${active ? " active" : ""}" role="button" tabindex="0" data-group="${esc(group.name)}" data-node="${esc(node.name)}" title="${esc(node.name)}" data-no-i18n-attrs>
         <span class="node-state">${active ? "✓" : isGroup ? "↗" : ""}</span>
         <span class="node-copy">
           <span class="node-name" data-no-i18n>${esc(node.name)}</span>
@@ -1488,9 +1580,66 @@ function renderProxyNodeList() {
         <span class="node-meta">
           ${active ? '<span class="node-active-label">使用中</span>' : ""}
           ${delayBadge(group.name, node)}
+          <button class="node-retest" data-retest-node="${esc(node.name)}" title="重新測試此節點">重測</button>
         </span>
-      </button>`;
-  }).join("");
+      </div>`;
+  }).join("") + (nodes.length > shown.length ? `<button class="btn ghost proxy-node-more" data-node-more>顯示更多（還剩 ${nodes.length - shown.length} 個）</button>` : "");
+  box.scrollTop = scrollTop;
+}
+
+function updateProxyNodeCards() {
+  const box = $("#proxy-node-list");
+  const group = groups[proxyGroupIndex];
+  if (!box || !group) return;
+  const query = proxySearch.trim().toLowerCase();
+  const nodes = (group.nodes || []).filter((node) => {
+    const isGroup = proxyIsGroup(node.name);
+    if (proxyFilter === "nodes" && isGroup) return false;
+    if (proxyFilter === "groups" && !isGroup) return false;
+    return !query || node.name.toLowerCase().includes(query);
+  });
+  const shown = nodes.slice(0, proxyNodeLimit);
+  const cards = Array.from(box.querySelectorAll(".node"));
+  if (cards.length !== shown.length || cards.some((card, index) => card.dataset.node !== shown[index].name)) {
+    renderProxyNodeList();
+    return;
+  }
+  cards.forEach((card, index) => {
+    const node = shown[index];
+    const active = node.name === group.now;
+    const type = proxyIsGroup(node.name) ? "策略組" : (node.type || "節點");
+    card.classList.toggle("active", active);
+    const state = card.querySelector(".node-state");
+    const kind = card.querySelector(".node-type");
+    if (state) state.textContent = active ? "✓" : proxyIsGroup(node.name) ? "↗" : "";
+    if (kind) kind.textContent = type;
+    const meta = card.querySelector(".node-meta");
+    if (meta) {
+      meta.innerHTML = `${active ? '<span class="node-active-label">使用中</span>' : ""}${delayBadge(group.name, node)}<button class="node-retest" data-retest-node="${esc(node.name)}" title="重新測試此節點">重測</button>`;
+    }
+  });
+}
+
+function updateGroupPane() {
+  const pane = document.querySelector(".proxy-group-list");
+  if (!pane) return false;
+  const items = Array.from(pane.querySelectorAll(".proxy-group-item"));
+  if (items.length !== groups.length) return false;
+  for (let index = 0; index < groups.length; index += 1) {
+    const item = items[index];
+    const group = groups[index];
+    if (!item || item.dataset.selectGroup !== String(index)) return false;
+    const now = proxyEffectiveNode(group);
+    const activeNode = (group.nodes || []).find((node) => node.name === group.now);
+    item.classList.toggle("active", index === proxyGroupIndex);
+    const name = item.querySelector(".proxy-group-name");
+    const type = item.querySelector(".proxy-type");
+    const copy = item.querySelector(".proxy-group-now");
+    if (name) name.textContent = group.name;
+    if (type) type.textContent = group.type || "";
+    if (copy) copy.innerHTML = `出口：<b data-no-i18n>${esc(now)}</b>${activeNode ? " · " + delayBadge(group.name, activeNode) : ""}`;
+  }
+  return true;
 }
 
 function renderGroups() {
@@ -1587,6 +1736,12 @@ function renderVpnAdvanced() {
     btn.setAttribute("aria-checked", value ? "true" : "false");
     btn.disabled = !available || vpnAdvancedBusy;
   });
+  const autoProxy = $("#toggle-vpn-auto-proxy");
+  if (autoProxy) {
+    const value = available && !!(vpnData.settings && vpnData.settings.disable_system_proxy);
+    autoProxy.setAttribute("aria-checked", value ? "true" : "false");
+    autoProxy.disabled = !available || vpnAdvancedBusy;
+  }
 }
 
 async function refreshVpn(silent = false) {
@@ -1641,7 +1796,7 @@ function renderVpnPage() {
       ? "目前沒有 VPN 連線。"
       : "尚未建立 VPN 連線。";
   if (!connections.length) {
-    box.innerHTML = '<div class="vpn-empty">尚未建立 VPN 連線。點「新增 VPN」開啟 Windows 設定。</div>';
+    box.innerHTML = '<div class="vpn-empty">尚未建立 VPN 連線。點「新增 VPN」建立設定。</div>';
     return;
   }
   box.innerHTML = connections.map((item) => {
@@ -1657,13 +1812,34 @@ function renderVpnPage() {
       </div>
       <span class="vpn-status ${status.cls}">${status.label}</span>
       <div class="vpn-actions">
+        ${item.credential_saved && !item.connected ? `<button class="btn ghost small" data-vpn-action="forget_credentials" data-vpn-name="${esc(item.name)}">清除憑證</button>` : ""}
+        ${!item.connected ? `<button class="btn ghost small" data-vpn-action="edit" data-vpn-name="${esc(item.name)}" data-vpn-server="${esc(item.server)}" data-vpn-type="${esc(item.type)}">編輯</button>` : ""}
+        ${!item.connected ? `<button class="btn ghost small" data-vpn-action="delete" data-vpn-name="${esc(item.name)}">刪除</button>` : ""}
         <button class="btn ghost small" data-vpn-action="${item.connected ? "disconnect" : "connect"}" data-vpn-name="${esc(item.name)}">${item.connected ? "斷開" : "連線"}</button>
       </div>
     </div>`;
   }).join("");
 }
 
-async function vpnAction(name, action) {
+async function vpnAction(name, action, button = null) {
+  if (action === "edit") {
+    openVpnProfileModal("edit", {
+      name,
+      server: button?.dataset.vpnServer || "",
+      type: button?.dataset.vpnType || "Pptp",
+    });
+    return;
+  }
+  if (action === "delete") {
+    if (!confirm(tr("確定刪除 VPN？") + "\n" + name)) return;
+    try {
+      const res = demo ? await demoApi("vpn_delete", name) : await api("vpn_delete", name);
+      if (!res || !res.ok) toast((res && res.error) || "刪除 VPN 失敗", "error");
+      else toast("VPN 已刪除", "ok");
+      await refreshVpn(true);
+    } catch (e) { toast(String(e), "error"); }
+    return;
+  }
   try {
     const res = demo ? await demoApi("vpn_" + action, name) : await api("vpn_" + action, name);
     if (res && res.needs_credentials) {
@@ -1676,6 +1852,7 @@ async function vpnAction(name, action) {
       return;
     }
     if (action === "connect") toast("VPN 已連線", "ok");
+    else if (action === "forget_credentials") toast("VPN 憑證已清除", "ok");
     else toast("VPN 已斷開", "ok");
     await refreshVpn(true);
   } catch (e) {
@@ -1743,6 +1920,63 @@ async function submitVpnCredentials(ev) {
   }
 }
 
+function openVpnProfileModal(mode, item = {}) {
+  pendingVpnProfile = { mode };
+  const editing = mode === "edit";
+  $("#vpn-profile-title").textContent = editing ? "編輯 VPN 連線" : "新增 VPN 連線";
+  $("#vpn-profile-name").value = item.name || "";
+  $("#vpn-profile-name").disabled = editing;
+  $("#vpn-profile-server").value = item.server || "";
+  const type = String(item.type || "pptp").toLowerCase();
+  $("#vpn-profile-type").value = type === "pptp" || type === "l2tp" || type === "ikev2" || type === "sstp" || type === "automatic" ? type : "pptp";
+  $("#vpn-profile-error").textContent = "";
+  $("#vpn-profile-error").classList.add("hidden");
+  $("#vpn-profile-modal").classList.remove("hidden");
+  window.setTimeout(() => $(editing ? "#vpn-profile-server" : "#vpn-profile-name")?.focus(), 0);
+}
+
+function closeVpnProfileModal() {
+  $("#vpn-profile-modal").classList.add("hidden");
+  pendingVpnProfile = null;
+  $("#vpn-profile-name").disabled = false;
+}
+
+async function submitVpnProfile(ev) {
+  ev.preventDefault();
+  if (!pendingVpnProfile) return;
+  const name = $("#vpn-profile-name").value.trim();
+  const server = $("#vpn-profile-server").value.trim();
+  const type = $("#vpn-profile-type").value;
+  const errorBox = $("#vpn-profile-error");
+  const btn = $("#btn-submit-vpn-profile");
+  if (!name || !server) {
+    errorBox.textContent = "請輸入 VPN 名稱與伺服器位址";
+    errorBox.classList.remove("hidden");
+    return;
+  }
+  btn.disabled = true;
+  errorBox.classList.add("hidden");
+  const mode = pendingVpnProfile.mode;
+  try {
+    const res = mode === "edit"
+      ? (demo ? await demoApi("vpn_edit", name, server, type) : await api("vpn_edit", name, server, type))
+      : (demo ? await demoApi("vpn_add", name, server, type) : await api("vpn_add", name, server, type));
+    if (!res || !res.ok) {
+      errorBox.textContent = (res && res.error) || "儲存 VPN 失敗";
+      errorBox.classList.remove("hidden");
+      return;
+    }
+    closeVpnProfileModal();
+    toast(mode === "edit" ? "VPN 已更新" : "VPN 已新增", "ok");
+    await refreshVpn(true);
+  } catch (e) {
+    errorBox.textContent = String(e);
+    errorBox.classList.remove("hidden");
+  } finally {
+    btn.disabled = false;
+  }
+}
+
 async function setVpnAdvanced(setting, enabled) {
   if (vpnAdvancedBusy || !vpnData || !vpnData.ok || vpnData.supported === false) return;
   const btn = $(`#toggle-vpn-${setting}`);
@@ -1753,17 +1987,29 @@ async function setVpnAdvanced(setting, enabled) {
     btn.setAttribute("aria-checked", enabled ? "true" : "false");
   }
   try {
-    const res = demo ? await demoApi("vpn_set_advanced", setting, enabled) : await api("vpn_set_advanced", setting, enabled);
+    const res = setting === "auto_proxy"
+      ? (demo ? await demoApi("vpn_set_auto_proxy", enabled) : await api("vpn_set_auto_proxy", enabled))
+      : (demo ? await demoApi("vpn_set_advanced", setting, enabled) : await api("vpn_set_advanced", setting, enabled));
     if (!res || !res.ok) {
       toast((res && res.error) || "VPN 進階設定更新失敗", "error");
+      return;
+    }
+    if (setting === "auto_proxy") {
+      if (!vpnData.settings) vpnData.settings = {};
+      vpnData.settings.disable_system_proxy = enabled;
+      toast("VPN 自動代理設定已更新", "ok");
       return;
     }
     if (res.pending) {
       if (!vpnData.advanced) vpnData.advanced = {};
       vpnData.advanced[key] = enabled;
       toast(res.message || "請在 Windows 的 UAC 提示中允許變更。", "ok");
-      window.setTimeout(() => refreshVpn(true), 1600);
-      window.setTimeout(() => refreshVpn(true), 4800);
+      window.setTimeout(async () => {
+        await refreshVpn(true);
+        const actual = !!(vpnData && vpnData.advanced && vpnData.advanced[key]);
+        toast(actual === enabled ? "VPN 進階設定已套用" : "VPN 進階設定未變更（可能取消了 UAC）", actual === enabled ? "ok" : "error");
+      }, 2600);
+      window.setTimeout(() => refreshVpn(true), 5200);
     } else {
       toast("VPN 進階設定已更新", "ok");
       await refreshVpn(true);
@@ -1795,11 +2041,26 @@ function stopVpnPolling() {
 async function refreshLogs() {
   try {
     const res = demo ? await demoApi("get_logs") : await api("get_logs");
-    const lines = (res && res.lines) || [];
+    const rawLines = (res && res.lines) || [];
+    const query = logSearch.trim().toLowerCase();
+    const filtered = rawLines.filter((line) => {
+      const problem = /error|fail|warn|失敗|錯誤|逾時|超时/i.test(line);
+      if (logOnlyProblems && !problem) return false;
+      return !query || String(line).toLowerCase().includes(query);
+    });
+    const lines = [];
+    for (const line of filtered) {
+      const previous = lines[lines.length - 1];
+      if (previous && previous.text === line) previous.count += 1;
+      else lines.push({ text: line, count: 1 });
+    }
     const box = $("#logbox");
     box.innerHTML = lines.length
-      ? lines.map((ln) => `<span class="${/error|fail/i.test(ln) ? "log-error" : /warn/i.test(ln) ? "log-warn" : ""}">${esc(ln)}</span>`).join("\n")
-      : "（尚無日誌）";
+      ? lines.map((item) => {
+        const cls = /error|fail|失敗|錯誤|逾時|超时/i.test(item.text) ? "log-error" : /warn/i.test(item.text) ? "log-warn" : "";
+        return `<span class="${cls}">${esc(item.text)}${item.count > 1 ? esc(`  ×${item.count}`) : ""}</span>`;
+      }).join("\n")
+      : "（尚無符合條件的日誌）";
     if ($("#log-autoscroll").checked) box.scrollTop = box.scrollHeight;
   } catch (e) { /* ignore */ }
 }
@@ -1888,12 +2149,14 @@ function bindActions() {
     const groupButton = ev.target.closest("[data-select-group]");
     if (groupButton) {
       proxyGroupIndex = Number(groupButton.dataset.selectGroup) || 0;
+      proxyNodeLimit = 240;
       renderGroups();
       return;
     }
     const filterButton = ev.target.closest("[data-node-filter]");
     if (filterButton) {
       proxyFilter = filterButton.dataset.nodeFilter || "all";
+      proxyNodeLimit = 240;
       renderGroups();
       return;
     }
@@ -1901,19 +2164,56 @@ function bindActions() {
     if (t) {
       const g = groups[Number(t.dataset.test)];
       if (!g) return;
+      const previousText = t.textContent;
       t.disabled = true; t.textContent = "測速中…";
       try {
         const res = demo ? await demoApi("test_group_delay", g.name) : await api("test_group_delay", g.name);
         if (res && res.ok) {
           groupDelays[g.name] = res.delays || {};
+          nodeDelayUpdated[g.name] = nodeDelayUpdated[g.name] || {};
+          for (const nodeName of Object.keys(res.delays || {})) nodeDelayUpdated[g.name][nodeName] = new Date().toISOString();
           recordDelayHistory(g.name, res.delays || {});
           renderGroups();
           if (page === "stats") renderNodeHealth();
           toast("測速完成", "ok");
         } else toast((res && res.error) || "測速失敗", "error");
       } catch (e) { toast(String(e), "error"); }
+      finally {
+        t.disabled = false;
+        t.textContent = previousText || "測速目前組";
+      }
       return;
     }
+    const more = ev.target.closest("[data-node-more]");
+    if (more) {
+      proxyNodeLimit += 240;
+      more.remove();
+      renderProxyNodeList();
+      return;
+    }
+    const retest = ev.target.closest("[data-retest-node]");
+    if (retest) {
+      retest.disabled = true;
+      retest.textContent = "測試中";
+      try {
+        const res = demo ? await demoApi("test_node_delay", retest.dataset.retestNode) : await api("test_node_delay", retest.dataset.retestNode);
+        if (res && res.ok) {
+          const group = groups[proxyGroupIndex];
+          if (group) {
+            groupDelays[group.name] = groupDelays[group.name] || {};
+            groupDelays[group.name][res.name] = res.delay;
+          }
+          nodeDelayUpdated[group.name] = nodeDelayUpdated[group.name] || {};
+          nodeDelayUpdated[group.name][res.name] = new Date().toISOString();
+          recordDelayHistory(group.name, { [res.name]: res.delay });
+          renderGroups();
+          toast(res.delay > 0 ? "節點延遲：" + res.delay + " ms" : "節點逾時", res.delay > 0 ? "ok" : "error");
+        } else toast((res && res.error) || "節點測試失敗", "error");
+      } catch (e) { toast(String(e), "error"); }
+      finally { retest.disabled = false; retest.textContent = "重測"; }
+      return;
+    }
+    if (ev.target.closest("[data-retest-node]")) return;
     const n = ev.target.closest(".node");
     if (n) {
       const res = demo ? await demoApi("select_proxy", n.dataset.group, n.dataset.node) : await api("select_proxy", n.dataset.group, n.dataset.node);
@@ -1925,7 +2225,15 @@ function bindActions() {
   $("#groups").addEventListener("input", (ev) => {
     if (ev.target.id !== "proxy-node-search") return;
     proxySearch = ev.target.value;
+    proxyNodeLimit = 240;
     renderProxyNodeList();
+  });
+  $("#groups").addEventListener("keydown", (ev) => {
+    const node = ev.target.closest(".node");
+    if (!node || ev.target.closest("[data-retest-node]")) return;
+    if (ev.key !== "Enter" && ev.key !== " ") return;
+    ev.preventDefault();
+    node.click();
   });
 
   $("#sub-form").addEventListener("submit", async (ev) => {
@@ -2087,6 +2395,14 @@ function bindActions() {
       toast("已複製", "ok");
     } catch (e) { toast("複製失敗", "error"); }
   });
+  $("#log-search").addEventListener("input", (ev) => {
+    logSearch = ev.target.value;
+    refreshLogs();
+  });
+  $("#log-only-problems").addEventListener("change", (ev) => {
+    logOnlyProblems = ev.target.checked;
+    refreshLogs();
+  });
   $("#btn-check-update").addEventListener("click", () => checkForUpdates(true));
   $("#sw-auto-update").addEventListener("change", (ev) => {
     prefs.autoUpdateCheck = ev.target.checked;
@@ -2208,24 +2524,18 @@ function bindActions() {
   document.addEventListener("keydown", (ev) => {
     if (ev.key !== "Escape") return;
     if (!$("#vpn-credential-modal").classList.contains("hidden")) closeVpnCredentialModal();
+    else if (!$("#vpn-profile-modal").classList.contains("hidden")) closeVpnProfileModal();
     else if (!$("#diagnostics-modal").classList.contains("hidden")) closeDiagnostics();
   });
 
   $("#btn-vpn-refresh").addEventListener("click", () => refreshVpn());
-  $("#btn-vpn-settings").addEventListener("click", async () => {
-    if (demo) {
-      toast("DEMO 模式不開啟 Windows VPN 設定", "error");
-      return;
-    }
-    const res = await api("vpn_open_settings");
-    if (!res || !res.ok) toast((res && res.error) || "無法開啟 Windows VPN 設定", "error");
-  });
+  $("#btn-vpn-settings").addEventListener("click", () => openVpnProfileModal("add"));
   $("#vpn-list").addEventListener("click", async (ev) => {
     const btn = ev.target.closest("[data-vpn-action]");
     if (!btn || btn.disabled) return;
     btn.disabled = true;
     try {
-      await vpnAction(btn.dataset.vpnName, btn.dataset.vpnAction);
+      await vpnAction(btn.dataset.vpnName, btn.dataset.vpnAction, btn);
     } finally {
       btn.disabled = false;
     }
@@ -2241,6 +2551,12 @@ function bindActions() {
   $("#btn-cancel-vpn-credential").addEventListener("click", closeVpnCredentialModal);
   $("#vpn-credential-modal").addEventListener("click", (ev) => {
     if (ev.target === $("#vpn-credential-modal")) closeVpnCredentialModal();
+  });
+  $("#vpn-profile-form").addEventListener("submit", submitVpnProfile);
+  $("#btn-close-vpn-profile").addEventListener("click", closeVpnProfileModal);
+  $("#btn-cancel-vpn-profile").addEventListener("click", closeVpnProfileModal);
+  $("#vpn-profile-modal").addEventListener("click", (ev) => {
+    if (ev.target === $("#vpn-profile-modal")) closeVpnProfileModal();
   });
 
   $$("[data-open-url]").forEach((b) => b.addEventListener("click", () => {
@@ -2291,6 +2607,7 @@ document.addEventListener("DOMContentLoaded", async () => {
   setInterval(refreshState, 5000);
   setInterval(() => { if (page === "logs") refreshLogs(); }, 2000);
   setInterval(() => { if (page === "proxies" && state && state.running) refreshGroups(); }, 6000);
+  setInterval(autoRetestStaleActive, 30_000);
 
   window.addEventListener("resize", () => {
     drawSpark();

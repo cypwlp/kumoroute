@@ -1,6 +1,6 @@
 [package]
 name = "kumoroute"
-version = "0.7.2"
+version = "0.7.3"
 description = "Lightweight Mihomo-compatible desktop client"
 edition = "2021"
 rust-version = "1.77"

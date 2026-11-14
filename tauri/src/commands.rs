@@ -151,6 +151,37 @@ fn vpn_credential_target(name: &str) -> String {
     format!("{VPN_CREDENTIAL_PREFIX}{}", name.trim())
 }
 
+fn ps_quote(value: &str) -> String {
+    format!("'{}'", value.replace('\'', "''"))
+}
+
+fn vpn_tunnel(value: &str) -> Option<&'static str> {
+    match value.trim().to_ascii_lowercase().as_str() {
+        "pptp" => Some("Pptp"),
+        "l2tp" => Some("L2tp"),
+        "ikev2" => Some("Ikev2"),
+        "sstp" => Some("Sstp"),
+        "automatic" => Some("Automatic"),
+        _ => None,
+    }
+}
+
+fn vpn_profile_command(script: &str) -> Result<(), String> {
+    let output = hidden_command("powershell.exe")
+        .args(["-NoLogo", "-NoProfile", "-NonInteractive", "-Command", &format!("$ErrorActionPreference='Stop'; {script}")])
+        .output()
+        .map_err(|e| e.to_string())?;
+    if output.status.success() {
+        return Ok(());
+    }
+    let detail = String::from_utf8_lossy(&output.stderr).trim().to_string();
+    Err(if detail.is_empty() {
+        format!("PowerShell 結束代碼 {}", output.status.code().unwrap_or(-1))
+    } else {
+        detail
+    })
+}
+
 fn vpn_ras_error(code: u32) -> String {
     match code {
         645 => "Windows VPN 驗證失敗".into(),
@@ -481,7 +512,7 @@ fn proxy_history_delay(proxy: &Value) -> Option<(String, u64)> {
     Some((time, delay))
 }
 
-fn proxy_last_delay(proxy: &Value) -> Option<u64> {
+fn proxy_last_delay_info(proxy: &Value) -> Option<(String, u64)> {
     let mut candidates = Vec::new();
     if let Some(item) = proxy_history_delay(proxy) {
         candidates.push(item);
@@ -493,7 +524,7 @@ fn proxy_last_delay(proxy: &Value) -> Option<u64> {
             }
         }
     }
-    candidates.into_iter().max_by(|a, b| a.0.cmp(&b.0)).map(|item| item.1)
+    candidates.into_iter().max_by(|a, b| a.0.cmp(&b.0))
 }
 
 #[tauri::command]
@@ -523,7 +554,13 @@ pub fn get_proxy_groups(state: State<'_, Shared>) -> Value {
                     .map(|n| {
                         let proxy = proxies.get(n);
                         let nt = proxy.and_then(|x| x.get("type")).and_then(|v| v.as_str()).unwrap_or("");
-                        json!({"name": n, "type": nt, "delay": proxy.and_then(proxy_last_delay)})
+                        let delay_info = proxy.and_then(proxy_last_delay_info);
+                        json!({
+                            "name": n,
+                            "type": nt,
+                            "delay": delay_info.as_ref().map(|item| item.1),
+                            "delay_updated_at": delay_info.map(|item| item.0).unwrap_or_default(),
+                        })
                     })
                     .collect()
             })
@@ -541,6 +578,25 @@ pub fn get_proxy_groups(state: State<'_, Shared>) -> Value {
         (an == "GLOBAL", an.to_lowercase()).cmp(&(bn == "GLOBAL", bn.to_lowercase()))
     });
     json!({"ok": true, "groups": groups})
+}
+
+#[tauri::command]
+pub fn test_node_delay(state: State<'_, Shared>, name: String) -> Value {
+    let name = name.trim().to_string();
+    if name.is_empty() {
+        return err("找不到該節點");
+    }
+    let s = state.lock().unwrap();
+    let port = s.store.data.controller_port;
+    let path = format!(
+        "/proxies/{}/delay?timeout=5000&url={}",
+        urlencoding::encode(&name),
+        urlencoding::encode(TEST_URL)
+    );
+    match core::api("GET", port, &path, None, 12) {
+        Ok(d) => json!({"ok": true, "name": name, "delay": d.get("delay").and_then(Value::as_u64).unwrap_or(0)}),
+        Err(e) => err(e),
+    }
 }
 
 #[tauri::command]
@@ -897,13 +953,15 @@ pub fn run_update_installer(app: tauri::AppHandle, path: String) -> Value {
 }
 
 #[tauri::command]
-pub fn vpn_list() -> Value {
+pub fn vpn_list(state: State<'_, Shared>) -> Value {
+    let disable_system_proxy = state.lock().unwrap().store.data.vpn_disable_system_proxy;
     if std::env::consts::OS != "windows" {
         return json!({
             "ok": true,
             "supported": false,
             "connections": [],
-            "advanced": {"allow_metered": true, "allow_roaming": true}
+            "advanced": {"allow_metered": true, "allow_roaming": true},
+            "settings": {"disable_system_proxy": disable_system_proxy}
         });
     }
     match vpn_snapshot() {
@@ -911,20 +969,22 @@ pub fn vpn_list() -> Value {
             "ok": true,
             "supported": true,
             "connections": connections,
-            "advanced": advanced
+            "advanced": advanced,
+            "settings": {"disable_system_proxy": disable_system_proxy}
         }),
         Err(e) => json!({
             "ok": false,
             "supported": true,
             "connections": [],
             "advanced": {"allow_metered": true, "allow_roaming": true},
+            "settings": {"disable_system_proxy": disable_system_proxy},
             "error": e
         }),
     }
 }
 
 #[tauri::command]
-pub fn vpn_connect(name: String) -> Value {
+pub fn vpn_connect(state: State<'_, Shared>, name: String) -> Value {
     if std::env::consts::OS != "windows" {
         return err("Windows VPN 僅支援 Windows");
     }
@@ -947,8 +1007,20 @@ pub fn vpn_connect(name: String) -> Value {
         }
         Err(e) => return err(e),
     };
+    let proxy_disabled = {
+        let mut s = state.lock().unwrap();
+        if s.store.data.vpn_disable_system_proxy && proxy::is_on(&s.store) {
+            let port = s.store.data.controller_port;
+            match proxy::set_system_proxy(&mut s.store, false, core::is_up(port)) {
+                Ok(_) => true,
+                Err(e) => return err(format!("關閉系統代理失敗：{e}")),
+            }
+        } else {
+            false
+        }
+    };
     match vpn_ras_dial(profile_name, &credential.username, &credential.password) {
-        Ok(()) => json!({"ok": true, "connected": true}),
+        Ok(()) => json!({"ok": true, "connected": true, "proxy_disabled": proxy_disabled}),
         Err((code, _)) if code == 645 || code == 691 => {
             vpn_credential_delete(profile_name);
             json!({
@@ -964,6 +1036,7 @@ pub fn vpn_connect(name: String) -> Value {
 
 #[tauri::command]
 pub fn vpn_connect_with_credentials(
+    state: State<'_, Shared>,
     name: String,
     username: String,
     password: String,
@@ -984,6 +1057,18 @@ pub fn vpn_connect_with_credentials(
     if username.is_empty() || password.is_empty() {
         return err("請輸入 VPN 使用者名稱與密碼");
     }
+    let proxy_disabled = {
+        let mut s = state.lock().unwrap();
+        if s.store.data.vpn_disable_system_proxy && proxy::is_on(&s.store) {
+            let port = s.store.data.controller_port;
+            match proxy::set_system_proxy(&mut s.store, false, core::is_up(port)) {
+                Ok(_) => true,
+                Err(e) => return err(format!("關閉系統代理失敗：{e}")),
+            }
+        } else {
+            false
+        }
+    };
     match vpn_ras_dial(profile_name, &username, &password) {
         Ok(()) => {
             if remember {
@@ -1001,7 +1086,8 @@ pub fn vpn_connect_with_credentials(
             json!({
                 "ok": true,
                 "connected": true,
-                "credentials_saved": remember
+                "credentials_saved": remember,
+                "proxy_disabled": proxy_disabled
             })
         }
         Err((code, message)) => json!({"ok": false, "error": message, "code": code}),
@@ -1026,6 +1112,94 @@ pub fn vpn_disconnect(name: String) -> Value {
         Ok(output) => err(format!("VPN 斷線失敗（代碼 {}）", output.status.code().unwrap_or(-1))),
         Err(e) => err(format!("VPN 斷線失敗：{e}")),
     }
+}
+
+#[tauri::command]
+pub fn vpn_set_auto_proxy(state: State<'_, Shared>, enabled: bool) -> Value {
+    let mut s = state.lock().unwrap();
+    s.store.data.vpn_disable_system_proxy = enabled;
+    match s.store.save() {
+        Ok(_) => json!({"ok": true, "disable_system_proxy": enabled}),
+        Err(e) => err(format!("保存 VPN 設定失敗：{e}")),
+    }
+}
+
+#[tauri::command]
+pub fn vpn_add(name: String, server: String, tunnel_type: String) -> Value {
+    if std::env::consts::OS != "windows" {
+        return err("Windows VPN 僅支援 Windows");
+    }
+    let name = name.trim().to_string();
+    let server = server.trim().to_string();
+    let Some(tunnel) = vpn_tunnel(&tunnel_type) else {
+        return err("請輸入 VPN 名稱、伺服器與類型");
+    };
+    if name.is_empty() || server.is_empty() {
+        return err("請輸入 VPN 名稱、伺服器與類型");
+    }
+    if matches!(vpn_profile(&name), Ok(Some(_))) {
+        return err("已存在同名 VPN 連線");
+    }
+    let auth = if tunnel == "Pptp" || tunnel == "L2tp" { "MsChapv2" } else { "Eap" };
+    let script = format!(
+        "Add-VpnConnection -Name {} -ServerAddress {} -TunnelType {} -EncryptionLevel Required -AuthenticationMethod {} -RememberCredential -Force",
+        ps_quote(&name), ps_quote(&server), ps_quote(tunnel), ps_quote(auth)
+    );
+    match vpn_profile_command(&script) {
+        Ok(()) => json!({"ok": true, "name": name}),
+        Err(e) => err(format!("新增 VPN 失敗：{e}")),
+    }
+}
+
+#[tauri::command]
+pub fn vpn_edit(name: String, server: String, tunnel_type: String) -> Value {
+    if std::env::consts::OS != "windows" {
+        return err("Windows VPN 僅支援 Windows");
+    }
+    let name = name.trim().to_string();
+    let server = server.trim().to_string();
+    let Some(tunnel) = vpn_tunnel(&tunnel_type) else {
+        return err("請輸入 VPN 名稱、伺服器與類型");
+    };
+    if name.is_empty() || server.is_empty() {
+        return err("請輸入 VPN 名稱、伺服器與類型");
+    }
+    let script = format!(
+        "Set-VpnConnection -Name {} -ServerAddress {} -TunnelType {} -RememberCredential $true",
+        ps_quote(&name), ps_quote(&server), ps_quote(tunnel)
+    );
+    match vpn_profile_command(&script) {
+        Ok(()) => ok(),
+        Err(e) => err(format!("修改 VPN 失敗：{e}")),
+    }
+}
+
+#[tauri::command]
+pub fn vpn_delete(name: String) -> Value {
+    if std::env::consts::OS != "windows" {
+        return err("Windows VPN 僅支援 Windows");
+    }
+    let name = name.trim().to_string();
+    if name.is_empty() {
+        return err("找不到該 VPN 連線");
+    }
+    let script = format!("Remove-VpnConnection -Name {} -Force", ps_quote(&name));
+    match vpn_profile_command(&script) {
+        Ok(()) => {
+            vpn_credential_delete(&name);
+            ok()
+        }
+        Err(e) => err(format!("刪除 VPN 失敗：{e}")),
+    }
+}
+
+#[tauri::command]
+pub fn vpn_forget_credentials(name: String) -> Value {
+    if std::env::consts::OS != "windows" {
+        return err("Windows VPN 僅支援 Windows");
+    }
+    vpn_credential_delete(name.trim());
+    ok()
 }
 
 #[tauri::command]
@@ -1245,11 +1419,11 @@ mod update_tests {
     fn release() -> Value {
         json!({
             "assets": [
-                {"name": "KumoRoute-win-x64-setup.exe", "browser_download_url": "https://github.com/cypwlp/kumoroute/releases/download/v0.7.2/KumoRoute-win-x64-setup.exe", "size": 23000000},
-                {"name": "KumoRoute-win-x64.zip", "browser_download_url": "https://github.com/cypwlp/kumoroute/releases/download/v0.7.2/KumoRoute-win-x64.zip", "size": 30000000},
-                {"name": "KumoRoute-macos-universal.dmg", "browser_download_url": "https://github.com/cypwlp/kumoroute/releases/download/v0.7.2/KumoRoute-macos-universal.dmg", "size": 54000000},
-                {"name": "KumoRoute-linux-x86_64.AppImage", "browser_download_url": "https://github.com/cypwlp/kumoroute/releases/download/v0.7.2/KumoRoute-linux-x86_64.AppImage", "size": 108000000},
-                {"name": "SHA256SUMS.txt", "browser_download_url": "https://github.com/cypwlp/kumoroute/releases/download/v0.7.2/SHA256SUMS.txt", "size": 600}
+                {"name": "KumoRoute-win-x64-setup.exe", "browser_download_url": "https://github.com/cypwlp/kumoroute/releases/download/v0.7.3/KumoRoute-win-x64-setup.exe", "size": 23000000},
+                {"name": "KumoRoute-win-x64.zip", "browser_download_url": "https://github.com/cypwlp/kumoroute/releases/download/v0.7.3/KumoRoute-win-x64.zip", "size": 30000000},
+                {"name": "KumoRoute-macos-universal.dmg", "browser_download_url": "https://github.com/cypwlp/kumoroute/releases/download/v0.7.3/KumoRoute-macos-universal.dmg", "size": 54000000},
+                {"name": "KumoRoute-linux-x86_64.AppImage", "browser_download_url": "https://github.com/cypwlp/kumoroute/releases/download/v0.7.3/KumoRoute-linux-x86_64.AppImage", "size": 108000000},
+                {"name": "SHA256SUMS.txt", "browser_download_url": "https://github.com/cypwlp/kumoroute/releases/download/v0.7.3/SHA256SUMS.txt", "size": 600}
             ]
         })
     }
@@ -1272,7 +1446,7 @@ mod update_tests {
         let digest = "a".repeat(64);
         let sums = format!("{digest}  KumoRoute-win-x64-setup.exe\n");
         assert_eq!(parse_sha256sums(&sums, "KumoRoute-win-x64-setup.exe"), Some(digest));
-        assert!(safe_update_url("https://github.com/cypwlp/kumoroute/releases/download/v0.7.2/file.exe"));
+        assert!(safe_update_url("https://github.com/cypwlp/kumoroute/releases/download/v0.7.3/file.exe"));
         assert!(!safe_update_url("https://evil.example/file.exe"));
         assert!(!safe_update_url("http://github.com/file.exe"));
     }

@@ -1,4 +1,4 @@
-KumoRoute v0.7.2 — 輕量 Mihomo 桌面客戶端（Windows x64 免安裝版，Rust/Tauri；相容 Clash 配置）
+KumoRoute v0.7.3 — 輕量 Mihomo 桌面客戶端（Windows x64 免安裝版，Rust/Tauri；相容 Clash 配置）
 
 使用方法
 1. 解壓縮到任意資料夾（請保持 KumoRoute.exe、core\、與程式同層）
@@ -12,7 +12,7 @@ KumoRoute v0.7.2 — 輕量 Mihomo 桌面客戶端（Windows x64 免安裝版，
 - 若系統代理開關打開後又被關掉，是其他安全軟體在守護代理設定，請關閉其代理守護。
 - 統計資料只保存在本機；可在「統計」頁匯出 CSV／JSON 或清除。
 - 設定頁可切換跟隨系統／深色／淺色主題，以及繁體中文／简体中文／English；偏好會保存在本機。
-- Windows 版可管理系統內建 VPN：首次登入後憑證由 Windows 認證管理員加密保存，之後可直接連線；並可切換計量網路與漫遊選項。
+- Windows 版可新增／編輯／刪除系統內建 VPN；首次登入後憑證由 Windows 認證管理員加密保存，支援清除憑證、自動關閉系統代理，以及計量網路與漫遊選項。
 - 設定頁可檢查更新；使用者確認後可下載並啟動安裝檔。未簽名版本仍可能出現 SmartScreen／Gatekeeper 警告。
 - 當機紀錄保存在本機 logs 目錄，設定頁可匯出去識別化診斷資料。
 - 設定目錄：%APPDATA%\KumoRoute
@@ -21,6 +21,8 @@ KumoRoute v0.7.2 — 輕量 Mihomo 桌面客戶端（Windows x64 免安裝版，
 內置說明
 - 已內置 GeoIP/GeoSite 資料庫（geoip.metadb、geosite.dat），導入訂閱即可使用，無需聯網下載 geodata。
 - 核心若異常退出會自動重啟（60 秒內最多 5 次）；core.log 超過 2MB 自動輪轉為 core.1.log。
+- 代理節點延遲顯示更新時間，支援單節點重測與過期自動重測；大型節點清單分段載入。
+- 日誌支援搜尋、只顯示警告／錯誤與重複訊息合併；沒有 IPv6 預設路由時會自動停用核心 IPv6。
 
 授權
 - 客戶端程式碼 MIT（見 LICENSE）；第三方元件聲明見 NOTICE.md。
