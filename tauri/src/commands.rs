@@ -474,6 +474,28 @@ pub fn set_system_proxy(state: State<'_, Shared>, enabled: bool) -> Value {
     }
 }
 
+fn proxy_history_delay(proxy: &Value) -> Option<(String, u64)> {
+    let item = proxy.get("history")?.as_array()?.last()?;
+    let delay = item.get("delay")?.as_u64()?;
+    let time = item.get("time").and_then(Value::as_str).unwrap_or("").to_string();
+    Some((time, delay))
+}
+
+fn proxy_last_delay(proxy: &Value) -> Option<u64> {
+    let mut candidates = Vec::new();
+    if let Some(item) = proxy_history_delay(proxy) {
+        candidates.push(item);
+    }
+    if let Some(extra) = proxy.get("extra").and_then(Value::as_object) {
+        for value in extra.values() {
+            if let Some(item) = proxy_history_delay(value) {
+                candidates.push(item);
+            }
+        }
+    }
+    candidates.into_iter().max_by(|a, b| a.0.cmp(&b.0)).map(|item| item.1)
+}
+
 #[tauri::command]
 pub fn get_proxy_groups(state: State<'_, Shared>) -> Value {
     let s = state.lock().unwrap();
@@ -499,8 +521,9 @@ pub fn get_proxy_groups(state: State<'_, Shared>) -> Value {
                 arr.iter()
                     .filter_map(|n| n.as_str())
                     .map(|n| {
-                        let nt = proxies.get(n).and_then(|x| x.get("type")).and_then(|v| v.as_str()).unwrap_or("");
-                        json!({"name": n, "type": nt})
+                        let proxy = proxies.get(n);
+                        let nt = proxy.and_then(|x| x.get("type")).and_then(|v| v.as_str()).unwrap_or("");
+                        json!({"name": n, "type": nt, "delay": proxy.and_then(proxy_last_delay)})
                     })
                     .collect()
             })
@@ -1222,11 +1245,11 @@ mod update_tests {
     fn release() -> Value {
         json!({
             "assets": [
-                {"name": "KumoRoute-win-x64-setup.exe", "browser_download_url": "https://github.com/cypwlp/kumoroute/releases/download/v0.7.1/KumoRoute-win-x64-setup.exe", "size": 23000000},
-                {"name": "KumoRoute-win-x64.zip", "browser_download_url": "https://github.com/cypwlp/kumoroute/releases/download/v0.7.1/KumoRoute-win-x64.zip", "size": 30000000},
-                {"name": "KumoRoute-macos-universal.dmg", "browser_download_url": "https://github.com/cypwlp/kumoroute/releases/download/v0.7.1/KumoRoute-macos-universal.dmg", "size": 54000000},
-                {"name": "KumoRoute-linux-x86_64.AppImage", "browser_download_url": "https://github.com/cypwlp/kumoroute/releases/download/v0.7.1/KumoRoute-linux-x86_64.AppImage", "size": 108000000},
-                {"name": "SHA256SUMS.txt", "browser_download_url": "https://github.com/cypwlp/kumoroute/releases/download/v0.7.1/SHA256SUMS.txt", "size": 600}
+                {"name": "KumoRoute-win-x64-setup.exe", "browser_download_url": "https://github.com/cypwlp/kumoroute/releases/download/v0.7.2/KumoRoute-win-x64-setup.exe", "size": 23000000},
+                {"name": "KumoRoute-win-x64.zip", "browser_download_url": "https://github.com/cypwlp/kumoroute/releases/download/v0.7.2/KumoRoute-win-x64.zip", "size": 30000000},
+                {"name": "KumoRoute-macos-universal.dmg", "browser_download_url": "https://github.com/cypwlp/kumoroute/releases/download/v0.7.2/KumoRoute-macos-universal.dmg", "size": 54000000},
+                {"name": "KumoRoute-linux-x86_64.AppImage", "browser_download_url": "https://github.com/cypwlp/kumoroute/releases/download/v0.7.2/KumoRoute-linux-x86_64.AppImage", "size": 108000000},
+                {"name": "SHA256SUMS.txt", "browser_download_url": "https://github.com/cypwlp/kumoroute/releases/download/v0.7.2/SHA256SUMS.txt", "size": 600}
             ]
         })
     }
@@ -1249,7 +1272,7 @@ mod update_tests {
         let digest = "a".repeat(64);
         let sums = format!("{digest}  KumoRoute-win-x64-setup.exe\n");
         assert_eq!(parse_sha256sums(&sums, "KumoRoute-win-x64-setup.exe"), Some(digest));
-        assert!(safe_update_url("https://github.com/cypwlp/kumoroute/releases/download/v0.7.1/file.exe"));
+        assert!(safe_update_url("https://github.com/cypwlp/kumoroute/releases/download/v0.7.2/file.exe"));
         assert!(!safe_update_url("https://evil.example/file.exe"));
         assert!(!safe_update_url("http://github.com/file.exe"));
     }

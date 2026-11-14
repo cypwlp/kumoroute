@@ -528,7 +528,7 @@ const demoCfg = {
   mixed_port: 7890,
   controller_port: 9090,
   core_version: "v1.19.33",
-  app_version: "0.7.1",
+  app_version: "0.7.2",
   data_dir: "C:\\Users\\…\\AppData\\Roaming\\KumoRoute",
   test_url: "https://cp.cloudflare.com/generate_204",
   profiles: [
@@ -1397,6 +1397,7 @@ async function refreshGroups() {
     const res = demo ? await demoApi("get_proxy_groups") : await api("get_proxy_groups");
     groups = (res && res.groups) || [];
     knownGroupNames = new Set(groups.map((g) => g.name));
+    syncGroupDelaysFromGroups();
     const previousIndex = groups.findIndex((g) => g.name === previousName);
     proxyGroupIndex = previousIndex >= 0 ? previousIndex : defaultProxyGroupIndex();
     renderGroups();
@@ -1448,6 +1449,16 @@ function delayBadge(groupName, node) {
   return `<span class="delay ${cls}">${d} ms</span>`;
 }
 
+function syncGroupDelaysFromGroups() {
+  for (const group of groups) {
+    const bucket = groupDelays[group.name] || {};
+    for (const node of group.nodes || []) {
+      if (typeof node.delay === "number") bucket[node.name] = node.delay;
+    }
+    groupDelays[group.name] = bucket;
+  }
+}
+
 function renderProxyNodeList() {
   const box = $("#proxy-node-list");
   const group = groups[proxyGroupIndex];
@@ -1474,7 +1485,10 @@ function renderProxyNodeList() {
           <span class="node-name" data-no-i18n>${esc(node.name)}</span>
           <span class="node-type">${esc(type)}</span>
         </span>
-        ${active ? '<span class="node-active-label">使用中</span>' : delayBadge(group.name, node)}
+        <span class="node-meta">
+          ${active ? '<span class="node-active-label">使用中</span>' : ""}
+          ${delayBadge(group.name, node)}
+        </span>
       </button>`;
   }).join("");
 }

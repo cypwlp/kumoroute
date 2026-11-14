@@ -379,6 +379,7 @@ main::-webkit-scrollbar-thumb { background: var(--line2); border-radius: 8px; bo
 .node-copy { min-width: 0; flex: 1; display: flex; flex-direction: column; gap: 2px; }
 .node-copy .node-name, .node-copy .node-type { display: block; }
 .node-copy .node-type { margin-top: 0; }
+.node-meta { display: flex; align-items: center; gap: 6px; flex: 0 0 auto; }
 .node-active-label { color: var(--green); font-size: 10.5px; white-space: nowrap; }
 .proxy-node-empty { grid-column: 1 / -1; color: var(--muted); text-align: center; padding: 44px 12px; font-size: 12px; }
 @media (max-width: 1050px) {
@@ -490,7 +491,7 @@ main::-webkit-scrollbar-thumb { background: var(--line2); border-radius: 8px; bo
 .toggle-switch:disabled { opacity: 0.45; cursor: default; }
 .toggle-switch:focus-visible { outline: 2px solid rgba(91, 140, 255, 0.55); outline-offset: 2px; }
 
-.vpn-credential-card { width: min(470px, 100%); max-height: none; }
+.modal-card.vpn-credential-card { width: min(400px, 100%); max-height: none; }
 .vpn-credential-fields { display: flex; flex-direction: column; gap: 13px; margin-top: 16px; }
 .vpn-credential-fields .privacy-check { margin: 1px 0; }
 .vpn-credential-fields .form-error { margin-top: 0; }

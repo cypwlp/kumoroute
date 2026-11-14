@@ -26,7 +26,7 @@ import yaml
 
 APP_NAME = "KumoRoute"
 LEGACY_APP_NAME = "MyClash"
-APP_VERSION = "0.7.1"
+APP_VERSION = "0.7.2"
 CREATE_NO_WINDOW = 0x08000000
 SUB_UA = f"KumoRoute/{APP_VERSION}"
 TEST_URL = "https://cp.cloudflare.com/generate_204"
@@ -880,6 +880,37 @@ class Core:
             return self.start()
 
 
+def _history_delay(proxy: dict) -> tuple[str, int] | None:
+    history = proxy.get("history") if isinstance(proxy, dict) else None
+    if not isinstance(history, list) or not history:
+        return None
+    item = history[-1]
+    if not isinstance(item, dict):
+        return None
+    try:
+        delay = int(item.get("delay"))
+    except (TypeError, ValueError):
+        return None
+    return str(item.get("time") or ""), max(0, delay)
+
+
+def _proxy_last_delay(proxy: dict) -> int | None:
+    candidates = []
+    direct = _history_delay(proxy)
+    if direct:
+        candidates.append(direct)
+    extra = proxy.get("extra") if isinstance(proxy, dict) else None
+    if isinstance(extra, dict):
+        for value in extra.values():
+            if isinstance(value, dict):
+                item = _history_delay(value)
+                if item:
+                    candidates.append(item)
+    if not candidates:
+        return None
+    return max(candidates, key=lambda item: item[0])[1]
+
+
 class Api:
     def __init__(self, store: Store, profiles: Profiles, core: Core):
         self._store = store
@@ -1025,7 +1056,11 @@ class Api:
                 nodes = []
                 for n in p.get("all") or []:
                     np = proxies.get(n) or {}
-                    nodes.append({"name": n, "type": np.get("type", "")})
+                    nodes.append({
+                        "name": n,
+                        "type": np.get("type", ""),
+                        "delay": _proxy_last_delay(np),
+                    })
                 groups.append(
                     {
                         "name": name,
