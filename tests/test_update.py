@@ -13,11 +13,11 @@ class UpdateAssetTests(unittest.TestCase):
     def _release(self):
         return {
             "assets": [
-                {"name": "KumoRoute-win-x64-setup.exe", "browser_download_url": "https://github.com/cypwlp/kumoroute/releases/download/v0.6.1/KumoRoute-win-x64-setup.exe", "size": 23_000_000},
-                {"name": "KumoRoute-win-x64.zip", "browser_download_url": "https://github.com/cypwlp/kumoroute/releases/download/v0.6.1/KumoRoute-win-x64.zip", "size": 30_000_000},
-                {"name": "KumoRoute-macos-universal.dmg", "browser_download_url": "https://github.com/cypwlp/kumoroute/releases/download/v0.6.1/KumoRoute-macos-universal.dmg", "size": 54_000_000},
-                {"name": "KumoRoute-linux-x86_64.AppImage", "browser_download_url": "https://github.com/cypwlp/kumoroute/releases/download/v0.6.1/KumoRoute-linux-x86_64.AppImage", "size": 108_000_000},
-                {"name": "SHA256SUMS.txt", "browser_download_url": "https://github.com/cypwlp/kumoroute/releases/download/v0.6.1/SHA256SUMS.txt", "size": 600},
+                {"name": "KumoRoute-win-x64-setup.exe", "browser_download_url": "https://github.com/cypwlp/kumoroute/releases/download/v0.7.0/KumoRoute-win-x64-setup.exe", "size": 23_000_000},
+                {"name": "KumoRoute-win-x64.zip", "browser_download_url": "https://github.com/cypwlp/kumoroute/releases/download/v0.7.0/KumoRoute-win-x64.zip", "size": 30_000_000},
+                {"name": "KumoRoute-macos-universal.dmg", "browser_download_url": "https://github.com/cypwlp/kumoroute/releases/download/v0.7.0/KumoRoute-macos-universal.dmg", "size": 54_000_000},
+                {"name": "KumoRoute-linux-x86_64.AppImage", "browser_download_url": "https://github.com/cypwlp/kumoroute/releases/download/v0.7.0/KumoRoute-linux-x86_64.AppImage", "size": 108_000_000},
+                {"name": "SHA256SUMS.txt", "browser_download_url": "https://github.com/cypwlp/kumoroute/releases/download/v0.7.0/SHA256SUMS.txt", "size": 600},
             ]
         }
 
@@ -36,7 +36,7 @@ class UpdateAssetTests(unittest.TestCase):
     def test_checksum_parser_and_url_validation(self):
         digest = "a" * 64
         self.assertEqual(app.parse_sha256sums(f"{digest}  KumoRoute-win-x64-setup.exe\n", "KumoRoute-win-x64-setup.exe"), digest)
-        self.assertTrue(app.safe_update_url("https://github.com/cypwlp/kumoroute/releases/download/v0.6.1/file.exe"))
+        self.assertTrue(app.safe_update_url("https://github.com/cypwlp/kumoroute/releases/download/v0.7.0/file.exe"))
         self.assertFalse(app.safe_update_url("https://evil.example/file.exe"))
         self.assertFalse(app.safe_update_url("http://github.com/file.exe"))
 
