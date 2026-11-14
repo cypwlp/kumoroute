@@ -122,7 +122,7 @@ jobs:
             | xargs -0 sha256sum > SHA256SUMS.txt
           cat SHA256SUMS.txt
 
-      - uses: softprops/action-gh-release@v2
+      - uses: softprops/action-gh-release@v3
         with:
           name: KumoRoute ${{ github.ref_name }}
           tag_name: ${{ github.ref_name }}
