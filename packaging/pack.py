@@ -31,6 +31,7 @@ def main():
         shutil.rmtree(STAGE)
     (STAGE / "core").mkdir(parents=True)
     shutil.copy2(EXE, STAGE / "KumoRoute.exe")
+    shutil.copy2(ROOT / "packaging" / "KumoRoute.portable", STAGE / "KumoRoute.portable")
     shutil.copy2(README, STAGE / "README.txt")
     for name in LEGAL_FILES:
         shutil.copy2(ROOT / name, STAGE / name)

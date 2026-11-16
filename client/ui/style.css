@@ -537,6 +537,7 @@ main::-webkit-scrollbar-thumb { background: var(--line2); border-radius: 8px; bo
   .vpn-actions { width: 100%; padding-left: 51px; }
   .update-version-row { flex-wrap: wrap; }
   .update-prompt-size { width: 100%; margin-left: 0; }
+  .update-backup-panel { align-items: flex-start; flex-direction: column; }
 }
 
 /* ---------- logs ---------- */
@@ -634,6 +635,20 @@ main::-webkit-scrollbar-thumb { background: var(--line2); border-radius: 8px; bo
 }
 .update-prompt-notes.hidden { display: none; }
 .update-prompt-card .modal-actions { margin-top: 16px; }
+.update-mode-chip {
+  display: inline-flex; align-items: center; width: fit-content;
+  margin: 0 0 12px; padding: 4px 9px; border: 1px solid var(--line2);
+  border-radius: 999px; color: var(--muted); font-size: 10.5px;
+}
+.update-progress { margin-top: 13px; padding: 12px; border: 1px solid var(--line); border-radius: 10px; background: var(--bg2); }
+.update-progress.hidden { display: none; }
+.update-progress-head { display: flex; justify-content: space-between; gap: 12px; margin-bottom: 7px; color: var(--muted); font-size: 11px; }
+.update-progress-track { height: 7px; overflow: hidden; border-radius: 99px; background: var(--line2); }
+.update-progress-track span { display: block; width: 0; height: 100%; border-radius: inherit; background: var(--accent); transition: width 0.18s ease; }
+.update-progress-actions { display: flex; justify-content: flex-end; margin-top: 9px; }
+.update-backup-panel { display: flex; align-items: center; justify-content: space-between; gap: 14px; margin-top: 14px; padding: 12px 14px; border: 1px solid var(--line); border-radius: 10px; background: var(--bg2); }
+.update-backup-panel.hidden { display: none; }
+.update-backup-panel .hint { margin: 4px 0 0; }
 .modal-head .card-title { margin-bottom: 4px; }
 .modal-close {
   border: 0; background: transparent; color: var(--muted);

@@ -26,6 +26,9 @@ const MAX_EVENTS = 100;
 let usageData = loadUsageData();
 let prefs = loadPreferences();
 let latestUpdate = null;
+let updateState = null;
+let updateDownloading = false;
+let updateFailureNotified = false;
 let sessionStartedAt = Date.now();
 let peakConnections = 0;
 let peakDownSpeed = 0;
@@ -173,26 +176,34 @@ function redrawCharts() {
   if (page === "stats") drawStatsChart();
 }
 
+function updateInstallModeLabel(mode) {
+  return mode === "portable" ? "ZIP 免安裝版" : "Windows 安裝版";
+}
+
 function renderUpdateUi() {
   if (!$("#update-current")) return;
+  const mode = latestUpdate?.install_mode || updateState?.install_mode || "installed";
   $("#update-current").textContent = "v" + (latestUpdate?.current || (state ? state.app_version : "—"));
+  $("#update-install-mode").textContent = updateInstallModeLabel(mode);
   $("#sw-auto-update").checked = prefs.autoUpdateCheck !== false;
   const latest = latestUpdate?.latest ? "v" + latestUpdate.latest : "尚未檢查";
   $("#update-latest").textContent = latest;
   const hasUpdate = !!(latestUpdate && latestUpdate.update_available);
   const asset = latestUpdate?.asset || null;
-  $("#btn-open-update").disabled = !(hasUpdate && latestUpdate.url);
-  $("#btn-install-update").disabled = !(hasUpdate && asset?.download_url && asset?.sha256_url);
+  const isZip = !!(asset?.filename || "").toLowerCase().endsWith(".zip");
+  $("#btn-open-update").disabled = !(hasUpdate && latestUpdate.url) || updateDownloading;
+  $("#btn-install-update").disabled = !(hasUpdate && asset?.download_url && asset?.sha256_url) || updateDownloading;
   $("#btn-install-update").textContent = hasUpdate
-    ? "立即更新（" + (asset?.size_mb || 0) + " MB）"
+    ? (isZip ? "下載 ZIP 更新" : "立即更新（" + (asset?.size_mb || 0) + " MB）")
     : "立即更新";
   if (hasUpdate) {
-    $("#update-status").textContent = "有新版本 " + latest + " 可用。可下載並啟動安裝檔，或自行從更新頁安裝。";
+    $("#update-status").textContent = isZip ? "可下載 ZIP 免安裝更新。" : "可下載並啟動安裝程式。";
   } else if (latestUpdate && latestUpdate.latest) {
     $("#update-status").textContent = "目前已是最新版本。";
   } else {
     $("#update-status").textContent = "可手動下載並安裝新版本；應用程式不會在背景自動執行安裝檔。";
   }
+  renderUpdateBackupState();
 }
 
 function closeUpdatePrompt() {
@@ -219,6 +230,7 @@ function maybeShowUpdatePrompt(update) {
   const asset = update.asset || null;
   const size = asset && asset.size_mb ? ` · ${asset.size_mb} MB` : "";
   $("#update-modal-size").textContent = size;
+  $("#update-modal-mode").textContent = updateInstallModeLabel(update.install_mode || updateState?.install_mode || "installed");
   const notes = String(update.notes || "").trim().slice(0, 1200);
   const notesEl = $("#update-modal-notes");
   if (notesEl) {
@@ -226,10 +238,84 @@ function maybeShowUpdatePrompt(update) {
     notesEl.classList.toggle("hidden", !notes);
   }
   const updateNow = $("#btn-update-now");
-  if (updateNow) updateNow.disabled = !(asset && asset.download_url && asset.sha256_url);
+  if (updateNow) {
+    updateNow.disabled = !(asset && asset.download_url && asset.sha256_url);
+    updateNow.textContent = (asset?.filename || "").toLowerCase().endsWith(".zip") ? "下載 ZIP 更新" : "立即更新";
+  }
+  setUpdateProgressUi({ active: false, phase: "idle", percent: 0 });
   modal.classList.remove("hidden");
   window.setTimeout(() => $("#btn-update-now")?.focus(), 0);
   return true;
+}
+
+function renderUpdateBackupState() {
+  const panel = $("#update-backup-panel");
+  if (!panel) return;
+  const available = !!updateState?.backup_available;
+  panel.classList.toggle("hidden", !available);
+  if (!available) return;
+  const failed = !!updateState.failed;
+  const previous = updateState.previous_version ? "v" + updateState.previous_version : "上一版";
+  $("#update-backup-title").textContent = failed ? "上次更新未完成" : "已保留上一版";
+  $("#update-backup-detail").textContent = failed
+    ? `目前仍是 v${updateState.current_version}；可按下方按鈕還原 ${previous}。`
+    : `${previous} 的程式與核心已備份，可手動還原。`;
+  $("#btn-rollback-update").disabled = updateDownloading;
+  if (failed && !updateFailureNotified) {
+    updateFailureNotified = true;
+    toast("上次更新未完成，已保留上一版備份", "error");
+  }
+}
+
+async function refreshUpdateState() {
+  try {
+    const res = demo ? await demoApi("get_update_state") : await api("get_update_state");
+    if (res && res.ok) {
+      updateState = res;
+      renderUpdateUi();
+    }
+  } catch (e) { /* update state is optional until backend is ready */ }
+}
+
+function setUpdateProgressUi(status = {}) {
+  const phase = String(status.phase || "idle");
+  const active = !!status.active;
+  const percent = Math.max(0, Math.min(100, Number(status.percent) || 0));
+  const received = Number(status.received) || 0;
+  const total = Number(status.total) || 0;
+  const label = phase === "verifying" ? "驗證更新檔…" : phase === "complete" ? "下載完成" : phase === "error" ? "更新失敗" : phase === "cancelled" ? "已取消" : "下載中…";
+  const bytes = total ? `${fmtBytes(received)} / ${fmtBytes(total)}` : "";
+  const fields = [
+    ["#update-progress", "#update-progress-bar", "#update-progress-text", "#update-progress-bytes"],
+    ["#update-modal-progress", "#update-modal-progress-bar", "#update-modal-progress-text", "#update-modal-progress-bytes"],
+  ];
+  for (const [panel, bar, text, bytesEl] of fields) {
+    const p = $(panel);
+    if (!p) continue;
+    p.classList.toggle("hidden", !active && !["verifying", "complete", "error", "cancelled"].includes(phase));
+    const b = $(bar);
+    if (b) b.style.width = percent + "%";
+    if ($(text)) $(text).textContent = `${label} ${percent}%`;
+    if ($(bytesEl)) $(bytesEl).textContent = bytes;
+  }
+  updateDownloading = active;
+  const promptButtons = ["#btn-update-now", "#btn-update-later", "#btn-update-view"].map((id) => $(id)).filter(Boolean);
+  promptButtons.forEach((button) => { button.disabled = active; });
+  const cancelButtons = ["#btn-cancel-update", "#btn-cancel-update-prompt"].map((id) => $(id)).filter(Boolean);
+  cancelButtons.forEach((button) => { button.disabled = !active; });
+  if (!active) renderUpdateUi();
+}
+
+async function cancelUpdateDownload() {
+  if (!updateDownloading) return;
+  try {
+    const res = demo ? await demoApi("cancel_update_download") : await api("cancel_update_download");
+    if (!res || !res.ok) toast((res && res.error) || "取消更新失敗", "error");
+  } catch (e) { toast(String(e), "error"); }
+}
+
+function wait(ms) {
+  return new Promise((resolve) => window.setTimeout(resolve, ms));
 }
 
 async function downloadAndInstallUpdate() {
@@ -238,33 +324,52 @@ async function downloadAndInstallUpdate() {
     openUpdatePage();
     return;
   }
-  const settingsButton = $("#btn-install-update");
-  const promptButton = $("#btn-update-now");
-  const buttons = [settingsButton, promptButton].filter(Boolean);
-  buttons.forEach((button) => { button.disabled = true; });
-  if (promptButton) promptButton.textContent = "下載中…";
+  if (updateDownloading) return;
+  updateDownloading = true;
+  let lastStatus = null;
+  setUpdateProgressUi({ active: true, phase: "verifying", percent: 0, received: 0, total: Number(asset.size) || 0 });
   const status = $("#update-status");
   if (status) status.textContent = "正在下載更新安裝檔…";
   try {
-    toast("正在下載更新…", "ok");
-    const res = await api("install_update", asset.download_url, asset.filename, asset.sha256_url || "");
-    if (!res || !res.ok) {
-      if (status) status.textContent = (res && res.error) || "下載更新失敗";
-      toast((res && res.error) || "下載更新失敗", "error");
+    const started = demo
+      ? await demoApi("start_update_download", asset.download_url, asset.filename, asset.sha256_url || "")
+      : await api("start_update_download", asset.download_url, asset.filename, asset.sha256_url || "");
+    if (!started || !started.ok) {
+      toast((started && started.error) || "無法開始下載更新", "error");
       return;
     }
-    toast("更新已下載：", "ok", res.path);
+    let result = null;
+    while (true) {
+      await wait(250);
+      const poll = demo ? await demoApi("update_download_status") : await api("update_download_status");
+      result = poll && poll.status ? poll.status : poll;
+      if (!result) continue;
+      lastStatus = result;
+      setUpdateProgressUi(result);
+      if (!result.active && result.phase === "complete") break;
+      if (!result.active && (result.phase === "error" || result.phase === "cancelled")) {
+        if (result.phase === "cancelled") toast("更新下載已取消", "ok");
+        else toast(result.error || "下載更新失敗", "error");
+        return;
+      }
+    }
+    toast("更新已下載：", "ok", result.path);
     if (status) status.textContent = "更新安裝檔已下載，請確認後由系統安裝。";
-    if (confirm(tr("更新安裝檔已下載完成。是否立即啟動安裝程式？\nKumoRoute 會在安裝程式啟動後自動退出。"))) {
-      const run = await api("run_update_installer", res.path);
+    const confirmText = latestUpdate.install_mode === "portable"
+      ? "更新 ZIP 已下載完成。是否立即套用並重新啟動 KumoRoute？"
+      : "更新安裝檔已下載完成。是否立即啟動安裝程式？\nKumoRoute 會在安裝程式啟動後自動退出。";
+    if (confirm(tr(confirmText))) {
+      const run = demo
+        ? await demoApi("run_update_installer", result.path, latestUpdate.latest || "")
+        : await api("run_update_installer", result.path, latestUpdate.latest || "");
       if (!run || !run.ok) toast((run && run.error) || "啟動更新安裝檔失敗", "error");
     }
   } catch (e) {
     if (status) status.textContent = String(e);
     toast(String(e), "error");
   } finally {
-    buttons.forEach((button) => { button.disabled = false; });
-    if (promptButton) promptButton.textContent = "立即更新";
+    updateDownloading = false;
+    setUpdateProgressUi(lastStatus || { active: false, phase: "idle", percent: 0 });
     renderUpdateUi();
   }
 }
@@ -272,19 +377,21 @@ async function downloadAndInstallUpdate() {
 async function checkForUpdates(manual = true) {
   if (demo) {
     const previewVersion = new URLSearchParams(location.search).get("preview-update");
+    const previewMode = new URLSearchParams(location.search).get("preview-mode") === "portable" ? "portable" : "installed";
     const hasPreviewUpdate = !!previewVersion;
     latestUpdate = {
       ok: true,
       current: demoCfg.app_version,
       latest: previewVersion || demoCfg.app_version,
       update_available: hasPreviewUpdate,
+      install_mode: previewMode,
       url: "https://github.com/cypwlp/kumoroute/releases",
       notes: hasPreviewUpdate ? "本次更新加入每個版本只提示一次的非強制更新視窗，並保留手動檢查與 SHA256 安全驗證。" : "",
       asset: hasPreviewUpdate ? {
-        filename: "KumoRoute-win-x64-setup.exe",
-        download_url: "https://github.com/cypwlp/kumoroute/releases/latest/download/KumoRoute-win-x64-setup.exe",
+        filename: previewMode === "portable" ? "KumoRoute-win-x64.zip" : "KumoRoute-win-x64-setup.exe",
+        download_url: `https://github.com/cypwlp/kumoroute/releases/latest/download/${previewMode === "portable" ? "KumoRoute-win-x64.zip" : "KumoRoute-win-x64-setup.exe"}`,
         sha256_url: "https://github.com/cypwlp/kumoroute/releases/latest/download/SHA256SUMS.txt",
-        size_mb: 22.6,
+        size_mb: previewMode === "portable" ? 30.4 : 22.6,
       } : null,
     };
     renderUpdateUi();
@@ -318,6 +425,7 @@ async function checkForUpdates(manual = true) {
 
 function initUpdateChecker() {
   renderUpdateUi();
+  refreshUpdateState();
   if (prefs.autoUpdateCheck && Date.now() - Number(prefs.lastUpdateCheck || 0) > 6 * 3600 * 1000) {
     checkForUpdates(false);
   }
@@ -624,7 +732,12 @@ const TAURI_SIG = {
   record_ui_error: ["message", "stack"],
   open_url: ["url"],
   install_update: ["url", "filename", "sha256Url"],
-  run_update_installer: ["path"],
+  run_update_installer: ["path", "targetVersion"],
+  start_update_download: ["url", "filename", "sha256Url"],
+  update_download_status: [],
+  cancel_update_download: [],
+  get_update_state: [],
+  rollback_update: [],
   vpn_connect: ["name"],
   vpn_disconnect: ["name"],
   vpn_connect_with_credentials: ["name", "username", "password", "remember"],
@@ -664,11 +777,12 @@ const demoCfg = {
   networkMode: "coexist",
   vpnCredentialSaved: false,
   vpnUsername: "super",
+  updateDownload: null,
   mode: "rule",
   mixed_port: 7890,
   controller_port: 9090,
   core_version: "v1.19.33",
-  app_version: "0.7.5",
+  app_version: "0.7.6",
   data_dir: "C:\\Users\\…\\AppData\\Roaming\\KumoRoute",
   test_url: "https://cp.cloudflare.com/generate_204",
   profiles: [
@@ -844,7 +958,26 @@ async function demoApi(fn, ...args) {
     case "network_diagnostics": return { ok: true, ipv6_route: false, ipv6_connectivity: false, ipv6_preferred: true, dns_ok: true, dns_servers: ["192.168.1.1"], doh_templates: 0, dot_templates: 0, dns_encryption_conflict: false, dns_leak_suspected: false, proxy_on: demoCfg.sys_proxy, network_mode: demoCfg.networkMode, issues: [{ type: "ipv6", count: 3, message: "IPv6 連線不可達" }] };
     case "network_repair": return { ok: true, action: String(args[0] || "") };
     case "install_update": return { ok: true, path: "C:\\Users\\…\\Downloads\\" + String(args[1] || "KumoRoute-update.exe") };
+    case "start_update_download":
+      demoCfg.updateDownload = { active: true, phase: "downloading", received: 0, total: 30442200, percent: 0, path: null, error: null };
+      return { ok: true, started: true, status: { ...demoCfg.updateDownload } };
+    case "update_download_status": {
+      let status = demoCfg.updateDownload || { active: false, phase: "idle", received: 0, total: 0, percent: 0, path: null, error: null };
+      if (status.active) {
+        status = { ...status, received: Math.min(status.total, status.received + 1900000) };
+        status.percent = Math.round((status.received / status.total) * 100);
+        if (status.received >= status.total) status = { active: false, phase: "complete", percent: 100, received: status.total, total: status.total, path: "C:\\Users\\…\\Downloads\\KumoRoute-update.zip", error: null };
+        demoCfg.updateDownload = status;
+      }
+      return { ok: true, status: { ...status } };
+    }
+    case "cancel_update_download":
+      if (demoCfg.updateDownload) demoCfg.updateDownload = { ...demoCfg.updateDownload, active: false, phase: "cancelled" };
+      return { ok: true, cancelled: true };
+    case "get_update_state":
+      return { ok: true, current_version: demoCfg.app_version, install_mode: latestUpdate?.install_mode || "installed", backup_available: false, previous_version: "", target_version: "", pending: false, failed: false, completed: false, created_at: "", backup_dir: "" };
     case "run_update_installer": return { ok: true };
+    case "rollback_update": return { ok: true };
     case "vpn_open_settings": return { ok: true };
     default: return { ok: true };
   }
@@ -2897,9 +3030,20 @@ function bindActions() {
     closeUpdatePrompt();
     openUpdatePage();
   });
-  $("#btn-update-now").addEventListener("click", async () => {
-    closeUpdatePrompt();
-    await downloadAndInstallUpdate();
+  $("#btn-update-now").addEventListener("click", downloadAndInstallUpdate);
+  $("#btn-cancel-update").addEventListener("click", cancelUpdateDownload);
+  $("#btn-cancel-update-prompt").addEventListener("click", cancelUpdateDownload);
+  $("#btn-rollback-update").addEventListener("click", async () => {
+    if (!updateState?.backup_available) return;
+    if (!confirm(tr("確定還原上一版嗎？KumoRoute 會結束目前程式，還原後重新啟動。"))) return;
+    const btn = $("#btn-rollback-update");
+    btn.disabled = true;
+    try {
+      const res = await api("rollback_update");
+      if (!res || !res.ok) toast((res && res.error) || "還原上一版失敗", "error");
+      else toast("正在還原上一版…", "ok");
+    } catch (e) { toast(String(e), "error"); }
+    finally { btn.disabled = false; }
   });
   $("#update-modal").addEventListener("click", (ev) => {
     if (ev.target === $("#update-modal")) closeUpdatePrompt();

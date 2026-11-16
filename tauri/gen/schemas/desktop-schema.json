@@ -183,6 +183,12 @@
           "markdownDescription": "Enables the add_subscription command without any pre-configured scope."
         },
         {
+          "description": "Enables the cancel_update_download command without any pre-configured scope.",
+          "type": "string",
+          "const": "allow-cancel-update-download",
+          "markdownDescription": "Enables the cancel_update_download command without any pre-configured scope."
+        },
+        {
           "description": "Enables the check_update command without any pre-configured scope.",
           "type": "string",
           "const": "allow-check-update",
@@ -231,6 +237,12 @@
           "markdownDescription": "Enables the get_state command without any pre-configured scope."
         },
         {
+          "description": "Enables the get_update_state command without any pre-configured scope.",
+          "type": "string",
+          "const": "allow-get-update-state",
+          "markdownDescription": "Enables the get_update_state command without any pre-configured scope."
+        },
+        {
           "description": "Enables the import_profile command without any pre-configured scope.",
           "type": "string",
           "const": "allow-import-profile",
@@ -277,6 +289,12 @@
           "type": "string",
           "const": "allow-record-ui-error",
           "markdownDescription": "Enables the record_ui_error command without any pre-configured scope."
+        },
+        {
+          "description": "Enables the rollback_update command without any pre-configured scope.",
+          "type": "string",
+          "const": "allow-rollback-update",
+          "markdownDescription": "Enables the rollback_update command without any pre-configured scope."
         },
         {
           "description": "Enables the run_update_installer command without any pre-configured scope.",
@@ -333,6 +351,12 @@
           "markdownDescription": "Enables the start_core command without any pre-configured scope."
         },
         {
+          "description": "Enables the start_update_download command without any pre-configured scope.",
+          "type": "string",
+          "const": "allow-start-update-download",
+          "markdownDescription": "Enables the start_update_download command without any pre-configured scope."
+        },
+        {
           "description": "Enables the stop_core command without any pre-configured scope.",
           "type": "string",
           "const": "allow-stop-core",
@@ -349,6 +373,12 @@
           "type": "string",
           "const": "allow-test-node-delay",
           "markdownDescription": "Enables the test_node_delay command without any pre-configured scope."
+        },
+        {
+          "description": "Enables the update_download_status command without any pre-configured scope.",
+          "type": "string",
+          "const": "allow-update-download-status",
+          "markdownDescription": "Enables the update_download_status command without any pre-configured scope."
         },
         {
           "description": "Enables the update_profile command without any pre-configured scope.",
@@ -435,6 +465,12 @@
           "markdownDescription": "Denies the add_subscription command without any pre-configured scope."
         },
         {
+          "description": "Denies the cancel_update_download command without any pre-configured scope.",
+          "type": "string",
+          "const": "deny-cancel-update-download",
+          "markdownDescription": "Denies the cancel_update_download command without any pre-configured scope."
+        },
+        {
           "description": "Denies the check_update command without any pre-configured scope.",
           "type": "string",
           "const": "deny-check-update",
@@ -483,6 +519,12 @@
           "markdownDescription": "Denies the get_state command without any pre-configured scope."
         },
         {
+          "description": "Denies the get_update_state command without any pre-configured scope.",
+          "type": "string",
+          "const": "deny-get-update-state",
+          "markdownDescription": "Denies the get_update_state command without any pre-configured scope."
+        },
+        {
           "description": "Denies the import_profile command without any pre-configured scope.",
           "type": "string",
           "const": "deny-import-profile",
@@ -529,6 +571,12 @@
           "type": "string",
           "const": "deny-record-ui-error",
           "markdownDescription": "Denies the record_ui_error command without any pre-configured scope."
+        },
+        {
+          "description": "Denies the rollback_update command without any pre-configured scope.",
+          "type": "string",
+          "const": "deny-rollback-update",
+          "markdownDescription": "Denies the rollback_update command without any pre-configured scope."
         },
         {
           "description": "Denies the run_update_installer command without any pre-configured scope.",
@@ -585,6 +633,12 @@
           "markdownDescription": "Denies the start_core command without any pre-configured scope."
         },
         {
+          "description": "Denies the start_update_download command without any pre-configured scope.",
+          "type": "string",
+          "const": "deny-start-update-download",
+          "markdownDescription": "Denies the start_update_download command without any pre-configured scope."
+        },
+        {
           "description": "Denies the stop_core command without any pre-configured scope.",
           "type": "string",
           "const": "deny-stop-core",
@@ -601,6 +655,12 @@
           "type": "string",
           "const": "deny-test-node-delay",
           "markdownDescription": "Denies the test_node_delay command without any pre-configured scope."
+        },
+        {
+          "description": "Denies the update_download_status command without any pre-configured scope.",
+          "type": "string",
+          "const": "deny-update-download-status",
+          "markdownDescription": "Denies the update_download_status command without any pre-configured scope."
         },
         {
           "description": "Denies the update_profile command without any pre-configured scope.",

@@ -19,6 +19,9 @@ document.getElementById("github-btn").href = REPO_URL;
 document.getElementById("github-foot").href = REPO_URL;
 
 Object.entries(ASSETS).forEach(([key, file]) => {
-  const el = document.getElementById(key) || document.querySelector(`[data-dl="${key}"]`);
-  if (el) el.href = DL_BASE + file;
+  const elements = new Set([
+    document.getElementById(key),
+    ...document.querySelectorAll(`[data-dl="${key}"]`),
+  ].filter(Boolean));
+  elements.forEach((el) => { el.href = DL_BASE + file; });
 });

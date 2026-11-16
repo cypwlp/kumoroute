@@ -27,7 +27,7 @@ import yaml
 
 APP_NAME = "KumoRoute"
 LEGACY_APP_NAME = "MyClash"
-APP_VERSION = "0.7.5"
+APP_VERSION = "0.7.6"
 CREATE_NO_WINDOW = 0x08000000
 SUB_UA = f"KumoRoute/{APP_VERSION}"
 TEST_URL = "https://cp.cloudflare.com/generate_204"
@@ -196,6 +196,14 @@ def message_box(text: str) -> None:
 
 def _now() -> str:
     return datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+
+
+def is_portable_build() -> bool:
+    try:
+        exe = Path(sys.executable if getattr(sys, "frozen", False) else sys.argv[0]).resolve()
+        return (exe.parent / "KumoRoute.portable").is_file()
+    except Exception:
+        return False
 
 
 def update_asset_matches(filename: str, system: str) -> bool:
@@ -1097,6 +1105,17 @@ class Api:
         self._win = None
         self._on_quit = None
         self._proxy_recovery = None
+        self._update_lock = threading.Lock()
+        self._update_cancel = threading.Event()
+        self._update_status = {
+            "active": False,
+            "phase": "idle",
+            "received": 0,
+            "total": 0,
+            "percent": 0,
+            "path": None,
+            "error": None,
+        }
 
     # ---- state ----
 
@@ -1473,13 +1492,14 @@ class Api:
                 "url": str(release.get("html_url") or "https://github.com/cypwlp/kumoroute/releases/latest"),
                 "published_at": str(release.get("published_at") or ""),
                 "notes": str(release.get("body") or "")[:4000],
-                "asset": self._update_asset(release),
+                "asset": self._update_asset(release, is_portable_build()),
+                "install_mode": "portable" if is_portable_build() else "installed",
             }
         except Exception as exc:
             return {"ok": False, "error": str(exc)}
 
     @staticmethod
-    def _update_asset(release: dict) -> dict | None:
+    def _update_asset(release: dict, prefer_zip: bool = False) -> dict | None:
         assets = release.get("assets") if isinstance(release.get("assets"), list) else []
         clean = []
         checksum_url = ""
@@ -1498,7 +1518,13 @@ class Api:
             if name == "SHA256SUMS.txt":
                 checksum_url = url
         system = platform.system().lower()
-        selected = next((item for item in clean if update_asset_matches(item["filename"], system)), None)
+        matches = [item for item in clean if update_asset_matches(item["filename"], system)]
+        if system == "windows":
+            if prefer_zip:
+                matches.sort(key=lambda item: 0 if item["filename"].lower().endswith(".zip") else 1)
+            else:
+                matches.sort(key=lambda item: 0 if item["filename"].lower().endswith("-setup.exe") else 1)
+        selected = matches[0] if matches else None
         if selected is None:
             return None
         return {
@@ -1509,65 +1535,250 @@ class Api:
             "sha256_url": checksum_url,
         }
 
-    def install_update(self, url: str, filename: str, sha256_url: str = "") -> dict:
+    def _update_status_snapshot(self) -> dict:
+        lock = getattr(self, "_update_lock", None)
+        status = getattr(self, "_update_status", {})
+        if lock:
+            with lock:
+                return dict(status)
+        return dict(status)
+
+    def _set_update_status(self, **updates) -> dict:
+        lock = getattr(self, "_update_lock", None)
+        if lock:
+            with lock:
+                self._update_status.update(updates)
+                return dict(self._update_status)
+        return dict(updates)
+
+    def _perform_update_download(
+        self,
+        url: str,
+        filename: str,
+        sha256_url: str = "",
+        cancel_event: threading.Event | None = None,
+        progress=None,
+    ) -> Path:
         if not safe_update_url(url) or not safe_update_url(sha256_url):
-            return {"ok": False, "error": "不安全的更新下載網址"}
+            raise ValueError("不安全的更新下載網址")
         safe_name = Path(filename or "").name
         if not safe_name or not update_asset_matches(safe_name, platform.system().lower()):
-            return {"ok": False, "error": "更新檔名或平台不相符"}
+            raise ValueError("更新檔名或平台不相符")
         folder = Path.home() / "Downloads"
         if not folder.is_dir():
             folder = data_dir()
         folder.mkdir(parents=True, exist_ok=True)
         destination = folder / safe_name
         partial = destination.with_name(destination.name + ".part")
+        if progress:
+            progress(0, 0, "verifying")
+        with urllib.request.urlopen(urllib.request.Request(sha256_url, headers={"User-Agent": SUB_UA}), timeout=30) as response:
+            sums = response.read(128 * 1024).decode("utf-8", "replace")
+        expected = parse_sha256sums(sums, safe_name)
+        if not expected:
+            raise ValueError("找不到更新檔的 SHA256 校驗值")
+        request = urllib.request.Request(url, headers={"User-Agent": SUB_UA})
+        with urllib.request.urlopen(request, timeout=120) as response:
+            status = int(getattr(response, "status", 200))
+            if status < 200 or status >= 300:
+                raise ValueError(f"更新伺服器回應 HTTP {status}")
+            total = int(response.headers.get("Content-Length") or 0)
+            if total <= 0 or total > 700 * 1024 * 1024:
+                raise ValueError("更新檔大小無效或超過安全上限")
+            digest = hashlib.sha256()
+            written = 0
+            last_report = 0.0
+            if progress:
+                progress(0, total, "downloading")
+            with partial.open("wb") as handle:
+                while True:
+                    if cancel_event and cancel_event.is_set():
+                        raise ValueError("更新下載已取消")
+                    chunk = response.read(1024 * 256)
+                    if not chunk:
+                        break
+                    written += len(chunk)
+                    if written > total:
+                        raise ValueError("更新檔大小超出宣告值")
+                    digest.update(chunk)
+                    handle.write(chunk)
+                    now = time.monotonic()
+                    if progress and (written == total or now - last_report >= 0.15):
+                        progress(written, total, "downloading")
+                        last_report = now
+            if written != total:
+                raise ValueError("更新檔下載不完整")
+            if progress:
+                progress(written, total, "verifying")
+            if digest.hexdigest().lower() != expected:
+                raise ValueError("更新檔 SHA256 校驗失敗")
+            partial.replace(destination)
+        return destination
+
+    def install_update(self, url: str, filename: str, sha256_url: str = "") -> dict:
         try:
-            with urllib.request.urlopen(urllib.request.Request(sha256_url, headers={"User-Agent": SUB_UA}), timeout=30) as response:
-                sums = response.read(128 * 1024).decode("utf-8", "replace")
-            expected = parse_sha256sums(sums, safe_name)
-            if not expected:
-                return {"ok": False, "error": "找不到更新檔的 SHA256 校驗值"}
-            request = urllib.request.Request(url, headers={"User-Agent": SUB_UA})
-            with urllib.request.urlopen(request, timeout=90) as response:
-                status = int(getattr(response, "status", 200))
-                if status < 200 or status >= 300:
-                    return {"ok": False, "error": f"更新伺服器回應 HTTP {status}"}
-                total = int(response.headers.get("Content-Length") or 0)
-                if total <= 0 or total > 700 * 1024 * 1024:
-                    return {"ok": False, "error": "更新檔大小無效或超過安全上限"}
-                digest = hashlib.sha256()
-                written = 0
-                with partial.open("wb") as handle:
-                    while True:
-                        chunk = response.read(1024 * 256)
-                        if not chunk:
-                            break
-                        written += len(chunk)
-                        if written > total:
-                            raise ValueError("更新檔大小超出宣告值")
-                        digest.update(chunk)
-                        handle.write(chunk)
-                if written != total:
-                    raise ValueError("更新檔下載不完整")
-                if digest.hexdigest().lower() != expected:
-                    raise ValueError("更新檔 SHA256 校驗失敗")
-                partial.replace(destination)
-            return {"ok": True, "path": str(destination), "filename": safe_name}
+            destination = self._perform_update_download(url, filename, sha256_url)
+            return {"ok": True, "path": str(destination), "filename": destination.name}
         except Exception as exc:
             try:
+                partial = (Path.home() / "Downloads" / Path(filename or "").name).with_name(Path(filename or "").name + ".part")
                 partial.unlink(missing_ok=True)
             except OSError:
                 pass
             return {"ok": False, "error": f"下載更新失敗：{exc}"}
 
-    def run_update_installer(self, path: str) -> dict:
+    def start_update_download(self, url: str, filename: str, sha256_url: str = "") -> dict:
+        if self._update_status_snapshot().get("active"):
+            return {"ok": False, "error": "已有更新正在下載"}
+        self._update_cancel.clear()
+        status = self._set_update_status(active=True, phase="verifying", received=0, total=0, percent=0, path=None, error=None)
+
+        def progress(received, total, phase):
+            percent = round((received / total) * 100) if total else 0
+            self._set_update_status(
+                active=phase in ("downloading", "verifying"),
+                phase=phase,
+                received=received,
+                total=total,
+                percent=min(100, percent),
+            )
+
+        def worker():
+            try:
+                destination = self._perform_update_download(url, filename, sha256_url, self._update_cancel, progress)
+                self._set_update_status(active=False, phase="complete", percent=100, path=str(destination), error=None)
+            except Exception as exc:
+                phase = "cancelled" if self._update_cancel.is_set() else "error"
+                self._set_update_status(active=False, phase=phase, path=None, error=str(exc))
+
+        threading.Thread(target=worker, daemon=True).start()
+        return {"ok": True, "started": True, "status": status}
+
+    def update_download_status(self) -> dict:
+        return {"ok": True, "status": self._update_status_snapshot()}
+
+    def cancel_update_download(self) -> dict:
+        if not self._update_status_snapshot().get("active"):
+            return {"ok": True, "cancelled": False}
+        self._update_cancel.set()
+        return {"ok": True, "cancelled": True}
+
+    def _updates_dir(self) -> Path:
+        return data_dir() / "updates"
+
+    def _current_app_paths(self) -> tuple[Path, Path]:
+        exe = Path(sys.executable if getattr(sys, "frozen", False) else sys.argv[0]).resolve()
+        return exe, exe.parent
+
+    def _create_update_backup(self, target_version: str) -> dict:
+        exe, app_dir = self._current_app_paths()
+        updates = self._updates_dir()
+        backup = updates / "previous"
+        if backup.exists():
+            shutil.rmtree(backup)
+        updates.mkdir(parents=True, exist_ok=True)
+        shutil.copytree(app_dir, backup)
+        state = {
+            "pending": True,
+            "completed": False,
+            "failed": False,
+            "from_version": APP_VERSION,
+            "target_version": target_version,
+            "backup_dir": str(backup),
+            "install_dir": str(app_dir),
+            "executable": str(exe),
+            "install_mode": "portable" if is_portable_build() else "installed",
+            "created_at": _now(),
+        }
+        (updates / "state.json").write_text(json.dumps(state, ensure_ascii=False, indent=2), encoding="utf-8")
+        return state
+
+    def _launch_update_helper(self, action: str, archive: str, app_dir: str, exe: str, backup: str) -> None:
+        updates = self._updates_dir()
+        updates.mkdir(parents=True, exist_ok=True)
+        source = Path(__file__).with_name("update_helper.ps1")
+        if not source.is_file():
+            raise ValueError("找不到更新輔助程式")
+        script = updates / "apply-update.ps1"
+        script.write_text(source.read_text(encoding="utf-8"), encoding="utf-8")
+        subprocess.Popen([
+            "powershell.exe", "-NoLogo", "-NoProfile", "-NonInteractive",
+            "-ExecutionPolicy", "Bypass", "-File", str(script),
+            "-Action", action, "-Archive", archive, "-AppDir", app_dir,
+            "-Exe", exe, "-Backup", backup,
+        ], creationflags=CREATE_NO_WINDOW)
+
+    def get_update_state(self) -> dict:
+        path = self._updates_dir() / "state.json"
+        try:
+            state = json.loads(path.read_text(encoding="utf-8")) if path.is_file() else {}
+        except Exception:
+            state = {}
+        target = str(state.get("target_version") or "")
+        pending = bool(state.get("pending"))
+        current_key = tuple(int(x) for x in re.findall(r"\d+", APP_VERSION))[:4]
+        target_parts = [int(x) for x in re.findall(r"\d+", target)]
+        target_key = tuple(target_parts + [0] * (4 - len(target_parts)))[:4] if target else ()
+        completed = pending and bool(target_key) and current_key >= target_key
+        if completed:
+            state["pending"] = False
+            state["completed"] = True
+            try:
+                path.write_text(json.dumps(state, ensure_ascii=False, indent=2), encoding="utf-8")
+            except OSError:
+                pass
+        backup = self._updates_dir() / "previous"
+        return {
+            "ok": True,
+            "current_version": APP_VERSION,
+            "install_mode": "portable" if is_portable_build() else "installed",
+            "backup_available": backup.is_dir(),
+            "previous_version": str(state.get("from_version") or ""),
+            "target_version": target,
+            "pending": bool(state.get("pending")),
+            "failed": bool(state.get("pending")) and (not target_key or current_key < target_key),
+            "completed": bool(state.get("completed")),
+            "created_at": str(state.get("created_at") or ""),
+            "backup_dir": str(backup),
+        }
+
+    def rollback_update(self) -> dict:
+        state = self.get_update_state()
+        if not state.get("backup_available"):
+            return {"ok": False, "error": "找不到上一版備份"}
+        path = self._updates_dir() / "state.json"
+        try:
+            raw = json.loads(path.read_text(encoding="utf-8")) if path.is_file() else {}
+        except Exception:
+            raw = {}
+        app_dir = str(raw.get("install_dir") or "")
+        exe = str(raw.get("executable") or "")
+        if not app_dir or not exe:
+            return {"ok": False, "error": "更新備份資訊不完整"}
+        try:
+            self._launch_update_helper("rollback", "", app_dir, exe, str(self._updates_dir() / "previous"))
+            threading.Thread(target=self._quit_after_update, daemon=True).start()
+            return {"ok": True, "rollback_started": True}
+        except Exception as exc:
+            return {"ok": False, "error": str(exc)}
+
+    def run_update_installer(self, path: str, target_version: str = "") -> dict:
         try:
             target = Path(path).resolve()
             allowed_roots = [(Path.home() / "Downloads").resolve(), data_dir().resolve()]
             if not any(target.parent == root for root in allowed_roots) or not target.is_file():
                 return {"ok": False, "error": "更新安裝檔位置不安全或不存在"}
             suffix = target.suffix.lower()
-            if platform.system().lower() == "windows" and suffix == ".exe":
+            if suffix == ".zip":
+                if not is_portable_build():
+                    return {"ok": False, "error": "ZIP 更新只適用於免安裝版"}
+                backup = self._create_update_backup(target_version)
+                self._launch_update_helper(
+                    "portable", str(target), backup["install_dir"],
+                    backup["executable"], backup["backup_dir"],
+                )
+            elif platform.system().lower() == "windows" and suffix == ".exe":
+                self._create_update_backup(target_version)
                 subprocess.Popen([str(target)], cwd=str(target.parent))
             elif platform.system().lower() == "darwin" and suffix == ".dmg":
                 subprocess.Popen(["open", str(target)])

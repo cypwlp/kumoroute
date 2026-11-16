@@ -23,6 +23,8 @@ class BackendContractTests(unittest.TestCase):
             "vpn_list", "vpn_add", "vpn_edit", "vpn_delete", "vpn_forget_credentials",
             "vpn_set_auto_proxy", "vpn_set_restore_proxy", "set_network_mode",
             "network_diagnostics", "network_repair", "test_node_delay",
+            "start_update_download", "update_download_status", "cancel_update_download",
+            "get_update_state", "rollback_update",
         ]:
             self.assertRegex(py, rf"def {re.escape(method)}\(")
             self.assertRegex(rs, rf"pub fn {re.escape(method)}\(")
@@ -30,6 +32,8 @@ class BackendContractTests(unittest.TestCase):
             "vpn_add", "vpn_edit", "vpn_delete", "vpn_forget_credentials", "vpn_set_auto_proxy",
             "vpn_set_restore_proxy", "set_network_mode", "network_diagnostics",
             "network_repair", "test_node_delay",
+            "start_update_download", "update_download_status", "cancel_update_download",
+            "get_update_state", "rollback_update",
         ]:
             self.assertIn(f"{method}:", js)
 
@@ -49,6 +53,12 @@ class BackendContractTests(unittest.TestCase):
         self.assertIn('id="network-diagnostics-result"', html)
         self.assertIn("dot_templates", py)
         self.assertIn("dot_templates", commands_rs)
+        site = (ROOT / "site" / "index.html").read_text(encoding="utf-8")
+        site_app = (ROOT / "site" / "app.js").read_text(encoding="utf-8")
+        self.assertIn('class="feature-grid"', site)
+        self.assertIn('class="download-grid"', site)
+        self.assertIn('id="download-bottom"', site)
+        self.assertIn('querySelectorAll(`[data-dl=', site_app)
 
 
 if __name__ == "__main__":

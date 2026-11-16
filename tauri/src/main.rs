@@ -77,6 +77,7 @@ fn main() {
         profiles,
         core: core::Core::new(),
         proxy_recovery: None,
+        update_download: commands::UpdateDownloadState::default(),
     };
 
     tauri::Builder::default()
@@ -108,6 +109,11 @@ fn main() {
             commands::check_update,
             commands::install_update,
             commands::run_update_installer,
+            commands::start_update_download,
+            commands::update_download_status,
+            commands::cancel_update_download,
+            commands::get_update_state,
+            commands::rollback_update,
             commands::vpn_list,
             commands::vpn_connect,
             commands::vpn_connect_with_credentials,

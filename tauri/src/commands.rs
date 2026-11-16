@@ -1,10 +1,11 @@
 use std::fs::{self, File};
 use std::io::{Read, Write};
 use std::net::{Ipv6Addr, SocketAddr, TcpStream, ToSocketAddrs};
-use std::path::Path;
+use std::path::{Path, PathBuf};
 use std::process::Command;
-use std::sync::Mutex;
-use std::time::Duration;
+use std::sync::atomic::{AtomicBool, Ordering};
+use std::sync::{Arc, Mutex};
+use std::time::{Duration, Instant};
 
 use serde_json::{json, Value};
 use sha2::{Digest, Sha256};
@@ -28,11 +29,55 @@ use windows::Win32::Security::Credentials::{
     CRED_PERSIST_LOCAL_MACHINE, CRED_TYPE_GENERIC,
 };
 
+#[derive(Clone)]
+pub struct UpdateDownloadState {
+    cancel: Arc<AtomicBool>,
+    status: Arc<Mutex<Value>>,
+}
+
+impl Default for UpdateDownloadState {
+    fn default() -> Self {
+        Self {
+            cancel: Arc::new(AtomicBool::new(false)),
+            status: Arc::new(Mutex::new(json!({
+                "active": false,
+                "phase": "idle",
+                "received": 0,
+                "total": 0,
+                "percent": 0,
+                "path": null,
+                "error": null
+            }))),
+        }
+    }
+}
+
+impl UpdateDownloadState {
+    fn snapshot(&self) -> Value {
+        self.status.lock().map(|v| v.clone()).unwrap_or_else(|_| json!({
+            "active": false,
+            "phase": "error",
+            "received": 0,
+            "total": 0,
+            "percent": 0,
+            "path": null,
+            "error": "更新狀態鎖定失敗"
+        }))
+    }
+
+    fn update(&self, value: Value) {
+        if let Ok(mut status) = self.status.lock() {
+            *status = value;
+        }
+    }
+}
+
 pub struct AppState {
     pub store: Store,
     pub profiles: Profiles,
     pub core: Core,
     pub proxy_recovery: Option<ProxyRecovery>,
+    pub update_download: UpdateDownloadState,
 }
 
 pub type Shared = Mutex<AppState>;
@@ -54,14 +99,27 @@ fn safe_update_url(value: &str) -> bool {
         && parsed.password().is_none()
 }
 
-fn update_asset_score(filename: &str, os: &str) -> Option<u8> {
+fn install_mode() -> &'static str {
+    if std::env::current_exe()
+        .ok()
+        .and_then(|path| path.parent().map(|parent| parent.join("KumoRoute.portable")))
+        .map(|marker| marker.is_file())
+        .unwrap_or(false)
+    {
+        "portable"
+    } else {
+        "installed"
+    }
+}
+
+fn update_asset_score(filename: &str, os: &str, prefer_zip: bool) -> Option<u8> {
     let name = filename.to_ascii_lowercase();
     if !name.starts_with("kumoroute-") {
         return None;
     }
     match os {
-        "windows" if name.ends_with("-setup.exe") => Some(0),
-        "windows" if name.ends_with(".zip") => Some(1),
+        "windows" if name.ends_with("-setup.exe") => Some(if prefer_zip { 1 } else { 0 }),
+        "windows" if name.ends_with(".zip") => Some(if prefer_zip { 0 } else { 1 }),
         "macos" if name.ends_with(".dmg") => Some(0),
         "linux" if name.ends_with(".appimage") => Some(0),
         "linux" if name.ends_with(".deb") => Some(1),
@@ -69,7 +127,7 @@ fn update_asset_score(filename: &str, os: &str) -> Option<u8> {
     }
 }
 
-fn update_asset(release: &Value) -> Option<Value> {
+fn update_asset(release: &Value, prefer_zip: bool) -> Option<Value> {
     let assets = release.get("assets")?.as_array()?;
     let os = std::env::consts::OS;
     let mut checksum_url: Option<String> = None;
@@ -80,7 +138,7 @@ fn update_asset(release: &Value) -> Option<Value> {
         if name == "SHA256SUMS.txt" && safe_update_url(url) {
             checksum_url = Some(url.to_string());
         }
-        let Some(score) = update_asset_score(&name, os) else {
+        let Some(score) = update_asset_score(&name, os, prefer_zip) else {
             continue;
         };
         if !safe_update_url(url) {
@@ -960,16 +1018,50 @@ pub fn check_update() -> Value {
         "url": release.get("html_url").and_then(|v| v.as_str()).unwrap_or("https://github.com/cypwlp/kumoroute/releases/latest"),
         "published_at": release.get("published_at").and_then(|v| v.as_str()).unwrap_or(""),
         "notes": release.get("body").and_then(|v| v.as_str()).unwrap_or("").chars().take(4000).collect::<String>(),
-        "asset": update_asset(&release),
+        "asset": update_asset(&release, install_mode() == "portable"),
+        "install_mode": install_mode(),
     })
 }
 
-fn download_update(url: &str, filename: &str, checksum_url: &str) -> Result<std::path::PathBuf, String> {
+fn set_update_download_progress(
+    progress: Option<&UpdateDownloadState>,
+    phase: &str,
+    received: u64,
+    total: u64,
+    path: Option<&Path>,
+    error: Option<&str>,
+) {
+    let Some(progress) = progress else {
+        return;
+    };
+    let active = matches!(phase, "downloading" | "verifying");
+    let percent = if total > 0 {
+        ((received.min(total) as f64 / total as f64) * 100.0).round() as u64
+    } else {
+        0
+    };
+    progress.update(json!({
+        "active": active,
+        "phase": phase,
+        "received": received,
+        "total": total,
+        "percent": percent,
+        "path": path.map(|v| v.to_string_lossy().to_string()),
+        "error": error
+    }));
+}
+
+fn download_update(
+    url: &str,
+    filename: &str,
+    checksum_url: &str,
+    progress: Option<&UpdateDownloadState>,
+) -> Result<PathBuf, String> {
     let safe_name = Path::new(filename)
         .file_name()
         .and_then(|v| v.to_str())
         .ok_or_else(|| "更新檔名無效".to_string())?;
-    if safe_name != filename || update_asset_score(safe_name, std::env::consts::OS).is_none() {
+    if safe_name != filename || update_asset_score(safe_name, std::env::consts::OS, false).is_none() {
         return Err("更新檔名或平台不相符".to_string());
     }
     if !safe_update_url(url) || !safe_update_url(checksum_url) {
@@ -981,6 +1073,7 @@ fn download_update(url: &str, filename: &str, checksum_url: &str) -> Result<std:
     fs::create_dir_all(&folder).map_err(|e| format!("無法建立下載資料夾：{e}"))?;
     let destination = folder.join(safe_name);
     let partial = folder.join(format!("{safe_name}.part"));
+    set_update_download_progress(progress, "verifying", 0, 0, None, None);
 
     let sums = ureq::get(checksum_url)
         .set("User-Agent", SUB_UA)
@@ -1012,8 +1105,13 @@ fn download_update(url: &str, filename: &str, checksum_url: &str) -> Result<std:
     let mut hasher = Sha256::new();
     let mut buffer = [0u8; 262144];
     let mut written = 0u64;
+    let mut last_progress = Instant::now();
+    set_update_download_progress(progress, "downloading", 0, total, None, None);
     let result = (|| -> Result<(), String> {
         loop {
+            if progress.map(|state| state.cancel.load(Ordering::SeqCst)).unwrap_or(false) {
+                return Err("更新下載已取消".to_string());
+            }
             let read = reader.read(&mut buffer).map_err(|e| format!("讀取更新失敗：{e}"))?;
             if read == 0 {
                 break;
@@ -1024,11 +1122,16 @@ fn download_update(url: &str, filename: &str, checksum_url: &str) -> Result<std:
             }
             hasher.update(&buffer[..read]);
             file.write_all(&buffer[..read]).map_err(|e| format!("寫入更新失敗：{e}"))?;
+            if written == total || last_progress.elapsed() >= Duration::from_millis(120) {
+                set_update_download_progress(progress, "downloading", written, total, None, None);
+                last_progress = Instant::now();
+            }
         }
         file.sync_all().map_err(|e| format!("同步更新檔失敗：{e}"))?;
         if written != total {
             return Err("更新檔下載不完整".to_string());
         }
+        set_update_download_progress(progress, "verifying", written, total, None, None);
         let actual = format!("{:x}", hasher.finalize());
         if actual != expected {
             return Err("更新檔 SHA256 校驗失敗".to_string());
@@ -1039,6 +1142,7 @@ fn download_update(url: &str, filename: &str, checksum_url: &str) -> Result<std:
         let _ = fs::remove_file(&partial);
     }
     result?;
+    set_update_download_progress(progress, "complete", written, total, Some(&destination), None);
     Ok(destination)
 }
 
@@ -1066,16 +1170,319 @@ fn open_update_installer(path: &str) -> Result<(), String> {
 
 #[tauri::command]
 pub fn install_update(url: String, filename: String, sha256_url: String) -> Value {
-    match download_update(&url, &filename, &sha256_url) {
+    match download_update(&url, &filename, &sha256_url, None) {
         Ok(path) => json!({"ok": true, "path": path.to_string_lossy()}),
         Err(e) => err(e),
     }
 }
 
 #[tauri::command]
-pub fn run_update_installer(app: tauri::AppHandle, path: String) -> Value {
-    if let Err(e) = open_update_installer(&path) {
+pub fn start_update_download(
+    state: State<'_, Shared>,
+    url: String,
+    filename: String,
+    sha256_url: String,
+) -> Value {
+    let download = {
+        let s = state.lock().unwrap();
+        s.update_download.clone()
+    };
+    let current = download.snapshot();
+    if current.get("active").and_then(Value::as_bool).unwrap_or(false) {
+        return err("已有更新正在下載");
+    }
+    download.cancel.store(false, Ordering::SeqCst);
+    set_update_download_progress(Some(&download), "verifying", 0, 0, None, None);
+    let initial_status = download.snapshot();
+    let worker = download.clone();
+    std::thread::spawn(move || {
+        match download_update(&url, &filename, &sha256_url, Some(&worker)) {
+            Ok(_) => {}
+            Err(e) => {
+                let phase = if worker.cancel.load(Ordering::SeqCst) {
+                    "cancelled"
+                } else {
+                    "error"
+                };
+                set_update_download_progress(Some(&worker), phase, 0, 0, None, Some(&e));
+            }
+        }
+    });
+    json!({"ok": true, "started": true, "status": initial_status})
+}
+
+#[tauri::command]
+pub fn update_download_status(state: State<'_, Shared>) -> Value {
+    let download = {
+        let s = state.lock().unwrap();
+        s.update_download.clone()
+    };
+    json!({"ok": true, "status": download.snapshot()})
+}
+
+#[tauri::command]
+pub fn cancel_update_download(state: State<'_, Shared>) -> Value {
+    let download = {
+        let s = state.lock().unwrap();
+        s.update_download.clone()
+    };
+    let current = download.snapshot();
+    if !current.get("active").and_then(Value::as_bool).unwrap_or(false) {
+        return json!({"ok": true, "cancelled": false});
+    }
+    download.cancel.store(true, Ordering::SeqCst);
+    json!({"ok": true, "cancelled": true})
+}
+
+fn version_key(value: &str) -> Vec<u64> {
+    let mut key = regex::Regex::new(r"\d+")
+        .unwrap()
+        .find_iter(value)
+        .map(|m| m.as_str().parse::<u64>().unwrap_or(0))
+        .collect::<Vec<_>>();
+    key.resize(4, 0);
+    key
+}
+
+fn version_at_least(current: &str, target: &str) -> bool {
+    if target.trim().is_empty() {
+        return false;
+    }
+    version_key(current) >= version_key(target)
+}
+
+fn updates_dir() -> PathBuf {
+    data_dir().join("updates")
+}
+
+fn update_state_path() -> PathBuf {
+    updates_dir().join("state.json")
+}
+
+fn previous_backup_dir() -> PathBuf {
+    updates_dir().join("previous")
+}
+
+fn copy_dir_recursive(src: &Path, dst: &Path) -> Result<(), String> {
+    fs::create_dir_all(dst).map_err(|e| format!("建立更新備份資料夾失敗：{e}"))?;
+    for entry in fs::read_dir(src).map_err(|e| format!("讀取目前安裝資料夾失敗：{e}"))? {
+        let entry = entry.map_err(|e| format!("讀取安裝檔案失敗：{e}"))?;
+        let file_type = entry.file_type().map_err(|e| format!("讀取檔案類型失敗：{e}"))?;
+        let target = dst.join(entry.file_name());
+        if file_type.is_dir() {
+            copy_dir_recursive(&entry.path(), &target)?;
+        } else if file_type.is_file() {
+            fs::copy(entry.path(), target).map_err(|e| format!("複製安裝檔案失敗：{e}"))?;
+        }
+    }
+    Ok(())
+}
+
+fn create_update_backup(target_version: &str) -> Result<Value, String> {
+    let exe = std::env::current_exe().map_err(|e| format!("找不到目前程式路徑：{e}"))?;
+    let app_dir = exe
+        .parent()
+        .ok_or_else(|| "找不到目前安裝資料夾".to_string())?;
+    let backup = previous_backup_dir();
+    if backup.exists() {
+        fs::remove_dir_all(&backup).map_err(|e| format!("清理舊版備份失敗：{e}"))?;
+    }
+    fs::create_dir_all(updates_dir()).map_err(|e| format!("建立更新資料夾失敗：{e}"))?;
+    copy_dir_recursive(app_dir, &backup)?;
+    let state = json!({
+        "pending": true,
+        "completed": false,
+        "failed": false,
+        "from_version": APP_VERSION,
+        "target_version": target_version,
+        "backup_dir": backup.to_string_lossy(),
+        "install_dir": app_dir.to_string_lossy(),
+        "executable": exe.to_string_lossy(),
+        "install_mode": install_mode(),
+        "created_at": chrono::Local::now().format("%Y-%m-%d %H:%M:%S").to_string()
+    });
+    fs::write(update_state_path(), serde_json::to_string_pretty(&state).map_err(|e| e.to_string())?)
+        .map_err(|e| format!("寫入更新狀態失敗：{e}"))?;
+    Ok(state)
+}
+
+fn read_update_state() -> Value {
+    fs::read_to_string(update_state_path())
+        .ok()
+        .and_then(|text| serde_json::from_str::<Value>(&text).ok())
+        .unwrap_or_else(|| json!({}))
+}
+
+#[tauri::command]
+pub fn get_update_state() -> Value {
+    let mut state = read_update_state();
+    let target = state.get("target_version").and_then(Value::as_str).unwrap_or("").to_string();
+    let pending = state.get("pending").and_then(Value::as_bool).unwrap_or(false);
+    if pending && version_at_least(APP_VERSION, &target) {
+        state["pending"] = json!(false);
+        state["completed"] = json!(true);
+        let _ = fs::write(update_state_path(), serde_json::to_string_pretty(&state).unwrap_or_default());
+    }
+    let pending_now = state.get("pending").and_then(Value::as_bool).unwrap_or(false);
+    let backup = previous_backup_dir();
+    json!({
+        "ok": true,
+        "current_version": APP_VERSION,
+        "install_mode": install_mode(),
+        "backup_available": backup.is_dir(),
+        "previous_version": state.get("from_version").and_then(Value::as_str).unwrap_or(""),
+        "target_version": target,
+        "pending": pending_now,
+        "failed": pending_now && !version_at_least(APP_VERSION, &target),
+        "completed": state.get("completed").and_then(Value::as_bool).unwrap_or(false),
+        "created_at": state.get("created_at").and_then(Value::as_str).unwrap_or(""),
+        "backup_dir": backup.to_string_lossy()
+    })
+}
+
+const UPDATE_HELPER_SCRIPT: &str = r#"param(
+  [Parameter(Mandatory=$true)][ValidateSet('portable','rollback')][string]$Action,
+  [string]$Archive = '',
+  [Parameter(Mandatory=$true)][string]$AppDir,
+  [Parameter(Mandatory=$true)][string]$Exe,
+  [Parameter(Mandatory=$true)][string]$Backup
+)
+$ErrorActionPreference = 'Stop'
+$updateRoot = Split-Path -Parent $Backup
+$logPath = Join-Path $updateRoot 'apply-update.log'
+Start-Transcript -Path $logPath -Append | Out-Null
+function Wait-KumoRouteExit {
+  for ($i = 0; $i -lt 80; $i++) {
+    try {
+      $stream = [System.IO.File]::Open($Exe, 'Open', 'ReadWrite', 'None')
+      $stream.Close()
+      return
+    } catch { Start-Sleep -Milliseconds 500 }
+  }
+  throw 'KumoRoute 程式檔仍在執行，無法完成更新。'
+}
+function Restore-Backup {
+  if (Test-Path -LiteralPath $Backup) {
+    Copy-Item -Path (Join-Path $Backup '*') -Destination $AppDir -Recurse -Force
+    Start-Process -FilePath $Exe -WorkingDirectory $AppDir
+  }
+}
+try {
+  Start-Sleep -Milliseconds 1200
+  Wait-KumoRouteExit
+  if ($Action -eq 'portable') {
+    $temp = Join-Path $env:TEMP ('KumoRoute-update-' + [guid]::NewGuid().ToString('N'))
+    try {
+      Expand-Archive -LiteralPath $Archive -DestinationPath $temp -Force
+      $source = Join-Path $temp 'KumoRoute'
+      if (-not (Test-Path -LiteralPath (Join-Path $source 'KumoRoute.exe'))) { throw '更新 ZIP 內容不完整。' }
+      Copy-Item -Path (Join-Path $source '*') -Destination $AppDir -Recurse -Force
+    } finally {
+      if (Test-Path -LiteralPath $temp) { Remove-Item -LiteralPath $temp -Recurse -Force -ErrorAction SilentlyContinue }
+    }
+  } else {
+    Copy-Item -Path (Join-Path $Backup '*') -Destination $AppDir -Recurse -Force
+  }
+  Start-Process -FilePath $Exe -WorkingDirectory $AppDir
+} catch {
+  ($_ | Out-String) | Add-Content -LiteralPath $logPath
+  Restore-Backup
+  exit 1
+} finally {
+  Stop-Transcript | Out-Null
+}
+"#;
+
+fn write_update_helper() -> Result<PathBuf, String> {
+    let path = updates_dir().join("apply-update.ps1");
+    fs::create_dir_all(updates_dir()).map_err(|e| format!("建立更新資料夾失敗：{e}"))?;
+    fs::write(&path, UPDATE_HELPER_SCRIPT).map_err(|e| format!("寫入更新輔助程式失敗：{e}"))?;
+    Ok(path)
+}
+
+#[cfg(windows)]
+fn launch_update_helper(action: &str, archive: &str, app_dir: &str, exe: &str, backup: &str) -> Result<(), String> {
+    let script = write_update_helper()?;
+    hidden_command("powershell.exe")
+        .args([
+            "-NoLogo",
+            "-NoProfile",
+            "-NonInteractive",
+            "-ExecutionPolicy",
+            "Bypass",
+            "-File",
+            script.to_string_lossy().as_ref(),
+            "-Action",
+            action,
+            "-Archive",
+            archive,
+            "-AppDir",
+            app_dir,
+            "-Exe",
+            exe,
+            "-Backup",
+            backup,
+        ])
+        .spawn()
+        .map_err(|e| format!("啟動更新輔助程式失敗：{e}"))?;
+    Ok(())
+}
+
+#[cfg(not(windows))]
+fn launch_update_helper(_action: &str, _archive: &str, _app_dir: &str, _exe: &str, _backup: &str) -> Result<(), String> {
+    Err("此平台不支援背景更新輔助程式".to_string())
+}
+
+#[tauri::command]
+pub fn rollback_update(app: tauri::AppHandle) -> Value {
+    let state = read_update_state();
+    let backup = previous_backup_dir();
+    if !backup.is_dir() {
+        return err("找不到上一版備份");
+    }
+    let app_dir = state.get("install_dir").and_then(Value::as_str).unwrap_or("");
+    let exe = state.get("executable").and_then(Value::as_str).unwrap_or("");
+    if app_dir.is_empty() || exe.is_empty() {
+        return err("更新備份資訊不完整");
+    }
+    if let Err(e) = launch_update_helper("rollback", "", app_dir, exe, &backup.to_string_lossy().to_string()) {
         return err(e);
+    }
+    std::thread::spawn(move || {
+        std::thread::sleep(Duration::from_millis(800));
+        app.exit(0);
+    });
+    json!({"ok": true, "rollback_started": true})
+}
+
+#[tauri::command]
+pub fn run_update_installer(app: tauri::AppHandle, path: String, target_version: String) -> Value {
+    let target = match fs::canonicalize(&path) {
+        Ok(path) => path,
+        Err(e) => return err(format!("找不到更新安裝檔：{e}")),
+    };
+    let extension = target.extension().and_then(|v| v.to_str()).unwrap_or("").to_ascii_lowercase();
+    if extension == "zip" {
+        if install_mode() != "portable" {
+            return err("ZIP 更新只適用於免安裝版");
+        }
+        let backup = match create_update_backup(&target_version) {
+            Ok(value) => value,
+            Err(e) => return err(e),
+        };
+        let backup_path = backup.get("backup_dir").and_then(Value::as_str).unwrap_or("");
+        let app_dir = backup.get("install_dir").and_then(Value::as_str).unwrap_or("");
+        let exe = backup.get("executable").and_then(Value::as_str).unwrap_or("");
+        if let Err(e) = launch_update_helper("portable", &target.to_string_lossy(), app_dir, exe, backup_path) {
+            return err(e);
+        }
+    } else {
+        if let Err(e) = create_update_backup(&target_version) {
+            return err(e);
+        }
+        if let Err(e) = open_update_installer(&path) {
+            return err(e);
+        }
     }
     std::thread::spawn(move || {
         std::thread::sleep(Duration::from_millis(800));
@@ -1738,18 +2145,18 @@ mod update_tests {
     fn release() -> Value {
         json!({
             "assets": [
-                {"name": "KumoRoute-win-x64-setup.exe", "browser_download_url": "https://github.com/cypwlp/kumoroute/releases/download/v0.7.5/KumoRoute-win-x64-setup.exe", "size": 23000000},
-                {"name": "KumoRoute-win-x64.zip", "browser_download_url": "https://github.com/cypwlp/kumoroute/releases/download/v0.7.5/KumoRoute-win-x64.zip", "size": 30000000},
-                {"name": "KumoRoute-macos-universal.dmg", "browser_download_url": "https://github.com/cypwlp/kumoroute/releases/download/v0.7.5/KumoRoute-macos-universal.dmg", "size": 54000000},
-                {"name": "KumoRoute-linux-x86_64.AppImage", "browser_download_url": "https://github.com/cypwlp/kumoroute/releases/download/v0.7.5/KumoRoute-linux-x86_64.AppImage", "size": 108000000},
-                {"name": "SHA256SUMS.txt", "browser_download_url": "https://github.com/cypwlp/kumoroute/releases/download/v0.7.5/SHA256SUMS.txt", "size": 600}
+                {"name": "KumoRoute-win-x64-setup.exe", "browser_download_url": "https://github.com/cypwlp/kumoroute/releases/download/v0.7.6/KumoRoute-win-x64-setup.exe", "size": 23000000},
+                {"name": "KumoRoute-win-x64.zip", "browser_download_url": "https://github.com/cypwlp/kumoroute/releases/download/v0.7.6/KumoRoute-win-x64.zip", "size": 30000000},
+                {"name": "KumoRoute-macos-universal.dmg", "browser_download_url": "https://github.com/cypwlp/kumoroute/releases/download/v0.7.6/KumoRoute-macos-universal.dmg", "size": 54000000},
+                {"name": "KumoRoute-linux-x86_64.AppImage", "browser_download_url": "https://github.com/cypwlp/kumoroute/releases/download/v0.7.6/KumoRoute-linux-x86_64.AppImage", "size": 108000000},
+                {"name": "SHA256SUMS.txt", "browser_download_url": "https://github.com/cypwlp/kumoroute/releases/download/v0.7.6/SHA256SUMS.txt", "size": 600}
             ]
         })
     }
 
     #[test]
     fn selects_asset_for_current_platform() {
-        let asset = update_asset(&release()).expect("asset");
+        let asset = update_asset(&release(), false).expect("asset");
         let name = asset.get("filename").and_then(Value::as_str).unwrap_or("");
         match std::env::consts::OS {
             "windows" => assert_eq!(name, "KumoRoute-win-x64-setup.exe"),
@@ -1761,11 +2168,20 @@ mod update_tests {
     }
 
     #[test]
+    fn portable_build_prefers_zip() {
+        if std::env::consts::OS != "windows" {
+            return;
+        }
+        let asset = update_asset(&release(), true).expect("asset");
+        assert_eq!(asset.get("filename").and_then(Value::as_str), Some("KumoRoute-win-x64.zip"));
+    }
+
+    #[test]
     fn parses_checksum_and_rejects_unsafe_urls() {
         let digest = "a".repeat(64);
         let sums = format!("{digest}  KumoRoute-win-x64-setup.exe\n");
         assert_eq!(parse_sha256sums(&sums, "KumoRoute-win-x64-setup.exe"), Some(digest));
-        assert!(safe_update_url("https://github.com/cypwlp/kumoroute/releases/download/v0.7.5/file.exe"));
+        assert!(safe_update_url("https://github.com/cypwlp/kumoroute/releases/download/v0.7.6/file.exe"));
         assert!(!safe_update_url("https://evil.example/file.exe"));
         assert!(!safe_update_url("http://github.com/file.exe"));
     }

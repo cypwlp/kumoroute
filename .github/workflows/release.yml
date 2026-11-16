@@ -48,6 +48,14 @@ jobs:
         if: matrix.platform == 'macos'
         run: rustup target add aarch64-apple-darwin x86_64-apple-darwin
 
+      - name: Prepare optional Windows code signing
+        if: matrix.platform == 'windows'
+        shell: pwsh
+        env:
+          WINDOWS_CERTIFICATE_BASE64: ${{ secrets.WINDOWS_CERTIFICATE_BASE64 }}
+          WINDOWS_CERTIFICATE_PASSWORD: ${{ secrets.WINDOWS_CERTIFICATE_PASSWORD }}
+        run: ./scripts/prepare_windows_signing.ps1
+
       - name: Install Tauri CLI
         run: npm install -g @tauri-apps/cli@^2
 
@@ -66,6 +74,8 @@ jobs:
         run: |
           if [ "${{ matrix.platform }}" = "macos" ]; then
             tauri build --target universal-apple-darwin
+          elif [ "${{ matrix.platform }}" = "windows" ] && [ -f tauri.signing.conf.json ]; then
+            tauri build --config tauri.signing.conf.json
           else
             tauri build
           fi
@@ -84,6 +94,16 @@ jobs:
             cp tauri/target/universal-apple-darwin/release/bundle/dmg/*.dmg dist/KumoRoute-macos-universal.dmg
           fi
           ls -la dist
+
+      - name: Verify Windows Authenticode signature when configured
+        if: matrix.platform == 'windows'
+        shell: pwsh
+        run: |
+          if (Test-Path "tauri/tauri.signing.conf.json") {
+            ./scripts/verify_windows_signature.ps1 -Path "dist/KumoRoute-win-x64-setup.exe"
+          } else {
+            Write-Output "signing=disabled (certificate secrets not configured)"
+          }
 
       - uses: actions/upload-artifact@v7
         with:
