@@ -2,6 +2,8 @@
 
 import ctypes
 import hashlib
+import importlib.util
+import ipaddress
 import json
 import os
 import platform
@@ -13,6 +15,7 @@ import sys
 import threading
 import time
 import traceback
+import types
 import urllib.error
 import urllib.parse
 import urllib.request
@@ -27,7 +30,7 @@ import yaml
 
 APP_NAME = "KumoRoute"
 LEGACY_APP_NAME = "MyClash"
-APP_VERSION = "0.7.6"
+APP_VERSION = "0.8.0"
 CREATE_NO_WINDOW = 0x08000000
 SUB_UA = f"KumoRoute/{APP_VERSION}"
 TEST_URL = "https://cp.cloudflare.com/generate_204"
@@ -392,6 +395,23 @@ def _vpn_tunnel(value: str) -> str:
     return VPN_TUNNEL_TYPES.get(str(value or "").strip().lower(), "")
 
 
+def _vpn_ras_disconnect(name: str) -> tuple[bool, str]:
+    try:
+        result = subprocess.run(
+            ["rasdial.exe", name, "/disconnect"],
+            capture_output=True,
+            text=True,
+            timeout=20,
+            creationflags=CREATE_NO_WINDOW,
+        )
+        if result.returncode == 0:
+            return True, ""
+        detail = (result.stderr or result.stdout or "").strip()
+        return False, detail or f"VPN 斷線失敗（代碼 {result.returncode}）"
+    except Exception as exc:
+        return False, str(exc)
+
+
 def _vpn_ras_dial(name: str, username: str, password: str) -> tuple[int, str]:
     api = ctypes.WinDLL("rasapi32")
     api.RasDialW.argtypes = [
@@ -427,6 +447,8 @@ DEFAULT_SETTINGS = {
     "network_mode": "coexist",
     "force_disable_ipv6": False,
     "dns_mode": "auto",
+    "subscription_update_hours": 0,
+    "last_subscription_update": "",
 }
 
 
@@ -1011,6 +1033,22 @@ def _test_ipv6_connectivity() -> bool:
             pass
 
 
+def _probe_http(proxy_url: str | None = None, timeout: float = 10.0) -> dict:
+    started = time.monotonic()
+    try:
+        handlers = [urllib.request.ProxyHandler({})] if not proxy_url else [
+            urllib.request.ProxyHandler({"http": proxy_url, "https": proxy_url})
+        ]
+        opener = urllib.request.build_opener(*handlers)
+        request = urllib.request.Request(TEST_URL, headers={"User-Agent": SUB_UA})
+        with opener.open(request, timeout=timeout) as response:
+            status = int(getattr(response, "status", 200))
+        latency = round((time.monotonic() - started) * 1000)
+        return {"ok": 200 <= status < 400, "status": status, "latency_ms": latency, "error": "" if 200 <= status < 400 else f"HTTP {status}"}
+    except Exception as exc:
+        return {"ok": False, "status": 0, "latency_ms": round((time.monotonic() - started) * 1000), "error": str(exc)}
+
+
 def _system_dns_servers() -> list[str]:
     try:
         out = subprocess.run(
@@ -1021,6 +1059,90 @@ def _system_dns_servers() -> list[str]:
         return sorted({line.strip() for line in (out.stdout or "").splitlines() if line.strip()})
     except Exception:
         return []
+
+
+def _dns_query_txt(name: str, server: str, timeout: float = 4.0) -> str:
+    query_id = os.urandom(2)
+    labels = [part.encode("idna") for part in name.rstrip(".").split(".") if part]
+    question = b"".join(bytes([len(label)]) + label for label in labels) + b"\x00\x00\x10\x00\x01"
+    packet = query_id + b"\x01\x00\x00\x01\x00\x00\x00\x00\x00\x00" + question
+    try:
+        family = socket.AF_INET6 if ":" in server else socket.AF_INET
+        with socket.socket(family, socket.SOCK_DGRAM) as sock:
+            sock.settimeout(timeout)
+            sock.sendto(packet, (server, 53))
+            data, _ = sock.recvfrom(4096)
+        if len(data) < 12:
+            return ""
+        qd = int.from_bytes(data[4:6], "big")
+        an = int.from_bytes(data[6:8], "big")
+        pos = 12
+        for _ in range(qd):
+            while pos < len(data):
+                size = data[pos]
+                pos += 1
+                if size == 0:
+                    break
+                pos += size
+            pos += 4
+        for _ in range(an):
+            if pos >= len(data):
+                break
+            if data[pos] & 0xC0 == 0xC0:
+                pos += 2
+            else:
+                while pos < len(data):
+                    size = data[pos]
+                    pos += 1
+                    if size == 0:
+                        break
+                    pos += size
+            if pos + 10 > len(data):
+                break
+            rtype = int.from_bytes(data[pos:pos + 2], "big")
+            rdlength = int.from_bytes(data[pos + 8:pos + 10], "big")
+            pos += 10
+            rdata = data[pos:pos + rdlength]
+            pos += rdlength
+            if rtype == 16 and rdata:
+                chunks = []
+                p2 = 0
+                while p2 < len(rdata):
+                    size = rdata[p2]
+                    p2 += 1
+                    chunks.append(rdata[p2:p2 + size])
+                    p2 += size
+                return b"".join(chunks).decode("utf-8", "replace")
+    except Exception:
+        return ""
+    return ""
+
+
+def _first_ip(value: str) -> str:
+    """Extract the first valid IP from a DNS TXT value such as Google's resolver token."""
+    for candidate in re.findall(r"[0-9A-Fa-f:.]+", str(value or "")):
+        try:
+            return str(ipaddress.ip_address(candidate.strip(" .")))
+        except ValueError:
+            continue
+    return ""
+
+
+def _fetch_egress_ip(proxy_url: str | None = None, timeout: float = 8.0) -> str:
+    try:
+        handlers = [urllib.request.ProxyHandler({})] if not proxy_url else [
+            urllib.request.ProxyHandler({"http": proxy_url, "https": proxy_url})
+        ]
+        opener = urllib.request.build_opener(*handlers)
+        request = urllib.request.Request("https://1.1.1.1/cdn-cgi/trace", headers={"User-Agent": SUB_UA})
+        with opener.open(request, timeout=timeout) as response:
+            body = response.read(8192).decode("utf-8", "replace")
+        for line in body.splitlines():
+            if line.startswith("ip="):
+                return line[3:].strip()
+    except Exception:
+        pass
+    return ""
 
 
 def _doh_template_count() -> int:
@@ -1148,6 +1270,8 @@ class Api:
             "core_found": core_binary() is not None,
             "test_url": TEST_URL,
             "network_mode": self._store.data.get("network_mode", "coexist"),
+            "subscription_update_hours": int(self._store.data.get("subscription_update_hours", 0) or 0),
+            "last_subscription_update": str(self._store.data.get("last_subscription_update") or ""),
             "proxy_recovery": recovery,
         }
 
@@ -1182,6 +1306,7 @@ class Api:
             return {"ok": False, "error": str(exc)}
 
     def set_system_proxy(self, enabled: bool) -> dict:
+        was_enabled = is_system_proxy_on(self._store)
         try:
             if enabled:
                 if not self._core.is_up():
@@ -1217,6 +1342,20 @@ class Api:
                         "請關閉該功能後再試。",
                         "sys_proxy": False,
                     }
+                validation = _probe_http(f"http://127.0.0.1:{int(self._store.data['mixed_port'])}", timeout=8)
+                if not validation.get("ok"):
+                    rollback = self.set_system_proxy(False)
+                    restored = bool(rollback.get("ok"))
+                    return {
+                        "ok": False,
+                        "error": ("系統代理已開啟，但實際連線驗證失敗，已自動恢復原本狀態。"
+                                  if restored else
+                                  "系統代理已開啟，但實際連線驗證失敗，且自動恢復失敗，請檢查系統代理設定。"),
+                        "sys_proxy": is_system_proxy_on(self._store),
+                        "validation": validation,
+                        "rolled_back": restored,
+                        "rollback_error": "" if restored else str(rollback.get("error") or "未知錯誤"),
+                    }
             else:
                 orig = self._store.data.get("original_proxy")
                 if orig:
@@ -1229,7 +1368,12 @@ class Api:
                     _apply_registry_proxy(0, "", "")
                 self._store.data["original_proxy"] = None
                 self._store.save()
-            return {"ok": True, "sys_proxy": is_system_proxy_on(self._store)}
+            result = {"ok": True, "sys_proxy": is_system_proxy_on(self._store)}
+            if enabled:
+                result["validation"] = validation
+            elif was_enabled:
+                result["rolled_back"] = False
+            return result
         except Exception as exc:
             return {"ok": False, "error": str(exc)}
 
@@ -1324,6 +1468,88 @@ class Api:
             return {"ok": True, "entry": self._public_entry(entry)}
         except Exception as exc:
             return {"ok": False, "error": str(exc)}
+
+    def set_subscription_auto_update(self, hours: int) -> dict:
+        hours = int(hours)
+        if hours not in (0, 6, 12, 24):
+            return {"ok": False, "error": "無效的自動更新間隔"}
+        self._store.data["subscription_update_hours"] = hours
+        self._store.save()
+        return {"ok": True, "hours": hours}
+
+    def subscription_auto_update(self, force: bool = False) -> dict:
+        hours = int(self._store.data.get("subscription_update_hours", 0) or 0)
+        if hours <= 0:
+            return {"ok": True, "skipped": True, "reason": "disabled", "updated": 0, "failed": []}
+        last_text = str(self._store.data.get("last_subscription_update") or "")
+        if not force and last_text:
+            try:
+                last = datetime.fromisoformat(last_text)
+                if (datetime.now() - last).total_seconds() < hours * 3600:
+                    return {"ok": True, "skipped": True, "reason": "not_due", "updated": 0, "failed": []}
+            except ValueError:
+                pass
+        updated = []
+        previous_entries = []
+        failed = []
+        rolled_back = []
+        remote_entries = [entry for entry in list(self._profiles.entries) if entry.get("kind") == "remote"]
+        for entry in remote_entries:
+            previous = dict(entry)
+            try:
+                self._profiles.update(entry["id"])
+                previous_entries.append((entry["id"], previous))
+                updated.append(entry.get("name") or entry["id"])
+            except Exception as exc:
+                failed.append({"name": entry.get("name") or entry["id"], "error": str(exc)})
+        reload_failed = False
+        if updated:
+            try:
+                ok, message = self._core.reload_runtime()
+            except Exception as exc:
+                ok, message = False, str(exc)
+            if not ok:
+                reload_failed = True
+                failed.append({"name": "核心重新載入", "error": message})
+                for pid, previous in reversed(previous_entries):
+                    try:
+                        self._profiles.rollback_to(pid, previous)
+                        rolled_back.append(previous.get("name") or pid)
+                    except Exception as exc:
+                        failed.append({"name": f"回滾 {previous.get('name') or pid}", "error": str(exc)})
+                if rolled_back:
+                    try:
+                        self._core.reload_runtime()
+                    except Exception:
+                        pass
+        if updated or not remote_entries:
+            self._store.data["last_subscription_update"] = datetime.now().isoformat()
+        self._store.save()
+        return {
+            "ok": True,
+            "skipped": False,
+            "updated": len(updated),
+            "names": updated,
+            "failed": failed,
+            "rolled_back": rolled_back,
+            "reload_failed": reload_failed,
+            "checked_at": self._store.data["last_subscription_update"],
+        }
+
+    def export_backup(self) -> dict:
+        try:
+            folder = Path.home() / "Downloads"
+            if not folder.is_dir():
+                folder = data_dir()
+            folder.mkdir(parents=True, exist_ok=True)
+            path = folder / f"KumoRoute-backup-{datetime.now():%Y%m%d-%H%M%S}.json"
+            path.write_text(json.dumps(self._backup_payload(), ensure_ascii=False, indent=2), encoding="utf-8")
+            return {"ok": True, "path": str(path)}
+        except Exception as exc:
+            return {"ok": False, "error": f"建立備份失敗：{exc}"}
+
+    def import_backup(self) -> dict:
+        return {'ok': False, 'error': 'not implemented'}
 
     def import_profile(self) -> dict:
         try:
@@ -1943,6 +2169,45 @@ class Api:
             app_log(f"VPN proxy pending clear failed: {exc}")
         return True
 
+    def _vpn_validate_connection(self, profile_name: str, proxy_prepared: bool, baseline: dict) -> dict:
+        time.sleep(1.2)
+        validation = _probe_http(None, timeout=8)
+        if validation.get("ok"):
+            return {"ok": True, "connected": True, "validated": True, "validation": validation}
+        should_rollback = proxy_prepared or bool(baseline.get("ok"))
+        if not should_rollback:
+            return {
+                "ok": True,
+                "connected": True,
+                "validated": False,
+                "validation": validation,
+                "warning": "VPN 已建立，但目前無法完成網路驗證；連線前的網路也不可用，因此未自動斷線。",
+            }
+        disconnected, disconnect_error = _vpn_ras_disconnect(profile_name)
+        proxy_restored = self._vpn_restore_proxy() if proxy_prepared else False
+        restore_expected = bool(self._store.data.get("vpn_restore_system_proxy", True))
+        proxy_ok = not proxy_prepared or not restore_expected or proxy_restored
+        rolled_back = disconnected and proxy_ok
+        if disconnected and proxy_ok:
+            error = "VPN 已建立，但實際連線驗證失敗，已自動斷線並恢復原本代理狀態。"
+        elif disconnected:
+            error = "VPN 實際連線驗證失敗，已自動斷線，但系統代理恢復失敗，請手動檢查。"
+        else:
+            error = "VPN 實際連線驗證失敗，且自動斷線失敗，請手動斷開 VPN。"
+        result = {
+            "ok": False,
+            "connected": not disconnected,
+            "rolled_back": rolled_back,
+            "disconnected": disconnected,
+            "proxy_restored": proxy_restored,
+            "validation": validation,
+            "baseline": baseline,
+            "error": error,
+        }
+        if disconnect_error:
+            result["disconnect_error"] = disconnect_error
+        return result
+
     def vpn_connect(self, name: str) -> dict:
         if platform.system().lower() != "windows":
             return {"ok": False, "error": "Windows VPN 僅支援 Windows"}
@@ -1956,23 +2221,35 @@ class Api:
         if not credential:
             return {"ok": False, "needs_credentials": True, "username": profile.get("saved_username", "")}
         proxy_prepared = False
+        connected = False
         try:
             proxy_result = self._vpn_prepare_proxy()
             if proxy_result and not proxy_result.get("ok"):
                 return proxy_result
             proxy_prepared = bool(proxy_result and proxy_result.get("proxy_disabled"))
+            baseline = _probe_http(None, timeout=6)
             code, message = _vpn_ras_dial(
                 profile["name"], credential["username"], credential["password"]
             )
-            if code == 0:
-                return {"ok": True, "connected": True, "proxy_disabled": proxy_prepared}
-            if proxy_prepared:
-                self._vpn_restore_proxy()
-            if code in (645, 691):
-                _vpn_credential_delete(profile["name"])
-                return {"ok": False, "needs_credentials": True, "username": credential["username"], "stale_credentials": True}
-            return {"ok": False, "error": message, "code": code}
+            if code != 0:
+                if proxy_prepared:
+                    self._vpn_restore_proxy()
+                if code in (645, 691):
+                    _vpn_credential_delete(profile["name"])
+                    return {
+                        "ok": False,
+                        "needs_credentials": True,
+                        "username": credential["username"],
+                        "stale_credentials": True,
+                    }
+                return {"ok": False, "error": message, "code": code}
+            connected = True
+            result = self._vpn_validate_connection(profile["name"], proxy_prepared, baseline)
+            result["proxy_disabled"] = proxy_prepared
+            return result
         except Exception as exc:
+            if connected:
+                _vpn_ras_disconnect(profile["name"])
             if proxy_prepared:
                 self._vpn_restore_proxy()
             return {"ok": False, "error": f"啟動 VPN 連線失敗：{exc}"}
@@ -1990,34 +2267,50 @@ class Api:
         if not username or not password:
             return {"ok": False, "error": "請輸入 VPN 使用者名稱與密碼"}
         proxy_prepared = False
+        connected = False
         try:
             proxy_result = self._vpn_prepare_proxy()
             if proxy_result and not proxy_result.get("ok"):
                 return proxy_result
             proxy_prepared = bool(proxy_result and proxy_result.get("proxy_disabled"))
+            baseline = _probe_http(None, timeout=6)
             code, message = _vpn_ras_dial(profile["name"], username, password)
             if code != 0:
                 if proxy_prepared:
                     self._vpn_restore_proxy()
-                return {"ok": False, "error": message, "code": code}
-            if remember:
-                if not _vpn_credential_write(profile["name"], username, password):
+                if code in (645, 691):
+                    _vpn_credential_delete(profile["name"])
                     return {
-                        "ok": True,
-                        "connected": True,
-                        "credentials_saved": False,
-                        "proxy_disabled": proxy_prepared,
-                        "warning": "已連線，但無法保存 VPN 憑證",
+                        "ok": False,
+                        "needs_credentials": True,
+                        "username": username,
+                        "stale_credentials": True,
                     }
+                return {"ok": False, "error": message, "code": code}
+            connected = True
+            credentials_saved = False
+            warning = ""
+            if remember:
+                try:
+                    credentials_saved = bool(_vpn_credential_write(profile["name"], username, password))
+                except Exception:
+                    credentials_saved = False
+                if not credentials_saved:
+                    warning = "已連線，但無法保存 VPN 憑證"
             else:
                 _vpn_credential_delete(profile["name"])
-            return {
-                "ok": True,
-                "connected": True,
-                "credentials_saved": bool(remember),
+            result = self._vpn_validate_connection(profile["name"], proxy_prepared, baseline)
+            result.update({
+                "credentials_saved": credentials_saved,
                 "proxy_disabled": proxy_prepared,
-            }
+            })
+            if warning and result.get("ok"):
+                current_warning = str(result.get("warning") or "")
+                result["warning"] = f"{current_warning} {warning}".strip()
+            return result
         except Exception as exc:
+            if connected:
+                _vpn_ras_disconnect(profile["name"])
             if proxy_prepared:
                 self._vpn_restore_proxy()
             return {"ok": False, "error": f"啟動 VPN 連線失敗：{exc}"}
@@ -2028,20 +2321,11 @@ class Api:
         profile = self._vpn_profile(name)
         if not profile:
             return {"ok": False, "error": "找不到該 VPN 連線"}
-        try:
-            result = subprocess.run(
-                ["rasdial.exe", profile["name"], "/disconnect"],
-                capture_output=True,
-                text=True,
-                timeout=20,
-                creationflags=CREATE_NO_WINDOW,
-            )
-            if result.returncode != 0:
-                return {"ok": False, "error": f"VPN 斷線失敗（代碼 {result.returncode}）"}
-            restored = self._vpn_restore_proxy()
-            return {"ok": True, "disconnected": True, "proxy_restored": restored}
-        except Exception as exc:
-            return {"ok": False, "error": f"VPN 斷線失敗：{exc}"}
+        ok, message = _vpn_ras_disconnect(profile["name"])
+        if not ok:
+            return {"ok": False, "error": message}
+        restored = self._vpn_restore_proxy()
+        return {"ok": True, "disconnected": True, "proxy_restored": restored}
 
     def vpn_set_advanced(self, setting: str, enabled: bool) -> dict:
         if platform.system().lower() != "windows":
@@ -2197,6 +2481,14 @@ class Api:
         dns_leak_suspected = bool(proxy_on and dns_servers and not any(
             server.startswith(("127.", "::1")) for server in dns_servers
         ))
+        dns_resolver_ip = ""
+        if dns_servers:
+            dns_resolver_ip = _first_ip(_dns_query_txt("o-o.myaddr.l.google.com", dns_servers[0]))
+        proxy_url = f"http://127.0.0.1:{int(self._store.data.get('mixed_port', 7890))}" if proxy_on else None
+        proxy_egress_ip = _first_ip(_fetch_egress_ip(proxy_url)) if proxy_on else ""
+        dns_leak_confirmed = bool(
+            proxy_on and dns_resolver_ip and proxy_egress_ip and dns_resolver_ip != proxy_egress_ip
+        )
         dns_encryption_conflict = bool((system_doh or config_doh) and dot_templates)
         lines = self.get_logs().get("lines", [])
         issues = _group_network_issues(lines)
@@ -2204,7 +2496,9 @@ class Api:
             _merge_network_issue(issues, "ipv6", 1, "IPv6 已有路由，但實際連線失敗")
         if not dns_ok:
             _merge_network_issue(issues, "dns", 1, "DNS 查詢失敗")
-        if dns_leak_suspected:
+        if dns_leak_confirmed:
+            _merge_network_issue(issues, "dns-leak", 1, "DNS 解析出口與代理出口不同，可能存在 DNS 洩漏")
+        elif dns_leak_suspected:
             _merge_network_issue(issues, "dns-leak", 1, "系統代理開啟，但系統 DNS 不是本機位址")
         if ipv6_preferred and not connectivity:
             _merge_network_issue(issues, "ipv6-preference", 1, "DNS 優先回傳 IPv6，但 IPv6 無法連線")
@@ -2223,6 +2517,9 @@ class Api:
             "dot_templates": dot_templates,
             "dns_encryption_conflict": dns_encryption_conflict,
             "dns_leak_suspected": dns_leak_suspected,
+            "dns_resolver_ip": dns_resolver_ip,
+            "proxy_egress_ip": proxy_egress_ip,
+            "dns_leak_confirmed": dns_leak_confirmed,
             "proxy_on": proxy_on,
             "network_mode": self._store.data.get("network_mode", "coexist"),
             "issues": issues,
@@ -2436,6 +2733,26 @@ def _ensure_std_streams() -> None:
         sys.stdout = open(os.devnull, "w", encoding="utf-8")
     if sys.stderr is None:
         sys.stderr = open(os.devnull, "w", encoding="utf-8")
+
+
+try:
+    try:
+        from backup_support import install_api_methods
+    except ModuleNotFoundError:
+        _backup_spec = importlib.util.spec_from_file_location(
+            "backup_support", Path(__file__).resolve().parent / "backup_support.py"
+        )
+        if not _backup_spec or not _backup_spec.loader:
+            raise
+        _backup_module = importlib.util.module_from_spec(_backup_spec)
+        _backup_spec.loader.exec_module(_backup_module)
+        install_api_methods = _backup_module.install_api_methods
+    _app_module = sys.modules.get(__name__)
+    if _app_module is None:
+        _app_module = types.SimpleNamespace(**globals())
+    install_api_methods(Api, _app_module)
+except Exception as _backup_support_error:
+    app_log(f'backup support unavailable: {_backup_support_error}')
 
 
 def main() -> None:

@@ -14,7 +14,7 @@
       <img src="icon.png" alt="KumoRoute" class="brand-icon">
       <div>
         <div class="brand-name">KumoRoute</div>
-        <div class="brand-ver" id="app-version">v0.7.6</div>
+        <div class="brand-ver" id="app-version">v0.8.0</div>
       </div>
     </div>
 
@@ -334,6 +334,31 @@
           <button class="btn ghost" id="btn-import-file">匯入本機 YAML…</button>
           <span class="hint">請在服務後台選擇「Clash／Mihomo」格式；Base64 節點清單與 ss://、vmess://、trojan:// 原始節點不支援。</span>
         </div>
+      </div>
+
+      <div class="card">
+        <div class="card-title">自動更新與備份</div>
+        <div class="settings-grid">
+          <label class="field">
+            <span>遠端訂閱自動更新</span>
+            <select id="subscription-update-hours" class="settings-select">
+              <option value="0">關閉</option>
+              <option value="6">每 6 小時</option>
+              <option value="12">每 12 小時</option>
+              <option value="24">每 24 小時</option>
+            </select>
+          </label>
+          <div class="field">
+            <span>備份範圍</span>
+            <p class="hint">設定、訂閱與本機 YAML；不包含 Windows 認證管理員中的 VPN 憑證。</p>
+          </div>
+        </div>
+        <div class="row-actions">
+          <button class="btn primary" id="btn-update-all-subscriptions">立即更新全部訂閱</button>
+          <button class="btn ghost" id="btn-export-backup">匯出備份</button>
+          <button class="btn ghost" id="btn-import-backup">還原備份</button>
+        </div>
+        <p class="hint" id="subscription-update-status">尚未執行自動更新。</p>
       </div>
 
       <div class="card">

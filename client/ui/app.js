@@ -724,6 +724,11 @@ const TAURI_SIG = {
   test_group_delay: ["group"],
   test_node_delay: ["name"],
   add_subscription: ["url", "name"],
+  import_profile: [],
+  set_subscription_auto_update: ["hours"],
+  subscription_auto_update: ["force"],
+  export_backup: [],
+  import_backup: [],
   update_profile: ["pid"],
   delete_profile: ["pid"],
   set_active_profile: ["pid"],
@@ -775,6 +780,8 @@ const demoCfg = {
   vpnRestoreProxy: true,
   vpnProxyPending: false,
   networkMode: "coexist",
+  subscriptionUpdateHours: 0,
+  lastSubscriptionUpdate: "",
   vpnCredentialSaved: false,
   vpnUsername: "super",
   updateDownload: null,
@@ -782,7 +789,7 @@ const demoCfg = {
   mixed_port: 7890,
   controller_port: 9090,
   core_version: "v1.19.33",
-  app_version: "0.7.6",
+  app_version: "0.8.0",
   data_dir: "C:\\Users\\…\\AppData\\Roaming\\KumoRoute",
   test_url: "https://cp.cloudflare.com/generate_204",
   profiles: [
@@ -834,6 +841,8 @@ function demoState() {
     running: demoCfg.running,
     sys_proxy: demoCfg.sys_proxy,
     network_mode: demoCfg.networkMode,
+    subscription_update_hours: demoCfg.subscriptionUpdateHours,
+    last_subscription_update: demoCfg.lastSubscriptionUpdate,
     mode: demoCfg.mode,
     mixed_port: demoCfg.mixed_port,
     controller_port: demoCfg.controller_port,
@@ -900,6 +909,10 @@ async function demoApi(fn, ...args) {
     }
     case "set_active_profile": demoCfg.active_profile = args[0]; return { ok: true };
     case "import_profile": return { ok: false, cancelled: true };
+    case "set_subscription_auto_update": demoCfg.subscriptionUpdateHours = Number(args[0]) || 0; return { ok: true, hours: demoCfg.subscriptionUpdateHours };
+    case "subscription_auto_update": demoCfg.lastSubscriptionUpdate = new Date().toISOString(); return { ok: true, skipped: false, updated: 2, names: ["範例機場"], failed: [], checked_at: demoCfg.lastSubscriptionUpdate };
+    case "export_backup": return { ok: true, path: "C:\\Users\\…\\Downloads\\KumoRoute-backup.json" };
+    case "import_backup": return { ok: true, path: "C:\\Users\\…\\Downloads\\KumoRoute-backup.json", safety_backup: "C:\\Users\\…\\AppData\\Roaming\\KumoRoute\\backups\\pre-restore.json" };
     case "get_logs": return { ok: true, lines: [
       "time=\"2026-11-10T10:42:19+08:00\" level=info msg=\"Start initial configuration in progress\"",
       "time=\"2026-11-10T10:42:19+08:00\" level=info msg=\"Initial configuration completed\"",
@@ -930,14 +943,14 @@ async function demoApi(fn, ...args) {
         demoCfg.sys_proxy = false;
         demoCfg.vpnProxyPending = true;
       }
-      demoCfg.vpnConnected = true; return { ok: true, connected: true, proxy_disabled: demoCfg.vpnProxyPending };
+      demoCfg.vpnConnected = true; return { ok: true, connected: true, validated: true, proxy_disabled: demoCfg.vpnProxyPending, validation: { ok: true, status: 204, latency_ms: 42, error: "" } };
     case "vpn_connect_with_credentials":
       if (demoCfg.vpnDisableSystemProxy && demoCfg.sys_proxy) {
         demoCfg.sys_proxy = false;
         demoCfg.vpnProxyPending = true;
       }
       demoCfg.vpnConnected = true; demoCfg.vpnUsername = String(args[1] || ""); demoCfg.vpnCredentialSaved = !!args[3];
-      return { ok: true, connected: true, credentials_saved: !!args[3], proxy_disabled: demoCfg.vpnProxyPending };
+      return { ok: true, connected: true, credentials_saved: !!args[3], validated: true, proxy_disabled: demoCfg.vpnProxyPending, validation: { ok: true, status: 204, latency_ms: 42, error: "" } };
     case "vpn_disconnect":
       demoCfg.vpnConnected = false;
       if (demoCfg.vpnProxyPending) {
@@ -955,7 +968,7 @@ async function demoApi(fn, ...args) {
       if (mode === "proxy") { demoCfg.vpnConnected = false; demoCfg.sys_proxy = true; }
       return { ok: true, network_mode: demoCfg.networkMode };
     }
-    case "network_diagnostics": return { ok: true, ipv6_route: false, ipv6_connectivity: false, ipv6_preferred: true, dns_ok: true, dns_servers: ["192.168.1.1"], doh_templates: 0, dot_templates: 0, dns_encryption_conflict: false, dns_leak_suspected: false, proxy_on: demoCfg.sys_proxy, network_mode: demoCfg.networkMode, issues: [{ type: "ipv6", count: 3, message: "IPv6 連線不可達" }] };
+    case "network_diagnostics": return { ok: true, ipv6_route: false, ipv6_connectivity: false, ipv6_preferred: true, dns_ok: true, dns_servers: ["192.168.1.1"], dns_resolver_ip: "203.0.113.8", proxy_egress_ip: demoCfg.sys_proxy ? "198.51.100.24" : "", dns_leak_confirmed: false, doh_templates: 0, dot_templates: 0, dns_encryption_conflict: false, dns_leak_suspected: false, proxy_on: demoCfg.sys_proxy, network_mode: demoCfg.networkMode, issues: [{ type: "ipv6", count: 3, message: "IPv6 連線不可達" }] };
     case "network_repair": return { ok: true, action: String(args[0] || "") };
     case "install_update": return { ok: true, path: "C:\\Users\\…\\Downloads\\" + String(args[1] || "KumoRoute-update.exe") };
     case "start_update_download":
@@ -1052,6 +1065,15 @@ function renderAll() {
 
 function renderProfiles() {
   const box = $("#profile-list");
+  if (!box) return;
+  const auto = $("#subscription-update-hours");
+  if (auto && state) auto.value = String(state.subscription_update_hours || 0);
+  const status = $("#subscription-update-status");
+  if (status && state) {
+    status.textContent = state.last_subscription_update
+      ? `上次自動更新：${formatEventTime(state.last_subscription_update)}`
+      : "尚未執行自動更新。";
+  }
   if (!state || !state.profiles.length) {
     box.innerHTML = '<div class="empty">尚無配置</div>';
     return;
@@ -1073,6 +1095,34 @@ function renderProfiles() {
       </div>
     </div>`;
   }).join("");
+}
+
+async function updateSubscriptionsNow(manual = true) {
+  const btn = $("#btn-update-all-subscriptions");
+  if (btn) { btn.disabled = true; btn.textContent = "更新中…"; }
+  try {
+    const res = demo ? await demoApi("subscription_auto_update", true) : await api("subscription_auto_update", true);
+    if (!res || !res.ok) {
+      toast((res && res.error) || "更新訂閱失敗", "error");
+      return;
+    }
+    if (res.rolled_back && res.rolled_back.length) {
+      toast(`核心重新載入失敗，已回滚 ${res.rolled_back.length} 個訂閱`, "error");
+    } else if (res.failed && res.failed.length) {
+      toast(`已更新 ${res.updated || 0} 個訂閱，${res.failed.length} 個失敗`, "error");
+    } else if (manual) {
+      toast(`已更新 ${res.updated || 0} 個訂閱`, "ok");
+    }
+    await refreshState();
+    if (page === "proxies" && state && state.running) await refreshGroups();
+  } catch (e) { toast(String(e), "error"); }
+  finally {
+    if (btn) { btn.disabled = false; btn.textContent = "立即更新全部訂閱"; }
+  }
+}
+
+function initSubscriptionAutoUpdate() {
+  if (state && state.subscription_update_hours) updateSubscriptionsNow(false);
 }
 
 /* ---------- live traffic ---------- */
@@ -2361,8 +2411,10 @@ async function vpnAction(name, action, button = null) {
       toast((res && res.error) || "VPN 操作失敗", "error");
       return;
     }
-    if (action === "connect") toast("VPN 已連線", "ok");
-    else if (action === "forget_credentials") toast("VPN 憑證已清除", "ok");
+    if (action === "connect") {
+      if (res.warning) toast(res.warning, "error");
+      else toast("VPN 已連線並通過網路驗證", "ok");
+    } else if (action === "forget_credentials") toast("VPN 憑證已清除", "ok");
     else toast("VPN 已斷開", "ok");
     await refreshVpn(true);
   } catch (e) {
@@ -2418,8 +2470,13 @@ async function submitVpnCredentials(ev) {
       return;
     }
     closeVpnCredentialModal();
-    toast(res.credentials_saved ? "VPN 已連線，登入資訊已保存" : "VPN 已連線", "ok");
-    if (res.warning) toast(res.warning, "error");
+    if (res.warning) {
+      toast(res.warning, "error");
+    } else if (res.credentials_saved) {
+      toast("VPN 已連線，登入資訊已保存並通過網路驗證", "ok");
+    } else {
+      toast("VPN 已連線並通過網路驗證", "ok");
+    }
     await refreshVpn(true);
   } catch (e) {
     errorBox.textContent = String(e);
@@ -2601,11 +2658,14 @@ function renderNetworkDiagnostics(data) {
     `IPv6 實際連線：${status(data.ipv6_connectivity, "成功", "失敗")}`,
     `DNS 查詢：${status(data.dns_ok, "成功", "失敗")}`,
     `系統 DNS：${esc((data.dns_servers || []).join(", ") || "未設定")}`,
+    `DNS 解析出口：${esc(data.dns_resolver_ip || "未取得")}`,
+    `代理出口：${esc(data.proxy_egress_ip || "未取得")}`,
     `DoH 範本：${Number(data.doh_templates || 0)} 個${data.doh_templates ? "（可能與核心 DNS 衝突）" : ""}`,
     `DoT 範本：${Number(data.dot_templates || 0)} 個`,
     data.dns_encryption_conflict ? '<span class="warn">同時偵測到 DoH 與 DoT，建議只保留一種加密 DNS。</span>' : "",
     data.ipv6_preferred && !data.ipv6_connectivity ? '<span class="warn">DNS 優先回傳 IPv6，但 IPv6 不可用。</span>' : "",
-    data.dns_leak_suspected ? '<span class="warn">可能存在 DNS 洩漏：系統代理開啟，但 DNS 伺服器不是本機。</span>' : "",
+    data.dns_leak_confirmed ? '<span class="bad">DNS 解析出口與代理出口不同，可能存在 DNS 洩漏。</span>' : "",
+    data.dns_leak_suspected && !data.dns_leak_confirmed ? '<span class="warn">可能存在 DNS 洩漏：系統代理開啟，但 DNS 伺服器不是本機。</span>' : "",
     "\n重複網路事件：",
     issues,
   ].filter(Boolean).join("\n");
@@ -2872,6 +2932,36 @@ function bindActions() {
         await refreshState();
         await refreshGroups();
       } else if (res && res.error) toast(res.error, "error");
+    } catch (e) { toast(String(e), "error"); }
+  });
+
+  $("#subscription-update-hours").addEventListener("change", async (ev) => {
+    try {
+      const res = await api("set_subscription_auto_update", Number(ev.target.value));
+      if (!res || !res.ok) toast((res && res.error) || "保存自動更新設定失敗", "error");
+      else toast("訂閱自動更新設定已保存", "ok");
+      await refreshState();
+    } catch (e) { toast(String(e), "error"); }
+  });
+  $("#btn-update-all-subscriptions").addEventListener("click", () => updateSubscriptionsNow(true));
+  $("#btn-export-backup").addEventListener("click", async () => {
+    try {
+      const res = await api("export_backup");
+      if (!res || !res.ok) toast((res && res.error) || "匯出備份失敗", "error");
+      else toast("備份已匯出：", "ok", res.path);
+    } catch (e) { toast(String(e), "error"); }
+  });
+  $("#btn-import-backup").addEventListener("click", async () => {
+    if (!confirm(tr("還原備份會覆蓋目前的設定與訂閱。系統會先建立安全備份，確定繼續嗎？"))) return;
+    try {
+      const res = await api("import_backup");
+      if (!res || !res.ok) {
+        if (!(res && res.cancelled)) toast((res && res.error) || "還原備份失敗", "error");
+        return;
+      }
+      toast("備份已還原，安全備份：", "ok", res.safety_backup);
+      await refreshState();
+      if (page === "proxies") await refreshGroups();
     } catch (e) { toast(String(e), "error"); }
   });
 
@@ -3209,6 +3299,7 @@ document.addEventListener("DOMContentLoaded", async () => {
   }
 
   await refreshState();
+  initSubscriptionAutoUpdate();
   if (page === "proxies") await refreshGroups();
   if (page === "vpn") await refreshVpn();
   if (page === "logs") await refreshLogs();
@@ -3224,6 +3315,7 @@ document.addEventListener("DOMContentLoaded", async () => {
   setInterval(() => { if (page === "logs") refreshLogs(); }, 2000);
   setInterval(() => { if (page === "proxies" && state && state.running) refreshGroups(); }, 6000);
   setInterval(autoRetestStaleActive, 30_000);
+  setInterval(initSubscriptionAutoUpdate, 60 * 60 * 1000);
 
   window.addEventListener("resize", () => {
     drawSpark();

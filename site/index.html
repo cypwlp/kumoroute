@@ -5,7 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <meta name="theme-color" content="#070a10">
 <title>KumoRoute — 輕量 Mihomo 跨平台桌面客戶端</title>
-<meta name="description" content="KumoRoute 是基於 mihomo 核心的輕量跨平台桌面客戶端，支援訂閱管理、VPN／代理協調、節點品質策略、IPv6／DNS 診斷與安全更新。">
+<meta name="description" content="KumoRoute 是基於 mihomo 核心的輕量跨平台桌面客戶端，支援訂閱自動更新與備份、VPN／代理真實驗證與回滚、節點品質策略、DNS 洩漏實測與安全更新。">
 <link rel="canonical" href="https://cypwlp.github.io/kumoroute/">
 <link rel="icon" href="assets/icon.png">
 <meta property="og:type" content="website">
@@ -19,7 +19,7 @@
 <meta name="twitter:description" content="本機優先、開源免費的 Mihomo 桌面客戶端，內建 VPN／代理協調、節點品質策略與網路診斷。">
 <meta name="twitter:image" content="https://cypwlp.github.io/kumoroute/assets/screenshot-overview.png">
 <script type="application/ld+json">{"@context":"https://schema.org","@type":"SoftwareApplication","name":"KumoRoute","applicationCategory":"UtilitiesApplication","operatingSystem":"Windows 10/11, Linux, macOS","description":"基於 mihomo 核心的輕量、本機優先桌面客戶端，支援 VPN／代理協調、節點品質策略與網路診斷。","url":"https://cypwlp.github.io/kumoroute/","downloadUrl":"https://github.com/cypwlp/kumoroute/releases/latest","codeRepository":"https://github.com/cypwlp/kumoroute","license":"https://github.com/cypwlp/kumoroute/blob/main/LICENSE","offers":{"@type":"Offer","price":"0","priceCurrency":"USD"}}</script>
-<link rel="stylesheet" href="style.css?v=0.7.6">
+<link rel="stylesheet" href="style.css?v=0.8.0">
 </head>
 <body>
 <header class="nav">
@@ -33,7 +33,7 @@
 <main>
   <section class="hero" id="top">
     <div class="hero-copy">
-      <div class="badge">v0.7.6 · Windows / Linux / macOS</div>
+      <div class="badge">v0.8.0 · Windows / Linux / macOS</div>
       <h1>網路切換，<br><span class="grad">不該這麼複雜。</span></h1>
       <p class="lead">KumoRoute 把 Mihomo、Windows VPN、節點品質與網路診斷收進一個乾淨的本機桌面介面。沒有廣告，沒有帳號，也不會上傳你的設定。</p>
       <div class="cta"><a class="btn primary big" id="download-btn" href="#" target="_blank" rel="noopener">下載 Windows 版<span class="sub">安裝版 · 支援自動更新</span></a><a class="btn ghost big" id="github-btn" href="#" target="_blank" rel="noopener">查看原始碼</a></div>
@@ -45,7 +45,7 @@
   <section class="download-section" id="download">
     <div class="section-head"><div><span class="eyebrow">DOWNLOAD</span><h2>選一個平台，立即開始</h2></div><p>Windows 推薦安裝版；ZIP 適合免安裝使用。Linux 與 macOS 提供原生打包。</p></div>
     <div class="download-grid">
-      <article class="download-card featured"><div class="platform-head"><span class="platform-icon">⊞</span><div><h3>Windows 10/11</h3><span class="pill">推薦</span></div></div><p>安裝版會建立開始選單與卸載項，支援更新進度、取消、ZIP 分流與上一版還原。</p><div class="download-actions"><a class="btn primary" id="win-setup" data-dl="win-setup" href="#" target="_blank" rel="noopener">下載安裝版 .exe</a><a class="btn ghost small" id="win-zip" data-dl="win-zip" href="#" target="_blank" rel="noopener">免安裝 .zip</a></div></article>
+      <article class="download-card featured"><div class="platform-head"><span class="platform-icon">⊞</span><div><h3>Windows 10/11</h3><span class="pill">推薦</span></div></div><p>安裝版會建立開始選單與卸載項，支援下載進度、取消、安裝版／ZIP 正確分流與上一版失敗回復。</p><div class="download-actions"><a class="btn primary" id="win-setup" data-dl="win-setup" href="#" target="_blank" rel="noopener">下載安裝版 .exe</a><a class="btn ghost small" id="win-zip" data-dl="win-zip" href="#" target="_blank" rel="noopener">免安裝 .zip</a></div></article>
       <article class="download-card"><div class="platform-head"><span class="platform-icon">◈</span><div><h3>Linux x86_64</h3></div></div><p>AppImage 免安裝直接執行；DEB 適合 Debian / Ubuntu。需要 WebKitGTK 4.1。</p><div class="download-actions"><a class="btn ghost" id="linux-appimage" data-dl="linux-appimage" href="#" target="_blank" rel="noopener">下載 AppImage</a><a class="btn ghost small" id="linux-deb" data-dl="linux-deb" href="#" target="_blank" rel="noopener">.deb</a></div></article>
       <article class="download-card"><div class="platform-head"><span class="platform-icon">⌘</span><div><h3>macOS Universal</h3></div></div><p>Intel 與 Apple Silicon 通用 DMG。未簽名版本首次開啟請右鍵 →「打開」。</p><div class="download-actions"><a class="btn ghost" id="mac-dmg" data-dl="mac-dmg" href="#" target="_blank" rel="noopener">下載 .dmg</a></div></article>
     </div>
@@ -54,10 +54,12 @@
   <section class="section" id="features">
     <div class="section-head centered"><div><span class="eyebrow">BUILT FOR CONTROL</span><h2>一個介面，處理真正麻煩的事</h2></div><p>不是把所有開關堆在一起，而是讓代理、VPN、DNS 與節點策略彼此協調。</p></div>
     <div class="feature-grid">
-      <article class="feature-card accent-blue"><div class="feature-icon">↔</div><h3>VPN／代理協調</h3><p>只用代理、只用 VPN、兩者共存。連線失敗自動恢復，切換代理時提示處理 VPN。</p><span class="feature-tag">Auto rollback</span></article>
+      <article class="feature-card accent-blue"><div class="feature-icon">↔</div><h3>VPN／代理協調</h3><p>只用代理、只用 VPN、兩者共存。連線後做真實 HTTP 驗證，失敗時自動斷線並恢復原本代理。</p><span class="feature-tag">Verified + rollback</span></article>
       <article class="feature-card accent-violet"><div class="feature-icon">◎</div><h3>節點品質策略</h3><p>延遲、成功率、抖動與最近失敗原因；支援固定、自動、最低延遲，連續逾時自動排除。</p><span class="feature-tag">Quality first</span></article>
-      <article class="feature-card accent-green"><div class="feature-icon">⌁</div><h3>IPv6／DNS 診斷</h3><p>實際連線測試、DNS 洩漏、DoH／DoT 衝突與 IPv6 優先問題，重複錯誤合併成單一事件。</p><span class="feature-tag">One-click repair</span></article>
+      <article class="feature-card accent-green"><div class="feature-icon">⌁</div><h3>IPv6／DNS 實測</h3><p>比對 DNS 解析出口與代理出口 IP，確認是否洩漏；同時檢查 DoH／DoT 衝突與 IPv6 優先問題。</p><span class="feature-tag">Measured, not guessed</span></article>
       <article class="feature-card accent-amber"><div class="feature-icon">▣</div><h3>安全更新</h3><p>每版一次提示、SHA256 驗證、下載進度與取消；安裝版直接升級，免安裝版獨立套用。</p><span class="feature-tag">No silent install</span></article>
+      <article class="feature-card accent-violet"><div class="feature-icon">⟳</div><h3>訂閱可靠性</h3><p>6／12／24 小時自動更新、全部訂閱一鍵刷新；核心重載失敗會回滚，備份可安全還原。</p><span class="feature-tag">Auto-update + backup</span></article>
+      <article class="feature-card accent-blue"><div class="feature-icon">⌂</div><h3>本機優先</h3><p>沒有帳號、沒有雲端同步。設定、訂閱與統計留在本機；VPN 密碼由 Windows 認證管理員保管。</p><span class="feature-tag">Local by design</span></article>
     </div>
   </section>
 
@@ -78,8 +80,9 @@
       <details><summary>更新需要先刪除舊版嗎？</summary><p>不需要。Windows 安裝版直接覆蓋升級；ZIP 版會備份並套用更新，失敗時可還原上一版。設定、訂閱與 VPN 憑證都保存在使用者資料夾。</p></details>
       <details><summary>需要自己準備節點嗎？</summary><p>是。KumoRoute 只提供客戶端，不包含或販售節點與訂閱服務。請自備合法的 Clash／Mihomo 配置。</p></details>
       <details><summary>資料會上傳到哪裡？</summary><p>不會。設定、訂閱、日誌與統計保存在本機（%APPDATA%\\KumoRoute），沒有帳號系統或背景上傳。</p></details>
-      <details><summary>支援哪些平台？</summary><p>v0.7.6 提供 Windows（安裝包／免安裝）、Linux（AppImage／deb）與 macOS（Universal dmg）。手機版尚未提供。</p></details>
-      <details><summary>VPN 和系統代理怎麼選？</summary><p>VPN 頁提供只用代理、只用 VPN、兩者共存。只用代理會先斷開 VPN；只用 VPN 會關閉系統代理。連線失敗時可自動恢復原本狀態。</p></details>
+      <details><summary>支援哪些平台？</summary><p>v0.8.0 提供 Windows（安裝包／免安裝）、Linux（AppImage／deb）與 macOS（Universal dmg）。手機版尚未提供。</p></details>
+      <details><summary>VPN 和系統代理怎麼選？</summary><p>VPN 頁提供只用代理、只用 VPN、兩者共存。連線成功後會實際發送 HTTP 請求驗證；若 VPN 建立但網路不可用，會自動斷線並恢復原本代理。</p></details>
+      <details><summary>備份會包含 VPN 密碼嗎？</summary><p>不會。JSON 備份包含設定、遠端訂閱與本機 YAML；Windows VPN 憑證仍只存在系統認證管理員。還原前會先建立安全備份。</p></details>
       <details><summary>節點逾時怎麼辦？</summary><p>使用重測或整組測速。代理頁會顯示成功率、抖動與最近失敗原因，並自動排除連續兩次逾時的節點。</p></details>
       <details><summary>可以從舊版 MyClash 升級嗎？</summary><p>可以。首次啟動會自動遷移舊資料，憑證與設定不會因更名而遺失。</p></details>
     </div>
@@ -89,6 +92,6 @@
 </main>
 
 <footer><div class="foot-inner"><div class="foot-brand"><img src="assets/icon.png" alt=""><span>KumoRoute</span></div><p class="disclaimer">本站僅提供 KumoRoute 的下載與授權資訊，不提供、不銷售任何代理節點或訂閱服務。請自行準備合法配置並遵守所在地法律。客戶端以 MIT 授權；內置 mihomo 核心以 GPL-3.0 授權。</p><p class="foot-links"><a id="github-foot" href="#" target="_blank" rel="noopener">GitHub</a><a href="https://github.com/MetaCubeX/mihomo" target="_blank" rel="noopener">mihomo</a><a href="privacy.html">隱私政策</a><a href="terms.html">服務條款</a></p></div></footer>
-<script src="app.js?v=0.7.6"></script>
+<script src="app.js?v=0.8.0"></script>
 </body>
 </html>

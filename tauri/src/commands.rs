@@ -1,6 +1,6 @@
 use std::fs::{self, File};
 use std::io::{Read, Write};
-use std::net::{Ipv6Addr, SocketAddr, TcpStream, ToSocketAddrs};
+use std::net::{IpAddr, Ipv6Addr, SocketAddr, TcpStream, ToSocketAddrs, UdpSocket};
 use std::path::{Path, PathBuf};
 use std::process::Command;
 use std::sync::atomic::{AtomicBool, Ordering};
@@ -399,6 +399,118 @@ fn system_dns_servers() -> Vec<String> {
     values
 }
 
+fn probe_http(proxy_url: Option<&str>, timeout_secs: u64) -> Value {
+    let started = Instant::now();
+    let result = (|| -> Result<u16, String> {
+        let mut builder = ureq::AgentBuilder::new().timeout(Duration::from_secs(timeout_secs));
+        if let Some(proxy) = proxy_url {
+            builder = builder.proxy(ureq::Proxy::new(proxy).map_err(|e| e.to_string())?);
+        }
+        let response = builder.build().get(TEST_URL).call().map_err(|e| e.to_string())?;
+        Ok(response.status())
+    })();
+    let latency = started.elapsed().as_millis() as u64;
+    match result {
+        Ok(status) => json!({"ok": (200..400).contains(&status), "status": status, "latency_ms": latency, "error": if (200..400).contains(&status) { "" } else { "HTTP status" }}),
+        Err(error) => json!({"ok": false, "status": 0, "latency_ms": latency, "error": error}),
+    }
+}
+
+fn vpn_validation_should_rollback(validation: &Value, baseline: &Value, proxy_disabled: bool) -> bool {
+    let validation_ok = validation.get("ok").and_then(Value::as_bool).unwrap_or(false);
+    let baseline_ok = baseline.get("ok").and_then(Value::as_bool).unwrap_or(false);
+    !validation_ok && (proxy_disabled || baseline_ok)
+}
+
+fn first_ip(value: &str) -> String {
+    value
+        .split_whitespace()
+        .map(|part| part.trim_matches(|ch: char| ch == '"' || ch == '\'' || ch == ',' || ch == '.'))
+        .find_map(|part| part.parse::<IpAddr>().ok())
+        .map(|ip| ip.to_string())
+        .unwrap_or_default()
+}
+
+fn dns_query_txt(name: &str, server: &str, timeout: Duration) -> String {
+    let id = ((chrono::Local::now().timestamp_nanos_opt().unwrap_or(1) as u16) << 1) ^ 0x4b4d;
+    let mut packet = Vec::new();
+    packet.extend_from_slice(&id.to_be_bytes());
+    packet.extend_from_slice(&[0x01, 0x00, 0x00, 0x01, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00]);
+    for label in name.trim_end_matches('.').split('.') {
+        if label.is_empty() || label.len() > 63 { return String::new(); }
+        packet.push(label.len() as u8);
+        packet.extend_from_slice(label.as_bytes());
+    }
+    packet.extend_from_slice(&[0x00, 0x00, 0x10, 0x00, 0x01]);
+    let address = if server.contains(':') { format!("[{server}]:53") } else { format!("{server}:53") };
+    let Ok(addresses) = address.to_socket_addrs() else { return String::new(); };
+    let Some(target) = addresses.into_iter().next() else { return String::new(); };
+    let Ok(socket) = UdpSocket::bind(if target.is_ipv6() { "[::]:0" } else { "0.0.0.0:0" }) else { return String::new(); };
+    let _ = socket.set_read_timeout(Some(timeout));
+    if socket.send_to(&packet, target).is_err() { return String::new(); }
+    let mut data = [0u8; 4096];
+    let Ok((size, _)) = socket.recv_from(&mut data) else { return String::new(); };
+    let data = &data[..size];
+    if data.len() < 12 { return String::new(); }
+    let qd = u16::from_be_bytes([data[4], data[5]]) as usize;
+    let an = u16::from_be_bytes([data[6], data[7]]) as usize;
+    let mut pos = 12usize;
+    for _ in 0..qd {
+        while pos < data.len() {
+            let len = data[pos] as usize;
+            pos += 1;
+            if len == 0 { break; }
+            pos = pos.saturating_add(len);
+        }
+        pos = pos.saturating_add(4);
+    }
+    for _ in 0..an {
+        if pos >= data.len() { break; }
+        if data[pos] & 0xc0 == 0xc0 {
+            pos += 2;
+        } else {
+            while pos < data.len() {
+                let len = data[pos] as usize;
+                pos += 1;
+                if len == 0 { break; }
+                pos = pos.saturating_add(len);
+            }
+        }
+        if pos + 10 > data.len() { break; }
+        let rtype = u16::from_be_bytes([data[pos], data[pos + 1]]);
+        let rdlength = u16::from_be_bytes([data[pos + 8], data[pos + 9]]) as usize;
+        pos += 10;
+        if pos + rdlength > data.len() { break; }
+        let rdata = &data[pos..pos + rdlength];
+        pos += rdlength;
+        if rtype == 16 && !rdata.is_empty() {
+            let mut chunks = Vec::new();
+            let mut p = 0usize;
+            while p < rdata.len() {
+                let len = rdata[p] as usize;
+                p += 1;
+                if p + len > rdata.len() { break; }
+                chunks.extend_from_slice(&rdata[p..p + len]);
+                p += len;
+            }
+            return String::from_utf8_lossy(&chunks).trim_matches('"').to_string();
+        }
+    }
+    String::new()
+}
+
+fn fetch_egress_ip(proxy_url: Option<&str>) -> String {
+    let result = (|| -> Result<String, String> {
+        let mut builder = ureq::AgentBuilder::new().timeout(Duration::from_secs(8));
+        if let Some(proxy) = proxy_url {
+            builder = builder.proxy(ureq::Proxy::new(proxy).map_err(|e| e.to_string())?);
+        }
+        let body = builder.build().get("https://1.1.1.1/cdn-cgi/trace").call().map_err(|e| e.to_string())?.into_string().map_err(|e| e.to_string())?;
+        Ok(body.lines().find_map(|line| line.strip_prefix("ip=")).unwrap_or("").trim().to_string())
+    })();
+    result.unwrap_or_default()
+}
+
 fn doh_template_count() -> u64 {
     hidden_command("powershell.exe")
         .args(["-NoLogo", "-NoProfile", "-NonInteractive", "-Command",
@@ -481,6 +593,14 @@ fn grouped_network_issues(lines: &[String]) -> Vec<Value> {
     if dns > 0 { out.push(json!({"type": "dns", "count": dns, "message": "DNS 解析失敗"})); }
     if timeout > 0 { out.push(json!({"type": "timeout", "count": timeout, "message": "連線逾時"})); }
     out
+}
+
+fn vpn_ras_disconnect(name: &str) -> bool {
+    hidden_command("rasdial.exe")
+        .args([name, "/disconnect"])
+        .output()
+        .map(|output| output.status.success())
+        .unwrap_or(false)
 }
 
 #[cfg(windows)]
@@ -631,6 +751,8 @@ pub fn get_state(state: State<'_, Shared>) -> Value {
         "running": running,
         "sys_proxy": proxy::is_on(&s.store),
         "network_mode": s.store.data.network_mode.clone(),
+        "subscription_update_hours": s.store.data.subscription_update_hours,
+        "last_subscription_update": s.store.data.last_subscription_update.clone(),
         "mode": mode,
         "mixed_port": s.store.data.mixed_port,
         "controller_port": port,
@@ -692,7 +814,30 @@ pub fn set_system_proxy(state: State<'_, Shared>, enabled: bool) -> Value {
         up = true;
     }
     match proxy::set_system_proxy(&mut s.store, enabled, up) {
-        Ok(on) => json!({"ok": true, "sys_proxy": on}),
+        Ok(on) => {
+            if enabled {
+                let validation = probe_http(Some(&format!("http://127.0.0.1:{}", s.store.data.mixed_port)), 8);
+                if !validation.get("ok").and_then(Value::as_bool).unwrap_or(false) {
+                    let port = s.store.data.controller_port;
+                    let rollback = proxy::set_system_proxy(&mut s.store, false, core::is_up(port));
+                    let restored = rollback.is_ok();
+                    return json!({
+                        "ok": false,
+                        "error": if restored {
+                            "系統代理已開啟，但實際連線驗證失敗，已自動恢復原本狀態。"
+                        } else {
+                            "系統代理已開啟，但實際連線驗證失敗，且自動恢復失敗，請檢查系統代理設定。"
+                        },
+                        "sys_proxy": proxy::is_on(&s.store),
+                        "validation": validation,
+                        "rolled_back": restored,
+                        "rollback_error": rollback.err().unwrap_or_default()
+                    });
+                }
+                return json!({"ok": true, "sys_proxy": on, "validation": validation});
+            }
+            json!({"ok": true, "sys_proxy": on})
+        }
         Err(e) => json!({"ok": false, "error": e, "sys_proxy": false}),
     }
 }
@@ -829,6 +974,83 @@ pub fn add_subscription(state: State<'_, Shared>, url: String, name: String) -> 
         }
         Err(e) => err(e),
     }
+}
+
+#[tauri::command]
+pub fn set_subscription_auto_update(state: State<'_, Shared>, hours: u64) -> Value {
+    if ![0, 6, 12, 24].contains(&hours) {
+        return err("無效的自動更新間隔");
+    }
+    let mut s = state.lock().unwrap();
+    s.store.data.subscription_update_hours = hours;
+    match s.store.save() {
+        Ok(_) => json!({"ok": true, "hours": hours}),
+        Err(e) => err(format!("保存自動更新設定失敗：{e}")),
+    }
+}
+
+#[tauri::command]
+pub fn subscription_auto_update(state: State<'_, Shared>, force: bool) -> Value {
+    let mut s = state.lock().unwrap();
+    let hours = s.store.data.subscription_update_hours;
+    if hours == 0 {
+        return json!({"ok": true, "skipped": true, "reason": "disabled", "updated": 0, "failed": []});
+    }
+    if !force && !s.store.data.last_subscription_update.is_empty() {
+        if let Ok(last) = chrono::DateTime::parse_from_rfc3339(&s.store.data.last_subscription_update) {
+            if chrono::Local::now().signed_duration_since(last).num_seconds() < (hours as i64 * 3600) {
+                return json!({"ok": true, "skipped": true, "reason": "not_due", "updated": 0, "failed": []});
+            }
+        }
+    }
+    let remotes = s.profiles.entries.iter().filter(|e| e.kind == "remote").map(|e| (e.id.clone(), e.name.clone())).collect::<Vec<_>>();
+    let had_remotes = !remotes.is_empty();
+    let mut names = Vec::new();
+    let mut failed = Vec::new();
+    let mut previous_entries = Vec::new();
+    for (id, name) in remotes {
+        let previous = s.profiles.get(&id).cloned();
+        match s.profiles.update(&id) {
+            Ok(_) => {
+                if let Some(previous) = previous {
+                    previous_entries.push((id, previous));
+                }
+                names.push(name);
+            }
+            Err(e) => failed.push(json!({"name": name, "error": e})),
+        }
+    }
+    let mut rolled_back = Vec::new();
+    let mut reload_failed = false;
+    if !names.is_empty() {
+        if let Err(e) = do_reload(&mut *s) {
+            reload_failed = true;
+            failed.push(json!({"name": "核心重新載入", "error": e}));
+            for (id, previous) in previous_entries.iter().rev() {
+                match s.profiles.rollback_to(id, previous) {
+                    Ok(()) => rolled_back.push(previous.name.clone()),
+                    Err(rollback_error) => failed.push(json!({"name": format!("回滾 {}", previous.name), "error": rollback_error})),
+                }
+            }
+            if !rolled_back.is_empty() {
+                let _ = do_reload(&mut *s);
+            }
+        }
+    }
+    if !names.is_empty() || !had_remotes {
+        s.store.data.last_subscription_update = chrono::Local::now().to_rfc3339();
+    }
+    let _ = s.store.save();
+    json!({
+        "ok": true,
+        "skipped": false,
+        "updated": names.len(),
+        "names": names,
+        "failed": failed,
+        "rolled_back": rolled_back,
+        "reload_failed": reload_failed,
+        "checked_at": s.store.data.last_subscription_update
+    })
 }
 
 #[tauri::command]
@@ -977,6 +1199,255 @@ pub fn save_stats_export(format: String, content: String) -> Value {
         Ok(_) => json!({"ok": true, "path": path.to_string_lossy()}),
         Err(e) => err(format!("匯出失敗：{e}")),
     }
+}
+
+fn backup_payload(s: &AppState) -> Result<Value, String> {
+    let profiles = s
+        .profiles
+        .entries
+        .iter()
+        .filter(|e| e.kind != "builtin")
+        .map(|e| {
+            let content = fs::read_to_string(s.profiles.path_of(&e.id))
+                .map_err(|error| format!("讀取配置 {} 失敗：{error}", e.name))?;
+            Ok(json!({
+                "id": e.id,
+                "name": e.name,
+                "kind": e.kind,
+                "url": e.url,
+                "updated_at": e.updated_at,
+                "content": content
+            }))
+        })
+        .collect::<Result<Vec<_>, String>>()?;
+    Ok(json!({
+        "schema": 1,
+        "app_version": APP_VERSION,
+        "created_at": chrono::Local::now().to_rfc3339(),
+        "settings": {
+            "mixed_port": s.store.data.mixed_port,
+            "controller_port": s.store.data.controller_port,
+            "mode": s.store.data.mode,
+            "vpn_disable_system_proxy": s.store.data.vpn_disable_system_proxy,
+            "vpn_restore_system_proxy": s.store.data.vpn_restore_system_proxy,
+            "network_mode": s.store.data.network_mode,
+            "force_disable_ipv6": s.store.data.force_disable_ipv6,
+            "dns_mode": s.store.data.dns_mode,
+            "subscription_update_hours": s.store.data.subscription_update_hours,
+            "last_subscription_update": s.store.data.last_subscription_update
+        },
+        "active_profile": s.store.data.active_profile,
+        "profiles": profiles,
+        "notice": "VPN credentials are stored separately in Windows Credential Manager and are not included."
+    }))
+}
+
+fn apply_backup_payload(s: &mut AppState, payload: &Value) -> Result<(), String> {
+    if payload.get("schema").and_then(Value::as_u64) != Some(1) {
+        return Err("不支援的備份格式".into());
+    }
+    let settings = match payload.get("settings") {
+        None => None,
+        Some(Value::Object(value)) => Some(value),
+        Some(_) => return Err("備份中的設定格式錯誤".into()),
+    };
+
+    let mut mixed_port = s.store.data.mixed_port;
+    let mut controller_port = s.store.data.controller_port;
+    for (key, target) in [("mixed_port", &mut mixed_port), ("controller_port", &mut controller_port)] {
+        if let Some(value) = settings.and_then(|items| items.get(key)) {
+            let port = value.as_u64().ok_or_else(|| format!("備份中的 {key} 格式錯誤"))?;
+            if !(1024..=65535).contains(&port) {
+                return Err("備份中的連接埠必須介於 1024 與 65535".into());
+            }
+            *target = port as u16;
+        }
+    }
+    if mixed_port == controller_port {
+        return Err("備份中的混合代理與控制埠不可相同".into());
+    }
+
+    let mut update_hours = s.store.data.subscription_update_hours;
+    if let Some(value) = settings.and_then(|items| items.get("subscription_update_hours")) {
+        update_hours = value.as_u64().ok_or("備份中的訂閱更新間隔格式錯誤")?;
+        if ![0, 6, 12, 24].contains(&update_hours) {
+            return Err("備份中的訂閱更新間隔無效".into());
+        }
+    }
+    let bool_setting = |key: &str, current: bool| -> Result<bool, String> {
+        match settings.and_then(|items| items.get(key)) {
+            None => Ok(current),
+            Some(Value::Bool(value)) => Ok(*value),
+            Some(_) => Err(format!("備份中的 {key} 必須是布林值")),
+        }
+    };
+    let vpn_disable = bool_setting("vpn_disable_system_proxy", s.store.data.vpn_disable_system_proxy)?;
+    let vpn_restore = bool_setting("vpn_restore_system_proxy", s.store.data.vpn_restore_system_proxy)?;
+    let force_ipv6_off = bool_setting("force_disable_ipv6", s.store.data.force_disable_ipv6)?;
+
+    let string_setting = |key: &str, current: &str, allowed: &[&str]| -> Result<String, String> {
+        match settings.and_then(|items| items.get(key)) {
+            None => Ok(current.to_string()),
+            Some(Value::String(value)) if allowed.contains(&value.as_str()) => Ok(value.clone()),
+            Some(_) => Err(format!("備份中的 {key} 無效")),
+        }
+    };
+    let mode = string_setting("mode", &s.store.data.mode, &["rule", "global", "direct"])?;
+    let network_mode = string_setting("network_mode", &s.store.data.network_mode, &["proxy", "vpn", "coexist"])?;
+    let dns_mode = string_setting("dns_mode", &s.store.data.dns_mode, &["auto", "backup"])?;
+    let last_update = match settings.and_then(|items| items.get("last_subscription_update")) {
+        None => s.store.data.last_subscription_update.clone(),
+        Some(Value::String(value)) => {
+            if !value.is_empty() && chrono::DateTime::parse_from_rfc3339(value).is_err() {
+                return Err("備份中的訂閱更新時間格式錯誤".into());
+            }
+            value.clone()
+        }
+        Some(_) => return Err("備份中的訂閱更新時間格式錯誤".into()),
+    };
+
+    let items = match payload.get("profiles") {
+        None => &[][..],
+        Some(Value::Array(values)) => values.as_slice(),
+        Some(_) => return Err("備份中的訂閱資料格式錯誤".into()),
+    };
+    let builtin = s.profiles.entries.iter().filter(|e| e.kind == "builtin").cloned().collect::<Vec<_>>();
+    let mut staged = Vec::new();
+    let mut used = builtin.iter().map(|e| e.id.clone()).collect::<std::collections::HashSet<_>>();
+    for item in items {
+        let Some(object) = item.as_object() else {
+            return Err("備份中的訂閱項目格式錯誤".into());
+        };
+        let content = object.get("content").and_then(Value::as_str).unwrap_or("");
+        if content.is_empty() {
+            continue;
+        }
+        let parsed: serde_yaml::Value = serde_yaml::from_str(content)
+            .map_err(|e| format!("備份中的 YAML 無法解析：{e}"))?;
+        if !parsed.is_mapping() {
+            return Err("備份中的 YAML 不是 Clash 配置".into());
+        }
+        let mut id = object.get("id").and_then(Value::as_str).unwrap_or("").to_string();
+        if !regex::Regex::new(r"^[A-Za-z0-9_-]{1,64}$").unwrap().is_match(&id) || used.contains(&id) {
+            id = uuid::Uuid::new_v4().simple().to_string().chars().take(8).collect();
+        }
+        used.insert(id.clone());
+        let kind = if object.get("kind").and_then(Value::as_str) == Some("remote") { "remote" } else { "local" };
+        let url = object.get("url").and_then(Value::as_str).unwrap_or("").to_string();
+        if kind == "remote" {
+            let parsed_url = url::Url::parse(&url).map_err(|_| "備份中的遠端訂閱網址無效")?;
+            if !matches!(parsed_url.scheme(), "http" | "https")
+                || parsed_url.host_str().is_none()
+                || !parsed_url.username().is_empty()
+                || parsed_url.password().is_some()
+            {
+                return Err("備份中的遠端訂閱網址不安全".into());
+            }
+        }
+        let name = object.get("name").and_then(Value::as_str).unwrap_or(&id).chars().take(128).collect::<String>();
+        let updated_at = object
+            .get("updated_at")
+            .and_then(Value::as_str)
+            .filter(|value| !value.is_empty())
+            .map(str::to_string)
+            .unwrap_or_else(|| chrono::Local::now().to_rfc3339());
+        staged.push((Entry {
+            id: id.clone(),
+            name,
+            kind: kind.into(),
+            url,
+            updated_at,
+        }, content.to_string()));
+    }
+
+    let mut entries = builtin;
+    entries.extend(staged.iter().map(|(entry, _)| entry.clone()));
+    let requested_active = payload.get("active_profile").and_then(Value::as_str).unwrap_or("");
+    let active = if entries.iter().any(|e| e.id == requested_active) {
+        requested_active.to_string()
+    } else {
+        entries.first().map(|e| e.id.clone()).unwrap_or_default()
+    };
+
+    s.store.data.mixed_port = mixed_port;
+    s.store.data.controller_port = controller_port;
+    s.store.data.subscription_update_hours = update_hours;
+    s.store.data.vpn_disable_system_proxy = vpn_disable;
+    s.store.data.vpn_restore_system_proxy = vpn_restore;
+    s.store.data.force_disable_ipv6 = force_ipv6_off;
+    s.store.data.mode = mode;
+    s.store.data.network_mode = network_mode;
+    s.store.data.dns_mode = dns_mode;
+    s.store.data.last_subscription_update = last_update;
+    for (entry, content) in staged {
+        crate::state::atomic_write(&s.profiles.path_of(&entry.id), &content)
+            .map_err(|e| format!("寫入配置失敗：{e}"))?;
+    }
+    s.profiles.entries = entries;
+    s.store.data.active_profile = active;
+    let index = serde_json::to_string_pretty(&s.profiles.entries).map_err(|e| e.to_string())?;
+    crate::state::atomic_write(&s.profiles.root.join("index.json"), &index)
+        .map_err(|e| format!("寫入配置索引失敗：{e}"))?;
+    s.store.save()
+}
+
+#[tauri::command]
+pub fn export_backup(state: State<'_, Shared>) -> Value {
+    let s = state.lock().unwrap();
+    let folder = dirs::download_dir().or_else(|| dirs::home_dir().map(|p| p.join("Downloads"))).unwrap_or_else(data_dir);
+    if let Err(e) = fs::create_dir_all(&folder) {
+        return err(format!("無法建立下載資料夾：{e}"));
+    }
+    let path = folder.join(format!("KumoRoute-backup-{}.json", chrono::Local::now().format("%Y%m%d-%H%M%S-%3f")));
+    let payload = match backup_payload(&s) {
+        Ok(value) => value,
+        Err(e) => return err(format!("建立備份失敗：{e}")),
+    };
+    let text = match serde_json::to_string_pretty(&payload) {
+        Ok(value) => value,
+        Err(e) => return err(format!("建立備份失敗：{e}")),
+    };
+    match crate::state::atomic_write(&path, &text) {
+        Ok(_) => json!({"ok": true, "path": path.to_string_lossy()}),
+        Err(e) => err(format!("建立備份失敗：{e}")),
+    }
+}
+
+#[tauri::command]
+pub fn import_backup(state: State<'_, Shared>) -> Value {
+    let Some(path) = rfd::FileDialog::new().add_filter("KumoRoute 備份", &["json"]).pick_file() else {
+        return json!({"ok": false, "cancelled": true});
+    };
+    let payload = match fs::read_to_string(&path).ok().and_then(|text| serde_json::from_str::<Value>(&text).ok()) {
+        Some(value) => value,
+        None => return err("無法讀取備份檔"),
+    };
+    let mut s = state.lock().unwrap();
+    let safety = match backup_payload(&s) {
+        Ok(value) => value,
+        Err(e) => return err(format!("無法建立還原前安全備份：{e}")),
+    };
+    let safety_path = data_dir().join("backups").join(format!("pre-restore-{}.json", chrono::Local::now().format("%Y%m%d-%H%M%S-%3f")));
+    if let Err(e) = fs::create_dir_all(safety_path.parent().unwrap_or(&data_dir())) {
+        return err(format!("無法建立安全備份資料夾：{e}"));
+    }
+    let safety_text = match serde_json::to_string_pretty(&safety) {
+        Ok(value) => value,
+        Err(e) => return err(format!("無法建立還原前安全備份：{e}")),
+    };
+    if let Err(e) = crate::state::atomic_write(&safety_path, &safety_text) {
+        return err(format!("無法建立還原前安全備份：{e}"));
+    }
+    if let Err(e) = apply_backup_payload(&mut s, &payload) {
+        let _ = apply_backup_payload(&mut s, &safety);
+        return err(format!("還原備份失敗：{e}"));
+    }
+    if let Err(e) = do_reload(&mut *s) {
+        let _ = apply_backup_payload(&mut s, &safety);
+        let _ = do_reload(&mut *s);
+        return err(format!("還原備份失敗：{e}"));
+    }
+    json!({"ok": true, "path": path.to_string_lossy(), "safety_backup": safety_path.to_string_lossy()})
 }
 
 #[tauri::command]
@@ -1565,8 +2036,49 @@ pub fn vpn_connect(state: State<'_, Shared>, name: String) -> Value {
         Ok(value) => value,
         Err(e) => return err(format!("關閉系統代理失敗：{e}")),
     };
+    let baseline = probe_http(None, 6);
     match vpn_ras_dial(profile_name, &credential.username, &credential.password) {
-        Ok(()) => json!({"ok": true, "connected": true, "proxy_disabled": proxy_disabled}),
+        Ok(()) => {
+            std::thread::sleep(Duration::from_millis(1200));
+            let validation = probe_http(None, 8);
+            if vpn_validation_should_rollback(&validation, &baseline, proxy_disabled) {
+                let disconnected = vpn_ras_disconnect(profile_name);
+                let proxy_restored = restore_vpn_proxy(&mut state.lock().unwrap());
+                let restore_expected = state.lock().unwrap().store.data.vpn_restore_system_proxy;
+                let proxy_ok = !proxy_disabled || !restore_expected || proxy_restored;
+                let rolled_back = disconnected && proxy_ok;
+                let error = if disconnected && proxy_ok {
+                    "VPN 已建立，但實際連線驗證失敗，已自動斷線並恢復原本代理狀態。"
+                } else if disconnected {
+                    "VPN 實際連線驗證失敗，已自動斷線，但系統代理恢復失敗，請手動檢查。"
+                } else {
+                    "VPN 實際連線驗證失敗，且自動斷線失敗，請手動斷開 VPN。"
+                };
+                return json!({
+                    "ok": false,
+                    "connected": !disconnected,
+                    "error": error,
+                    "rolled_back": rolled_back,
+                    "disconnected": disconnected,
+                    "proxy_restored": proxy_restored,
+                    "validation": validation,
+                    "baseline": baseline
+                });
+            }
+            let warning = if validation.get("ok").and_then(Value::as_bool).unwrap_or(false) {
+                ""
+            } else {
+                "VPN 已建立，但目前無法完成網路驗證；連線前的網路也不可用，因此未自動斷線。"
+            };
+            json!({
+                "ok": true,
+                "connected": true,
+                "validated": validation.get("ok").and_then(Value::as_bool).unwrap_or(false),
+                "warning": warning,
+                "proxy_disabled": proxy_disabled,
+                "validation": validation
+            })
+        }
         Err((code, _)) if code == 645 || code == 691 => {
             restore_vpn_proxy(&mut state.lock().unwrap());
             vpn_credential_delete(profile_name);
@@ -1611,25 +2123,67 @@ pub fn vpn_connect_with_credentials(
         Ok(value) => value,
         Err(e) => return err(format!("關閉系統代理失敗：{e}")),
     };
+    let baseline = probe_http(None, 6);
     match vpn_ras_dial(profile_name, &username, &password) {
         Ok(()) => {
+            let mut warning = String::new();
+            let mut credentials_saved = false;
             if remember {
-                if let Err(e) = vpn_credential_write(profile_name, &username, &password) {
-                    return json!({
-                        "ok": true,
-                        "connected": true,
-                        "credentials_saved": false,
-                        "warning": format!("已連線，但{e}")
-                    });
+                match vpn_credential_write(profile_name, &username, &password) {
+                    Ok(()) => credentials_saved = true,
+                    Err(e) => warning = format!("已連線，但{e}"),
                 }
             } else {
                 vpn_credential_delete(profile_name);
             }
+            std::thread::sleep(Duration::from_millis(1200));
+            let validation = probe_http(None, 8);
+            if vpn_validation_should_rollback(&validation, &baseline, proxy_disabled) {
+                let disconnected = vpn_ras_disconnect(profile_name);
+                let proxy_restored = restore_vpn_proxy(&mut state.lock().unwrap());
+                let restore_expected = state.lock().unwrap().store.data.vpn_restore_system_proxy;
+                let proxy_ok = !proxy_disabled || !restore_expected || proxy_restored;
+                let rolled_back = disconnected && proxy_ok;
+                let error = if disconnected && proxy_ok {
+                    "VPN 已建立，但實際連線驗證失敗，已自動斷線並恢復原本代理狀態。"
+                } else if disconnected {
+                    "VPN 實際連線驗證失敗，已自動斷線，但系統代理恢復失敗，請手動檢查。"
+                } else {
+                    "VPN 實際連線驗證失敗，且自動斷線失敗，請手動斷開 VPN。"
+                };
+                return json!({
+                    "ok": false,
+                    "connected": !disconnected,
+                    "error": error,
+                    "rolled_back": rolled_back,
+                    "disconnected": disconnected,
+                    "proxy_restored": proxy_restored,
+                    "validation": validation,
+                    "baseline": baseline
+                });
+            }
+            if !validation.get("ok").and_then(Value::as_bool).unwrap_or(false) {
+                let validation_warning = "VPN 已建立，但目前無法完成網路驗證；連線前的網路也不可用，因此未自動斷線。";
+                warning = format!("{warning} {validation_warning}").trim().to_string();
+            }
             json!({
                 "ok": true,
                 "connected": true,
-                "credentials_saved": remember,
-                "proxy_disabled": proxy_disabled
+                "credentials_saved": credentials_saved,
+                "validated": validation.get("ok").and_then(Value::as_bool).unwrap_or(false),
+                "warning": warning,
+                "proxy_disabled": proxy_disabled,
+                "validation": validation
+            })
+        }
+        Err((code, _)) if code == 645 || code == 691 => {
+            restore_vpn_proxy(&mut state.lock().unwrap());
+            vpn_credential_delete(profile_name);
+            json!({
+                "ok": false,
+                "needs_credentials": true,
+                "stale_credentials": true,
+                "username": username
             })
         }
         Err((code, message)) => {
@@ -1803,9 +2357,9 @@ pub fn set_network_mode(state: State<'_, Shared>, mode: String) -> Value {
 
 #[tauri::command]
 pub fn network_diagnostics(state: State<'_, Shared>) -> Value {
-    let (proxy_on, network_mode) = {
+    let (proxy_on, network_mode, mixed_port) = {
         let s = state.lock().unwrap();
-        (proxy::is_on(&s.store), s.store.data.network_mode.clone())
+        (proxy::is_on(&s.store), s.store.data.network_mode.clone(), s.store.data.mixed_port)
     };
     let dns_servers = system_dns_servers();
     let addresses = "cp.cloudflare.com:443".to_socket_addrs().map(|v| v.collect::<Vec<_>>()).unwrap_or_default();
@@ -1817,6 +2371,9 @@ pub fn network_diagnostics(state: State<'_, Shared>) -> Value {
     let ipv6_preferred = addresses.first().map(|a| a.is_ipv6()).unwrap_or(false);
     let dns_ok = !addresses.is_empty();
     let dns_leak_suspected = proxy_on && !dns_servers.is_empty() && !dns_servers.iter().any(|v| v.starts_with("127.") || v == "::1");
+    let dns_resolver_ip = dns_servers.first().map(|server| first_ip(&dns_query_txt("o-o.myaddr.l.google.com", server, Duration::from_secs(4)))).unwrap_or_default();
+    let proxy_egress_ip = if proxy_on { first_ip(&fetch_egress_ip(Some(&format!("http://127.0.0.1:{mixed_port}")))) } else { String::new() };
+    let dns_leak_confirmed = proxy_on && !dns_resolver_ip.is_empty() && !proxy_egress_ip.is_empty() && dns_resolver_ip != proxy_egress_ip;
     let dns_encryption_conflict = (system_doh > 0 || config_doh > 0) && dot_templates > 0;
     let mut issues = grouped_network_issues(&core::log_lines(300));
     if ipv6_route && !ipv6_connectivity {
@@ -1825,7 +2382,9 @@ pub fn network_diagnostics(state: State<'_, Shared>) -> Value {
     if !dns_ok {
         merge_network_issue(&mut issues, "dns", 1, "DNS 查詢失敗");
     }
-    if dns_leak_suspected {
+    if dns_leak_confirmed {
+        merge_network_issue(&mut issues, "dns-leak", 1, "DNS 解析出口與代理出口不同，可能存在 DNS 洩漏");
+    } else if dns_leak_suspected {
         merge_network_issue(&mut issues, "dns-leak", 1, "系統代理開啟，但系統 DNS 不是本機位址");
     }
     if ipv6_preferred && !ipv6_connectivity {
@@ -1847,6 +2406,9 @@ pub fn network_diagnostics(state: State<'_, Shared>) -> Value {
         "dot_templates": dot_templates,
         "dns_encryption_conflict": dns_encryption_conflict,
         "dns_leak_suspected": dns_leak_suspected,
+        "dns_resolver_ip": dns_resolver_ip,
+        "proxy_egress_ip": proxy_egress_ip,
+        "dns_leak_confirmed": dns_leak_confirmed,
         "proxy_on": proxy_on,
         "network_mode": network_mode,
         "issues": issues,
@@ -2125,6 +2687,95 @@ mod network_diagnostics_tests {
     }
 
     #[test]
+    fn extracts_first_ip_from_dns_txt_values() {
+        assert_eq!(first_ip("\"203.0.113.9\""), "203.0.113.9");
+        assert_eq!(first_ip("2001:db8::1"), "2001:db8::1");
+        assert_eq!(first_ip("not-an-ip"), "");
+    }
+
+    #[test]
+    fn vpn_rollback_requires_a_failed_validation_and_a_working_baseline() {
+        let failed = json!({"ok": false});
+        let passed = json!({"ok": true});
+        assert!(vpn_validation_should_rollback(&failed, &passed, false));
+        assert!(vpn_validation_should_rollback(&failed, &failed, true));
+        assert!(!vpn_validation_should_rollback(&failed, &failed, false));
+        assert!(!vpn_validation_should_rollback(&passed, &passed, true));
+    }
+
+    #[test]
+    fn backup_restore_validates_and_applies_profiles() {
+        let root = std::env::temp_dir().join(format!("kumoroute-backup-test-{}", uuid::Uuid::new_v4().simple()));
+        let profiles_root = root.join("profiles");
+        fs::create_dir_all(&profiles_root).unwrap();
+        fs::write(profiles_root.join("direct.yaml"), "proxies: []\nrules:\n  - MATCH,DIRECT\n").unwrap();
+        let mut state = AppState {
+            store: Store {
+                path: root.join("settings.json"),
+                data: crate::state::Settings::default(),
+            },
+            profiles: Profiles {
+                root: profiles_root.clone(),
+                entries: vec![Entry {
+                    id: "direct".into(),
+                    name: "Direct".into(),
+                    kind: "builtin".into(),
+                    url: String::new(),
+                    updated_at: String::new(),
+                }],
+            },
+            core: Core::new(),
+            proxy_recovery: None,
+            update_download: UpdateDownloadState::default(),
+        };
+        let payload = json!({
+            "schema": 1,
+            "settings": {
+                "mixed_port": 7897,
+                "controller_port": 9097,
+                "mode": "direct",
+                "network_mode": "coexist",
+                "dns_mode": "auto",
+                "subscription_update_hours": 12
+            },
+            "active_profile": "restored",
+            "profiles": [{
+                "id": "restored",
+                "name": "Restored",
+                "kind": "local",
+                "url": "",
+                "updated_at": "2026-02-01T00:00:00Z",
+                "content": "proxies: []\nrules:\n  - MATCH,DIRECT\n"
+            }]
+        });
+        apply_backup_payload(&mut state, &payload).unwrap();
+        assert_eq!(state.store.data.mixed_port, 7897);
+        assert_eq!(state.store.data.controller_port, 9097);
+        assert_eq!(state.store.data.mode, "direct");
+        assert_eq!(state.store.data.subscription_update_hours, 12);
+        assert_eq!(state.store.data.active_profile, "restored");
+        assert!(profiles_root.join("restored.yaml").is_file());
+        let have_payload = backup_payload(&state).unwrap();
+        assert_eq!(have_payload["profiles"].as_array().unwrap().len(), 1);
+
+        state.profiles.entries.push(Entry {
+            id: "missing".into(),
+            name: "Missing".into(),
+            kind: "local".into(),
+            url: String::new(),
+            updated_at: String::new(),
+        });
+        assert!(backup_payload(&state).is_err());
+        state.profiles.entries.pop();
+
+        let before = state.store.data.mixed_port;
+        let invalid = json!({"schema": 1, "settings": {"mixed_port": 80}, "profiles": []});
+        assert!(apply_backup_payload(&mut state, &invalid).is_err());
+        assert_eq!(state.store.data.mixed_port, before);
+        let _ = fs::remove_dir_all(root);
+    }
+
+    #[test]
     fn encrypted_dns_protocols_are_counted() {
         let dns: serde_yaml::Value = serde_yaml::from_str(
             "nameserver: ['https://dns.example/query', 'tls://dot.example']\nfallback: ['quic://dns.example']",
@@ -2145,11 +2796,11 @@ mod update_tests {
     fn release() -> Value {
         json!({
             "assets": [
-                {"name": "KumoRoute-win-x64-setup.exe", "browser_download_url": "https://github.com/cypwlp/kumoroute/releases/download/v0.7.6/KumoRoute-win-x64-setup.exe", "size": 23000000},
-                {"name": "KumoRoute-win-x64.zip", "browser_download_url": "https://github.com/cypwlp/kumoroute/releases/download/v0.7.6/KumoRoute-win-x64.zip", "size": 30000000},
-                {"name": "KumoRoute-macos-universal.dmg", "browser_download_url": "https://github.com/cypwlp/kumoroute/releases/download/v0.7.6/KumoRoute-macos-universal.dmg", "size": 54000000},
-                {"name": "KumoRoute-linux-x86_64.AppImage", "browser_download_url": "https://github.com/cypwlp/kumoroute/releases/download/v0.7.6/KumoRoute-linux-x86_64.AppImage", "size": 108000000},
-                {"name": "SHA256SUMS.txt", "browser_download_url": "https://github.com/cypwlp/kumoroute/releases/download/v0.7.6/SHA256SUMS.txt", "size": 600}
+                {"name": "KumoRoute-win-x64-setup.exe", "browser_download_url": "https://github.com/cypwlp/kumoroute/releases/download/v0.8.0/KumoRoute-win-x64-setup.exe", "size": 23000000},
+                {"name": "KumoRoute-win-x64.zip", "browser_download_url": "https://github.com/cypwlp/kumoroute/releases/download/v0.8.0/KumoRoute-win-x64.zip", "size": 30000000},
+                {"name": "KumoRoute-macos-universal.dmg", "browser_download_url": "https://github.com/cypwlp/kumoroute/releases/download/v0.8.0/KumoRoute-macos-universal.dmg", "size": 54000000},
+                {"name": "KumoRoute-linux-x86_64.AppImage", "browser_download_url": "https://github.com/cypwlp/kumoroute/releases/download/v0.8.0/KumoRoute-linux-x86_64.AppImage", "size": 108000000},
+                {"name": "SHA256SUMS.txt", "browser_download_url": "https://github.com/cypwlp/kumoroute/releases/download/v0.8.0/SHA256SUMS.txt", "size": 600}
             ]
         })
     }
@@ -2181,7 +2832,7 @@ mod update_tests {
         let digest = "a".repeat(64);
         let sums = format!("{digest}  KumoRoute-win-x64-setup.exe\n");
         assert_eq!(parse_sha256sums(&sums, "KumoRoute-win-x64-setup.exe"), Some(digest));
-        assert!(safe_update_url("https://github.com/cypwlp/kumoroute/releases/download/v0.7.6/file.exe"));
+        assert!(safe_update_url("https://github.com/cypwlp/kumoroute/releases/download/v0.8.0/file.exe"));
         assert!(!safe_update_url("https://evil.example/file.exe"));
         assert!(!safe_update_url("http://github.com/file.exe"));
     }

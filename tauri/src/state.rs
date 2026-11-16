@@ -8,7 +8,7 @@ use serde::{Deserialize, Serialize};
 
 pub const APP_NAME: &str = "KumoRoute";
 pub const LEGACY_APP_NAME: &str = "MyClash";
-pub const APP_VERSION: &str = "0.7.6";
+pub const APP_VERSION: &str = "0.8.0";
 pub const SUB_UA: &str = concat!("KumoRoute/", env!("CARGO_PKG_VERSION"));
 pub const TEST_URL: &str = "https://cp.cloudflare.com/generate_204";
 
@@ -226,6 +226,10 @@ pub struct Settings {
     pub force_disable_ipv6: bool,
     #[serde(default = "default_dns_mode")]
     pub dns_mode: String,
+    #[serde(default)]
+    pub subscription_update_hours: u64,
+    #[serde(default)]
+    pub last_subscription_update: String,
 }
 
 fn default_true() -> bool { true }
@@ -246,6 +250,8 @@ impl Default for Settings {
             network_mode: "coexist".into(),
             force_disable_ipv6: false,
             dns_mode: "auto".into(),
+            subscription_update_hours: 0,
+            last_subscription_update: String::new(),
         }
     }
 }
@@ -273,7 +279,7 @@ impl Store {
     }
 }
 
-fn atomic_write(path: &Path, text: &str) -> Result<(), String> {
+pub(crate) fn atomic_write(path: &Path, text: &str) -> Result<(), String> {
     let parent = path
         .parent()
         .ok_or_else(|| "設定檔路徑沒有父目錄".to_string())?;

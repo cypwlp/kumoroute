@@ -207,6 +207,12 @@
           "markdownDescription": "Enables the diagnostics_preview command without any pre-configured scope."
         },
         {
+          "description": "Enables the export_backup command without any pre-configured scope.",
+          "type": "string",
+          "const": "allow-export-backup",
+          "markdownDescription": "Enables the export_backup command without any pre-configured scope."
+        },
+        {
           "description": "Enables the export_diagnostics command without any pre-configured scope.",
           "type": "string",
           "const": "allow-export-diagnostics",
@@ -241,6 +247,12 @@
           "type": "string",
           "const": "allow-get-update-state",
           "markdownDescription": "Enables the get_update_state command without any pre-configured scope."
+        },
+        {
+          "description": "Enables the import_backup command without any pre-configured scope.",
+          "type": "string",
+          "const": "allow-import-backup",
+          "markdownDescription": "Enables the import_backup command without any pre-configured scope."
         },
         {
           "description": "Enables the import_profile command without any pre-configured scope.",
@@ -339,6 +351,12 @@
           "markdownDescription": "Enables the set_network_mode command without any pre-configured scope."
         },
         {
+          "description": "Enables the set_subscription_auto_update command without any pre-configured scope.",
+          "type": "string",
+          "const": "allow-set-subscription-auto-update",
+          "markdownDescription": "Enables the set_subscription_auto_update command without any pre-configured scope."
+        },
+        {
           "description": "Enables the set_system_proxy command without any pre-configured scope.",
           "type": "string",
           "const": "allow-set-system-proxy",
@@ -361,6 +379,12 @@
           "type": "string",
           "const": "allow-stop-core",
           "markdownDescription": "Enables the stop_core command without any pre-configured scope."
+        },
+        {
+          "description": "Enables the subscription_auto_update command without any pre-configured scope.",
+          "type": "string",
+          "const": "allow-subscription-auto-update",
+          "markdownDescription": "Enables the subscription_auto_update command without any pre-configured scope."
         },
         {
           "description": "Enables the test_group_delay command without any pre-configured scope.",
@@ -489,6 +513,12 @@
           "markdownDescription": "Denies the diagnostics_preview command without any pre-configured scope."
         },
         {
+          "description": "Denies the export_backup command without any pre-configured scope.",
+          "type": "string",
+          "const": "deny-export-backup",
+          "markdownDescription": "Denies the export_backup command without any pre-configured scope."
+        },
+        {
           "description": "Denies the export_diagnostics command without any pre-configured scope.",
           "type": "string",
           "const": "deny-export-diagnostics",
@@ -523,6 +553,12 @@
           "type": "string",
           "const": "deny-get-update-state",
           "markdownDescription": "Denies the get_update_state command without any pre-configured scope."
+        },
+        {
+          "description": "Denies the import_backup command without any pre-configured scope.",
+          "type": "string",
+          "const": "deny-import-backup",
+          "markdownDescription": "Denies the import_backup command without any pre-configured scope."
         },
         {
           "description": "Denies the import_profile command without any pre-configured scope.",
@@ -621,6 +657,12 @@
           "markdownDescription": "Denies the set_network_mode command without any pre-configured scope."
         },
         {
+          "description": "Denies the set_subscription_auto_update command without any pre-configured scope.",
+          "type": "string",
+          "const": "deny-set-subscription-auto-update",
+          "markdownDescription": "Denies the set_subscription_auto_update command without any pre-configured scope."
+        },
+        {
           "description": "Denies the set_system_proxy command without any pre-configured scope.",
           "type": "string",
           "const": "deny-set-system-proxy",
@@ -643,6 +685,12 @@
           "type": "string",
           "const": "deny-stop-core",
           "markdownDescription": "Denies the stop_core command without any pre-configured scope."
+        },
+        {
+          "description": "Denies the subscription_auto_update command without any pre-configured scope.",
+          "type": "string",
+          "const": "deny-subscription-auto-update",
+          "markdownDescription": "Denies the subscription_auto_update command without any pre-configured scope."
         },
         {
           "description": "Denies the test_group_delay command without any pre-configured scope.",
