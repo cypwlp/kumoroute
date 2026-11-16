@@ -82,6 +82,15 @@ class UiPersonalizationTests(unittest.TestCase):
             "mihomo 核心輸出（最近 300 行）。",
             "連接埠修改後會自動重啟核心。",
             "選擇介面主題與顯示語言；切換會立即生效。",
+            "切換策略",
+            "固定節點",
+            "自動選擇",
+            "最低延遲",
+            "成功率",
+            "抖動",
+            "最近失敗：",
+            "DoT 範本：",
+            "同時偵測到 DoH 與 DoT，建議只保留一種加密 DNS。",
         ]
         for source in required:
             self.assertRegex(self.i18n, re.escape(source) + r'"\s*:\s*"')

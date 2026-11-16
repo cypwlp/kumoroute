@@ -8,7 +8,7 @@ use serde::{Deserialize, Serialize};
 
 pub const APP_NAME: &str = "KumoRoute";
 pub const LEGACY_APP_NAME: &str = "MyClash";
-pub const APP_VERSION: &str = "0.7.3";
+pub const APP_VERSION: &str = "0.7.4";
 pub const SUB_UA: &str = concat!("KumoRoute/", env!("CARGO_PKG_VERSION"));
 pub const TEST_URL: &str = "https://cp.cloudflare.com/generate_204";
 
@@ -216,9 +216,21 @@ pub struct Settings {
     pub original_proxy: Option<ProxySnapshot>,
     #[serde(default = "default_true")]
     pub vpn_disable_system_proxy: bool,
+    #[serde(default = "default_true")]
+    pub vpn_restore_system_proxy: bool,
+    #[serde(default)]
+    pub vpn_proxy_pending: bool,
+    #[serde(default = "default_network_mode")]
+    pub network_mode: String,
+    #[serde(default)]
+    pub force_disable_ipv6: bool,
+    #[serde(default = "default_dns_mode")]
+    pub dns_mode: String,
 }
 
 fn default_true() -> bool { true }
+fn default_network_mode() -> String { "coexist".into() }
+fn default_dns_mode() -> String { "auto".into() }
 
 impl Default for Settings {
     fn default() -> Self {
@@ -229,6 +241,11 @@ impl Default for Settings {
             active_profile: String::new(),
             original_proxy: None,
             vpn_disable_system_proxy: true,
+            vpn_restore_system_proxy: true,
+            vpn_proxy_pending: false,
+            network_mode: "coexist".into(),
+            force_disable_ipv6: false,
+            dns_mode: "auto".into(),
         }
     }
 }
@@ -524,7 +541,7 @@ impl Profiles {
         Ok(())
     }
 
-    fn ipv6_route_available() -> bool {
+    pub fn ipv6_route_available() -> bool {
         #[cfg(windows)]
         {
             use std::os::windows::process::CommandExt;
@@ -573,8 +590,23 @@ impl Profiles {
         if !m.contains_key(serde_yaml::Value::String("tcp-concurrent".into())) {
             set(m, "tcp-concurrent", true.into());
         }
-        if !m.contains_key(serde_yaml::Value::String("ipv6".into())) && !Self::ipv6_route_available() {
+        if store.data.force_disable_ipv6 || (!m.contains_key(serde_yaml::Value::String("ipv6".into())) && !Self::ipv6_route_available()) {
             set(m, "ipv6", false.into());
+        }
+        if store.data.dns_mode == "backup" {
+            let mut dns = m
+                .get(serde_yaml::Value::String("dns".into()))
+                .and_then(serde_yaml::Value::as_mapping)
+                .cloned()
+                .unwrap_or_default();
+            dns.insert("enable".into(), true.into());
+            dns.insert("nameserver".into(), serde_yaml::Value::Sequence(vec![
+                "223.5.5.5".into(), "119.29.29.29".into(),
+            ]));
+            dns.insert("fallback".into(), serde_yaml::Value::Sequence(vec![
+                "1.1.1.1".into(), "8.8.8.8".into(),
+            ]));
+            set(m, "dns", serde_yaml::Value::Mapping(dns));
         }
         let prof = m
             .entry(serde_yaml::Value::String("profile".into()))

@@ -1,5 +1,6 @@
 use std::fs::{self, File};
 use std::io::{Read, Write};
+use std::net::{Ipv6Addr, SocketAddr, TcpStream, ToSocketAddrs};
 use std::path::Path;
 use std::process::Command;
 use std::sync::Mutex;
@@ -292,6 +293,138 @@ fn vpn_credential_delete(name: &str) {
 #[cfg(not(windows))]
 fn vpn_credential_delete(_name: &str) {}
 
+fn prepare_vpn_proxy(s: &mut AppState) -> Result<bool, String> {
+    if !s.store.data.vpn_disable_system_proxy || !proxy::is_on(&s.store) {
+        return Ok(false);
+    }
+    let port = s.store.data.controller_port;
+    proxy::set_system_proxy(&mut s.store, false, core::is_up(port))?;
+    s.store.data.vpn_proxy_pending = true;
+    let _ = s.store.save();
+    Ok(true)
+}
+
+fn restore_vpn_proxy(s: &mut AppState) -> bool {
+    if !s.store.data.vpn_proxy_pending {
+        return false;
+    }
+    if !s.store.data.vpn_restore_system_proxy {
+        s.store.data.vpn_proxy_pending = false;
+        let _ = s.store.save();
+        return false;
+    }
+    let port = s.store.data.controller_port;
+    if !proxy::set_system_proxy(&mut s.store, true, core::is_up(port)).unwrap_or(false) {
+        return false;
+    }
+    s.store.data.vpn_proxy_pending = false;
+    let _ = s.store.save();
+    true
+}
+
+fn test_ipv6_connectivity() -> bool {
+    let addr = SocketAddr::new(Ipv6Addr::new(0x2606, 0x4700, 0x4700, 0, 0, 0, 0, 0x1111).into(), 443);
+    TcpStream::connect_timeout(&addr, Duration::from_secs(2)).is_ok()
+}
+
+fn system_dns_servers() -> Vec<String> {
+    let output = hidden_command("powershell.exe")
+        .args(["-NoLogo", "-NoProfile", "-NonInteractive", "-Command",
+            "Get-DnsClientServerAddress -AddressFamily IPv4 -ErrorAction SilentlyContinue | Select-Object -ExpandProperty ServerAddresses -Unique"])
+        .output();
+    let mut values: Vec<String> = output
+        .ok()
+        .map(|out| String::from_utf8_lossy(&out.stdout).lines().map(|v| v.trim().to_string()).filter(|v| !v.is_empty()).collect())
+        .unwrap_or_default();
+    values.sort();
+    values.dedup();
+    values
+}
+
+fn doh_template_count() -> u64 {
+    hidden_command("powershell.exe")
+        .args(["-NoLogo", "-NoProfile", "-NonInteractive", "-Command",
+            "(Get-DnsClientDohServerAddress -ErrorAction SilentlyContinue | Measure-Object).Count"])
+        .output()
+        .ok()
+        .and_then(|out| String::from_utf8_lossy(&out.stdout).trim().parse().ok())
+        .unwrap_or(0)
+}
+
+fn collect_dns_protocols(value: &serde_yaml::Value, doh: &mut u64, dot: &mut u64) {
+    match value {
+        serde_yaml::Value::String(text) => {
+            let text = text.trim().to_ascii_lowercase();
+            if text.starts_with("https://") || text.starts_with("quic://") {
+                *doh += 1;
+            } else if text.starts_with("tls://") {
+                *dot += 1;
+            }
+        }
+        serde_yaml::Value::Sequence(items) => {
+            for item in items {
+                collect_dns_protocols(item, doh, dot);
+            }
+        }
+        serde_yaml::Value::Mapping(map) => {
+            for item in map.values() {
+                collect_dns_protocols(item, doh, dot);
+            }
+        }
+        _ => {}
+    }
+}
+
+fn configured_dns_protocols() -> (u64, u64) {
+    let Ok(text) = fs::read_to_string(data_dir().join("runtime.yaml")) else {
+        return (0, 0);
+    };
+    let Ok(cfg) = serde_yaml::from_str::<serde_yaml::Value>(&text) else {
+        return (0, 0);
+    };
+    let Some(dns) = cfg
+        .as_mapping()
+        .and_then(|map| map.get(serde_yaml::Value::String("dns".into())))
+    else {
+        return (0, 0);
+    };
+    let mut doh = 0;
+    let mut dot = 0;
+    collect_dns_protocols(dns, &mut doh, &mut dot);
+    (doh, dot)
+}
+
+fn merge_network_issue(issues: &mut Vec<Value>, kind: &str, count: u64, message: &str) {
+    if let Some(existing) = issues.iter_mut().find(|item| item.get("type").and_then(Value::as_str) == Some(kind)) {
+        let previous = existing.get("count").and_then(Value::as_u64).unwrap_or(0);
+        existing["count"] = json!(previous.saturating_add(count.max(1)));
+        existing["message"] = json!(message);
+    } else {
+        issues.push(json!({"type": kind, "count": count.max(1), "message": message}));
+    }
+}
+
+fn grouped_network_issues(lines: &[String]) -> Vec<Value> {
+    let mut ipv6 = 0u64;
+    let mut dns = 0u64;
+    let mut timeout = 0u64;
+    for line in lines {
+        let low = line.to_lowercase();
+        let ipv6_text = low.contains("ipv6") || low.contains("unreachable network");
+        let network_error = ["error", "fail", "unreachable", "timeout", "deadline exceeded", "refused"]
+            .iter()
+            .any(|word| low.contains(word));
+        if ipv6_text && network_error { ipv6 += 1; }
+        if low.contains("dns") && network_error { dns += 1; }
+        if low.contains("timeout") || low.contains("deadline exceeded") { timeout += 1; }
+    }
+    let mut out = Vec::new();
+    if ipv6 > 0 { out.push(json!({"type": "ipv6", "count": ipv6, "message": "IPv6 連線不可達"})); }
+    if dns > 0 { out.push(json!({"type": "dns", "count": dns, "message": "DNS 解析失敗"})); }
+    if timeout > 0 { out.push(json!({"type": "timeout", "count": timeout, "message": "連線逾時"})); }
+    out
+}
+
 #[cfg(windows)]
 fn vpn_ras_dial(name: &str, username: &str, password: &str) -> Result<(), (u32, String)> {
     let mut params = RASDIALPARAMSW::default();
@@ -439,6 +572,7 @@ pub fn get_state(state: State<'_, Shared>) -> Value {
         "core_version": if running { core::version(port) } else { None },
         "running": running,
         "sys_proxy": proxy::is_on(&s.store),
+        "network_mode": s.store.data.network_mode.clone(),
         "mode": mode,
         "mixed_port": s.store.data.mixed_port,
         "controller_port": port,
@@ -586,8 +720,7 @@ pub fn test_node_delay(state: State<'_, Shared>, name: String) -> Value {
     if name.is_empty() {
         return err("找不到該節點");
     }
-    let s = state.lock().unwrap();
-    let port = s.store.data.controller_port;
+    let port = { state.lock().unwrap().store.data.controller_port };
     let path = format!(
         "/proxies/{}/delay?timeout=5000&url={}",
         urlencoding::encode(&name),
@@ -612,8 +745,7 @@ pub fn select_proxy(state: State<'_, Shared>, group: String, name: String) -> Va
 
 #[tauri::command]
 pub fn test_group_delay(state: State<'_, Shared>, group: String) -> Value {
-    let s = state.lock().unwrap();
-    let port = s.store.data.controller_port;
+    let port = { state.lock().unwrap().store.data.controller_port };
     let path = format!(
         "/group/{}/delay?timeout=5000&url={}",
         urlencoding::encode(&group),
@@ -954,14 +1086,21 @@ pub fn run_update_installer(app: tauri::AppHandle, path: String) -> Value {
 
 #[tauri::command]
 pub fn vpn_list(state: State<'_, Shared>) -> Value {
-    let disable_system_proxy = state.lock().unwrap().store.data.vpn_disable_system_proxy;
+    let (disable_system_proxy, restore_system_proxy, network_mode) = {
+        let s = state.lock().unwrap();
+        (s.store.data.vpn_disable_system_proxy, s.store.data.vpn_restore_system_proxy, s.store.data.network_mode.clone())
+    };
     if std::env::consts::OS != "windows" {
         return json!({
             "ok": true,
             "supported": false,
             "connections": [],
             "advanced": {"allow_metered": true, "allow_roaming": true},
-            "settings": {"disable_system_proxy": disable_system_proxy}
+            "settings": {
+                "disable_system_proxy": disable_system_proxy,
+                "restore_system_proxy": restore_system_proxy,
+                "network_mode": network_mode
+            }
         });
     }
     match vpn_snapshot() {
@@ -970,14 +1109,22 @@ pub fn vpn_list(state: State<'_, Shared>) -> Value {
             "supported": true,
             "connections": connections,
             "advanced": advanced,
-            "settings": {"disable_system_proxy": disable_system_proxy}
+            "settings": {
+                "disable_system_proxy": disable_system_proxy,
+                "restore_system_proxy": restore_system_proxy,
+                "network_mode": network_mode
+            }
         }),
         Err(e) => json!({
             "ok": false,
             "supported": true,
             "connections": [],
             "advanced": {"allow_metered": true, "allow_roaming": true},
-            "settings": {"disable_system_proxy": disable_system_proxy},
+            "settings": {
+                "disable_system_proxy": disable_system_proxy,
+                "restore_system_proxy": restore_system_proxy,
+                "network_mode": network_mode
+            },
             "error": e
         }),
     }
@@ -1007,21 +1154,14 @@ pub fn vpn_connect(state: State<'_, Shared>, name: String) -> Value {
         }
         Err(e) => return err(e),
     };
-    let proxy_disabled = {
-        let mut s = state.lock().unwrap();
-        if s.store.data.vpn_disable_system_proxy && proxy::is_on(&s.store) {
-            let port = s.store.data.controller_port;
-            match proxy::set_system_proxy(&mut s.store, false, core::is_up(port)) {
-                Ok(_) => true,
-                Err(e) => return err(format!("關閉系統代理失敗：{e}")),
-            }
-        } else {
-            false
-        }
+    let proxy_disabled = match prepare_vpn_proxy(&mut state.lock().unwrap()) {
+        Ok(value) => value,
+        Err(e) => return err(format!("關閉系統代理失敗：{e}")),
     };
     match vpn_ras_dial(profile_name, &credential.username, &credential.password) {
         Ok(()) => json!({"ok": true, "connected": true, "proxy_disabled": proxy_disabled}),
         Err((code, _)) if code == 645 || code == 691 => {
+            restore_vpn_proxy(&mut state.lock().unwrap());
             vpn_credential_delete(profile_name);
             json!({
                 "ok": false,
@@ -1030,7 +1170,10 @@ pub fn vpn_connect(state: State<'_, Shared>, name: String) -> Value {
                 "username": credential.username
             })
         }
-        Err((code, message)) => json!({"ok": false, "error": message, "code": code}),
+        Err((code, message)) => {
+            restore_vpn_proxy(&mut state.lock().unwrap());
+            json!({"ok": false, "error": message, "code": code})
+        }
     }
 }
 
@@ -1057,17 +1200,9 @@ pub fn vpn_connect_with_credentials(
     if username.is_empty() || password.is_empty() {
         return err("請輸入 VPN 使用者名稱與密碼");
     }
-    let proxy_disabled = {
-        let mut s = state.lock().unwrap();
-        if s.store.data.vpn_disable_system_proxy && proxy::is_on(&s.store) {
-            let port = s.store.data.controller_port;
-            match proxy::set_system_proxy(&mut s.store, false, core::is_up(port)) {
-                Ok(_) => true,
-                Err(e) => return err(format!("關閉系統代理失敗：{e}")),
-            }
-        } else {
-            false
-        }
+    let proxy_disabled = match prepare_vpn_proxy(&mut state.lock().unwrap()) {
+        Ok(value) => value,
+        Err(e) => return err(format!("關閉系統代理失敗：{e}")),
     };
     match vpn_ras_dial(profile_name, &username, &password) {
         Ok(()) => {
@@ -1090,12 +1225,15 @@ pub fn vpn_connect_with_credentials(
                 "proxy_disabled": proxy_disabled
             })
         }
-        Err((code, message)) => json!({"ok": false, "error": message, "code": code}),
+        Err((code, message)) => {
+            restore_vpn_proxy(&mut state.lock().unwrap());
+            json!({"ok": false, "error": message, "code": code})
+        }
     }
 }
 
 #[tauri::command]
-pub fn vpn_disconnect(name: String) -> Value {
+pub fn vpn_disconnect(state: State<'_, Shared>, name: String) -> Value {
     if std::env::consts::OS != "windows" {
         return err("Windows VPN 僅支援 Windows");
     }
@@ -1108,7 +1246,10 @@ pub fn vpn_disconnect(name: String) -> Value {
         return err("VPN 連線名稱無效");
     };
     match hidden_command("rasdial.exe").args([profile_name, "/disconnect"]).output() {
-        Ok(output) if output.status.success() => json!({"ok": true, "disconnected": true}),
+        Ok(output) if output.status.success() => {
+            let restored = restore_vpn_proxy(&mut state.lock().unwrap());
+            json!({"ok": true, "disconnected": true, "proxy_restored": restored})
+        }
         Ok(output) => err(format!("VPN 斷線失敗（代碼 {}）", output.status.code().unwrap_or(-1))),
         Err(e) => err(format!("VPN 斷線失敗：{e}")),
     }
@@ -1191,6 +1332,148 @@ pub fn vpn_delete(name: String) -> Value {
         }
         Err(e) => err(format!("刪除 VPN 失敗：{e}")),
     }
+}
+
+#[tauri::command]
+pub fn vpn_set_restore_proxy(state: State<'_, Shared>, enabled: bool) -> Value {
+    let mut s = state.lock().unwrap();
+    s.store.data.vpn_restore_system_proxy = enabled;
+    match s.store.save() {
+        Ok(_) => json!({"ok": true, "restore_system_proxy": enabled}),
+        Err(e) => err(format!("保存 VPN 設定失敗：{e}")),
+    }
+}
+
+#[tauri::command]
+pub fn set_network_mode(state: State<'_, Shared>, mode: String) -> Value {
+    if !["proxy", "vpn", "coexist"].contains(&mode.as_str()) {
+        return err("無效的網路接管模式");
+    }
+    let connected = if mode == "proxy" && std::env::consts::OS == "windows" {
+        match vpn_snapshot() {
+            Ok((connections, _)) => connections
+                .into_iter()
+                .filter(|item| item.get("connected").and_then(Value::as_bool).unwrap_or(false))
+                .collect::<Vec<_>>(),
+            Err(e) => return err(format!("無法讀取 VPN 連線：{e}")),
+        }
+    } else {
+        Vec::new()
+    };
+    let mut s = state.lock().unwrap();
+    let port = s.store.data.controller_port;
+    if mode == "vpn" && proxy::is_on(&s.store) {
+        if let Err(e) = proxy::set_system_proxy(&mut s.store, false, core::is_up(port)) {
+            return err(e);
+        }
+    } else if mode == "proxy" {
+        let mut failures = Vec::new();
+        for item in connected {
+            let Some(name) = item.get("name").and_then(Value::as_str) else {
+                continue;
+            };
+            match hidden_command("rasdial.exe").args([name, "/disconnect"]).output() {
+                Ok(output) if output.status.success() => {}
+                Ok(output) => failures.push(format!("{name}：代碼 {}", output.status.code().unwrap_or(-1))),
+                Err(e) => failures.push(format!("{name}：{e}")),
+            }
+        }
+        if !failures.is_empty() {
+            return err(format!("無法切換到只用代理：{}", failures.join("；")));
+        }
+        if !proxy::is_on(&s.store) {
+            if let Err(e) = proxy::set_system_proxy(&mut s.store, true, core::is_up(port)) {
+                return err(e);
+            }
+        }
+    }
+    s.store.data.network_mode = mode.clone();
+    if let Err(e) = s.store.save() {
+        return err(format!("保存網路模式失敗：{e}"));
+    }
+    json!({"ok": true, "network_mode": mode})
+}
+
+#[tauri::command]
+pub fn network_diagnostics(state: State<'_, Shared>) -> Value {
+    let (proxy_on, network_mode) = {
+        let s = state.lock().unwrap();
+        (proxy::is_on(&s.store), s.store.data.network_mode.clone())
+    };
+    let dns_servers = system_dns_servers();
+    let addresses = "cp.cloudflare.com:443".to_socket_addrs().map(|v| v.collect::<Vec<_>>()).unwrap_or_default();
+    let (config_doh, dot_templates) = configured_dns_protocols();
+    let system_doh = doh_template_count();
+    let doh_templates = system_doh.saturating_add(config_doh);
+    let ipv6_route = Profiles::ipv6_route_available();
+    let ipv6_connectivity = test_ipv6_connectivity();
+    let ipv6_preferred = addresses.first().map(|a| a.is_ipv6()).unwrap_or(false);
+    let dns_ok = !addresses.is_empty();
+    let dns_leak_suspected = proxy_on && !dns_servers.is_empty() && !dns_servers.iter().any(|v| v.starts_with("127.") || v == "::1");
+    let dns_encryption_conflict = (system_doh > 0 || config_doh > 0) && dot_templates > 0;
+    let mut issues = grouped_network_issues(&core::log_lines(300));
+    if ipv6_route && !ipv6_connectivity {
+        merge_network_issue(&mut issues, "ipv6", 1, "IPv6 已有路由，但實際連線失敗");
+    }
+    if !dns_ok {
+        merge_network_issue(&mut issues, "dns", 1, "DNS 查詢失敗");
+    }
+    if dns_leak_suspected {
+        merge_network_issue(&mut issues, "dns-leak", 1, "系統代理開啟，但系統 DNS 不是本機位址");
+    }
+    if ipv6_preferred && !ipv6_connectivity {
+        merge_network_issue(&mut issues, "ipv6-preference", 1, "DNS 優先回傳 IPv6，但 IPv6 無法連線");
+    }
+    if dns_encryption_conflict {
+        merge_network_issue(&mut issues, "dns-encrypted", 1, "同時偵測到 DoH 與 DoT 設定，可能造成解析衝突");
+    }
+    json!({
+        "ok": true,
+        "ipv6_route": ipv6_route,
+        "ipv6_connectivity": ipv6_connectivity,
+        "ipv6_preferred": ipv6_preferred,
+        "dns_ok": dns_ok,
+        "dns_servers": dns_servers,
+        "system_doh_templates": system_doh,
+        "config_doh_templates": config_doh,
+        "doh_templates": doh_templates,
+        "dot_templates": dot_templates,
+        "dns_encryption_conflict": dns_encryption_conflict,
+        "dns_leak_suspected": dns_leak_suspected,
+        "proxy_on": proxy_on,
+        "network_mode": network_mode,
+        "issues": issues,
+    })
+}
+
+#[tauri::command]
+pub fn network_repair(state: State<'_, Shared>, action: String) -> Value {
+    let action = action.trim().to_ascii_lowercase();
+    let mut s = state.lock().unwrap();
+    let previous_ipv6 = s.store.data.force_disable_ipv6;
+    let previous_dns = s.store.data.dns_mode.clone();
+    match action.as_str() {
+        "ipv6" => s.store.data.force_disable_ipv6 = true,
+        "dns" => s.store.data.dns_mode = "backup".into(),
+        "dns-system" => s.store.data.dns_mode = "auto".into(),
+        "flush" => {
+            let _ = hidden_command("ipconfig.exe").arg("/flushdns").output();
+            return json!({"ok": true, "action": action});
+        }
+        _ => return err("無效的網路修復動作"),
+    }
+    if let Err(e) = s.store.save() {
+        s.store.data.force_disable_ipv6 = previous_ipv6;
+        s.store.data.dns_mode = previous_dns;
+        return err(format!("保存網路修復設定失敗：{e}"));
+    }
+    if let Err(e) = do_reload(&mut *s) {
+        s.store.data.force_disable_ipv6 = previous_ipv6;
+        s.store.data.dns_mode = previous_dns;
+        let _ = s.store.save();
+        return err(e);
+    }
+    json!({"ok": true, "action": action})
 }
 
 #[tauri::command]
@@ -1412,6 +1695,42 @@ mod vpn_credential_tests {
     }
 }
 
+
+#[cfg(test)]
+mod network_diagnostics_tests {
+    use super::*;
+
+    #[test]
+    fn grouped_network_issues_are_merged_by_type() {
+        let lines = vec![
+            "IPv6 unreachable network".to_string(),
+            "DNS lookup failed".to_string(),
+            "DNS timeout".to_string(),
+            "request timeout".to_string(),
+        ];
+        let mut issues = grouped_network_issues(&lines);
+        merge_network_issue(&mut issues, "ipv6", 1, "IPv6 已有路由，但實際連線失敗");
+        let ipv6 = issues.iter().find(|item| item["type"] == "ipv6").unwrap();
+        assert_eq!(ipv6["count"], 2);
+        assert_eq!(ipv6["message"], "IPv6 已有路由，但實際連線失敗");
+        let dns = issues.iter().find(|item| item["type"] == "dns").unwrap();
+        assert_eq!(dns["count"], 2);
+    }
+
+    #[test]
+    fn encrypted_dns_protocols_are_counted() {
+        let dns: serde_yaml::Value = serde_yaml::from_str(
+            "nameserver: ['https://dns.example/query', 'tls://dot.example']\nfallback: ['quic://dns.example']",
+        )
+        .unwrap();
+        let mut doh = 0;
+        let mut dot = 0;
+        collect_dns_protocols(&dns, &mut doh, &mut dot);
+        assert_eq!(doh, 2);
+        assert_eq!(dot, 1);
+    }
+}
+
 #[cfg(test)]
 mod update_tests {
     use super::*;
@@ -1419,11 +1738,11 @@ mod update_tests {
     fn release() -> Value {
         json!({
             "assets": [
-                {"name": "KumoRoute-win-x64-setup.exe", "browser_download_url": "https://github.com/cypwlp/kumoroute/releases/download/v0.7.3/KumoRoute-win-x64-setup.exe", "size": 23000000},
-                {"name": "KumoRoute-win-x64.zip", "browser_download_url": "https://github.com/cypwlp/kumoroute/releases/download/v0.7.3/KumoRoute-win-x64.zip", "size": 30000000},
-                {"name": "KumoRoute-macos-universal.dmg", "browser_download_url": "https://github.com/cypwlp/kumoroute/releases/download/v0.7.3/KumoRoute-macos-universal.dmg", "size": 54000000},
-                {"name": "KumoRoute-linux-x86_64.AppImage", "browser_download_url": "https://github.com/cypwlp/kumoroute/releases/download/v0.7.3/KumoRoute-linux-x86_64.AppImage", "size": 108000000},
-                {"name": "SHA256SUMS.txt", "browser_download_url": "https://github.com/cypwlp/kumoroute/releases/download/v0.7.3/SHA256SUMS.txt", "size": 600}
+                {"name": "KumoRoute-win-x64-setup.exe", "browser_download_url": "https://github.com/cypwlp/kumoroute/releases/download/v0.7.4/KumoRoute-win-x64-setup.exe", "size": 23000000},
+                {"name": "KumoRoute-win-x64.zip", "browser_download_url": "https://github.com/cypwlp/kumoroute/releases/download/v0.7.4/KumoRoute-win-x64.zip", "size": 30000000},
+                {"name": "KumoRoute-macos-universal.dmg", "browser_download_url": "https://github.com/cypwlp/kumoroute/releases/download/v0.7.4/KumoRoute-macos-universal.dmg", "size": 54000000},
+                {"name": "KumoRoute-linux-x86_64.AppImage", "browser_download_url": "https://github.com/cypwlp/kumoroute/releases/download/v0.7.4/KumoRoute-linux-x86_64.AppImage", "size": 108000000},
+                {"name": "SHA256SUMS.txt", "browser_download_url": "https://github.com/cypwlp/kumoroute/releases/download/v0.7.4/SHA256SUMS.txt", "size": 600}
             ]
         })
     }
@@ -1446,7 +1765,7 @@ mod update_tests {
         let digest = "a".repeat(64);
         let sums = format!("{digest}  KumoRoute-win-x64-setup.exe\n");
         assert_eq!(parse_sha256sums(&sums, "KumoRoute-win-x64-setup.exe"), Some(digest));
-        assert!(safe_update_url("https://github.com/cypwlp/kumoroute/releases/download/v0.7.3/file.exe"));
+        assert!(safe_update_url("https://github.com/cypwlp/kumoroute/releases/download/v0.7.4/file.exe"));
         assert!(!safe_update_url("https://evil.example/file.exe"));
         assert!(!safe_update_url("http://github.com/file.exe"));
     }

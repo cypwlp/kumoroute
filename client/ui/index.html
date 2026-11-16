@@ -14,7 +14,7 @@
       <img src="icon.png" alt="KumoRoute" class="brand-icon">
       <div>
         <div class="brand-name">KumoRoute</div>
-        <div class="brand-ver" id="app-version">v0.7.3</div>
+        <div class="brand-ver" id="app-version">v0.7.4</div>
       </div>
     </div>
 
@@ -258,6 +258,16 @@
         <p>管理 Windows 內建 VPN 連線；帳號與密碼由 Windows 保管。</p>
       </header>
 
+      <div class="vpn-section-label">網路接管模式</div>
+      <div class="card network-mode-card">
+        <div class="network-mode-tabs" role="group" aria-label="網路接管模式">
+          <button class="network-mode-btn" data-network-mode="proxy">只用代理</button>
+          <button class="network-mode-btn" data-network-mode="vpn">只用 VPN</button>
+          <button class="network-mode-btn" data-network-mode="coexist">兩者共存</button>
+        </div>
+        <p class="hint">「只用 VPN」會關閉系統代理；「只用代理」會斷開 VPN；「兩者共存」保留手動控制。</p>
+      </div>
+
       <div id="vpn-warning" class="usage-alert vpn-warning hidden"></div>
       <div class="card">
         <div class="vpn-toolbar">
@@ -293,6 +303,12 @@
         <div class="vpn-option-row">
           <div class="vpn-option-title">VPN 連線時自動關閉系統代理</div>
           <button class="toggle-switch" id="toggle-vpn-auto-proxy" data-vpn-setting="auto_proxy" role="switch" aria-checked="true" aria-label="VPN 連線時自動關閉系統代理" disabled>
+            <span></span>
+          </button>
+        </div>
+        <div class="vpn-option-row">
+          <div class="vpn-option-title">VPN 斷線時自動恢復原本的系統代理</div>
+          <button class="toggle-switch" id="toggle-vpn-restore-proxy" data-vpn-setting="restore_proxy" role="switch" aria-checked="true" aria-label="VPN 斷線時自動恢復原本的系統代理" disabled>
             <span></span>
           </button>
         </div>
@@ -403,6 +419,19 @@
           <button class="btn ghost" id="btn-open-update" disabled>查看更新</button>
         </div>
         <p class="hint" id="update-status">可手動下載並安裝新版本；應用程式不會在背景自動執行安裝檔。</p>
+      </div>
+
+      <div class="card">
+        <div class="card-title">網路診斷</div>
+        <p class="hint">檢查 IPv6 連線、DNS 設定、DoH 範本與重複網路錯誤；修復動作會套用至核心配置。</p>
+        <div id="network-diagnostics-result" class="diagnostics-result">尚未執行診斷。</div>
+        <div class="row-actions">
+          <button class="btn primary" id="btn-network-diagnostics">執行診斷</button>
+          <button class="btn ghost" id="btn-repair-ipv6">關閉 IPv6</button>
+          <button class="btn ghost" id="btn-repair-dns">使用備用 DNS</button>
+          <button class="btn ghost" id="btn-repair-dns-system">恢復自動 DNS</button>
+          <button class="btn ghost" id="btn-flush-dns">清除 DNS 快取</button>
+        </div>
       </div>
 
       <div class="card">

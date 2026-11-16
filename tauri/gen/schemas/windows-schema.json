@@ -243,6 +243,18 @@
           "markdownDescription": "Enables the install_update command without any pre-configured scope."
         },
         {
+          "description": "Enables the network_diagnostics command without any pre-configured scope.",
+          "type": "string",
+          "const": "allow-network-diagnostics",
+          "markdownDescription": "Enables the network_diagnostics command without any pre-configured scope."
+        },
+        {
+          "description": "Enables the network_repair command without any pre-configured scope.",
+          "type": "string",
+          "const": "allow-network-repair",
+          "markdownDescription": "Enables the network_repair command without any pre-configured scope."
+        },
+        {
           "description": "Enables the open_data_dir command without any pre-configured scope.",
           "type": "string",
           "const": "allow-open-data-dir",
@@ -301,6 +313,12 @@
           "type": "string",
           "const": "allow-set-mode",
           "markdownDescription": "Enables the set_mode command without any pre-configured scope."
+        },
+        {
+          "description": "Enables the set_network_mode command without any pre-configured scope.",
+          "type": "string",
+          "const": "allow-set-network-mode",
+          "markdownDescription": "Enables the set_network_mode command without any pre-configured scope."
         },
         {
           "description": "Enables the set_system_proxy command without any pre-configured scope.",
@@ -405,6 +423,12 @@
           "markdownDescription": "Enables the vpn_set_auto_proxy command without any pre-configured scope."
         },
         {
+          "description": "Enables the vpn_set_restore_proxy command without any pre-configured scope.",
+          "type": "string",
+          "const": "allow-vpn-set-restore-proxy",
+          "markdownDescription": "Enables the vpn_set_restore_proxy command without any pre-configured scope."
+        },
+        {
           "description": "Denies the add_subscription command without any pre-configured scope.",
           "type": "string",
           "const": "deny-add-subscription",
@@ -471,6 +495,18 @@
           "markdownDescription": "Denies the install_update command without any pre-configured scope."
         },
         {
+          "description": "Denies the network_diagnostics command without any pre-configured scope.",
+          "type": "string",
+          "const": "deny-network-diagnostics",
+          "markdownDescription": "Denies the network_diagnostics command without any pre-configured scope."
+        },
+        {
+          "description": "Denies the network_repair command without any pre-configured scope.",
+          "type": "string",
+          "const": "deny-network-repair",
+          "markdownDescription": "Denies the network_repair command without any pre-configured scope."
+        },
+        {
           "description": "Denies the open_data_dir command without any pre-configured scope.",
           "type": "string",
           "const": "deny-open-data-dir",
@@ -529,6 +565,12 @@
           "type": "string",
           "const": "deny-set-mode",
           "markdownDescription": "Denies the set_mode command without any pre-configured scope."
+        },
+        {
+          "description": "Denies the set_network_mode command without any pre-configured scope.",
+          "type": "string",
+          "const": "deny-set-network-mode",
+          "markdownDescription": "Denies the set_network_mode command without any pre-configured scope."
         },
         {
           "description": "Denies the set_system_proxy command without any pre-configured scope.",
@@ -631,6 +673,12 @@
           "type": "string",
           "const": "deny-vpn-set-auto-proxy",
           "markdownDescription": "Denies the vpn_set_auto_proxy command without any pre-configured scope."
+        },
+        {
+          "description": "Denies the vpn_set_restore_proxy command without any pre-configured scope.",
+          "type": "string",
+          "const": "deny-vpn-set-restore-proxy",
+          "markdownDescription": "Denies the vpn_set_restore_proxy command without any pre-configured scope."
         },
         {
           "description": "Default core plugins set.\n#### This default permission set includes:\n\n- `core:path:default`\n- `core:event:default`\n- `core:window:default`\n- `core:webview:default`\n- `core:app:default`\n- `core:image:default`\n- `core:resources:default`\n- `core:menu:default`\n- `core:tray:default`",

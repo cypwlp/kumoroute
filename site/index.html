@@ -5,22 +5,22 @@
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <meta name="theme-color" content="#0b0e14">
 <title>KumoRoute — 輕量 Mihomo 跨平台桌面客戶端</title>
-<meta name="description" content="KumoRoute 是基於 mihomo 核心的輕量跨平台桌面客戶端（Windows / Linux / macOS），相容 Clash 配置，支援訂閱管理、節點切換、一鍵系統代理、Windows 內建 VPN 管理與即時流量。">
+<meta name="description" content="KumoRoute 是基於 mihomo 核心的輕量跨平台桌面客戶端（Windows / Linux / macOS），相容 Clash 配置，支援訂閱管理、節點品質策略、一鍵系統代理、Windows 內建 VPN 協調、IPv6／DNS 診斷與即時流量。">
 <link rel="canonical" href="https://cypwlp.github.io/kumoroute/">
 <link rel="icon" href="assets/icon.png">
 <meta property="og:type" content="website">
 <meta property="og:site_name" content="KumoRoute">
 <meta property="og:title" content="KumoRoute — 輕量 Mihomo 跨平台桌面客戶端">
-<meta property="og:description" content="KumoRoute 是基於 mihomo 核心的輕量跨平台桌面客戶端（Windows / Linux / macOS），相容 Clash 配置，支援訂閱管理、節點切換、一鍵系統代理、Windows 內建 VPN 管理與即時流量。">
+<meta property="og:description" content="KumoRoute 是基於 mihomo 核心的輕量跨平台桌面客戶端（Windows / Linux / macOS），相容 Clash 配置，支援訂閱管理、節點品質策略、一鍵系統代理、Windows 內建 VPN 協調、IPv6／DNS 診斷與即時流量。">
 <meta property="og:url" content="https://cypwlp.github.io/kumoroute/">
 <meta property="og:image" content="https://cypwlp.github.io/kumoroute/assets/screenshot-overview.png">
 <meta property="og:image:alt" content="KumoRoute 桌面客戶端介面">
 <meta name="twitter:card" content="summary_large_image">
 <meta name="twitter:title" content="KumoRoute — 輕量 Mihomo 桌面客戶端">
-<meta name="twitter:description" content="KumoRoute 是基於 mihomo 核心的輕量跨平台桌面客戶端（Windows / Linux / macOS），相容 Clash 配置，支援訂閱管理、節點切換、一鍵系統代理、Windows 內建 VPN 管理與即時流量。">
+<meta name="twitter:description" content="KumoRoute 是基於 mihomo 核心的輕量跨平台桌面客戶端（Windows / Linux / macOS），相容 Clash 配置，支援訂閱管理、節點品質策略、一鍵系統代理、Windows 內建 VPN 協調、IPv6／DNS 診斷與即時流量。">
 <meta name="twitter:image" content="https://cypwlp.github.io/kumoroute/assets/screenshot-overview.png">
 <script type="application/ld+json">{"@context":"https://schema.org","@type":"SoftwareApplication","name":"KumoRoute","applicationCategory":"UtilitiesApplication","operatingSystem":"Windows 10/11, Linux, macOS","description":"KumoRoute 是基於 mihomo 核心的輕量跨平台桌面客戶端（Windows / Linux / macOS），相容 Clash 配置，支援訂閱管理、節點切換、一鍵系統代理、Windows 內建 VPN 管理與即時流量。","url":"https://cypwlp.github.io/kumoroute/","downloadUrl":"https://github.com/cypwlp/kumoroute/releases/latest","codeRepository":"https://github.com/cypwlp/kumoroute","license":"https://github.com/cypwlp/kumoroute/blob/main/LICENSE","offers":{"@type":"Offer","price":"0","priceCurrency":"USD"}}</script>
-<link rel="stylesheet" href="style.css?v=0.7.3">
+<link rel="stylesheet" href="style.css?v=0.7.4">
 </head>
 <body>
 
@@ -45,9 +45,9 @@
   <section class="hero" id="top">
     <div class="hero-inner">
       <div class="hero-copy">
-        <div class="badge">v0.7.3 · Windows / Linux / macOS · 開源免費</div>
+        <div class="badge">v0.7.4 · Windows / Linux / macOS · 開源免費</div>
         <h1>輕量的 Mihomo 桌面客戶端<br><span class="grad">一鍵接管系統流量</span></h1>
-        <p class="lead">KumoRoute 把 mihomo 核心裝進一個乾淨的圖形介面：訂閱管理、節點切換、模式切換、Windows VPN 管理、即時速度，一屏搞定。</p>
+        <p class="lead">KumoRoute 把 mihomo 核心裝進一個乾淨的圖形介面：訂閱管理、節點品質策略、VPN／代理協調、IPv6／DNS 診斷、即時速度，一屏搞定。</p>
         <div class="cta">
           <a class="btn primary big" id="download-btn" href="#" target="_blank" rel="noopener">
             下載 Windows 版
@@ -116,7 +116,7 @@
         <div class="install-body">
           <img src="assets/installer-preview.png" alt="KumoRoute 安裝精靈品牌側欄" class="install-sidebar">
           <div class="install-content">
-            <span class="eyebrow">KUMOROUTE 0.7.3</span>
+            <span class="eyebrow">KUMOROUTE 0.7.4</span>
             <h3>歡迎使用 KumoRoute</h3>
             <p>這會在你的電腦安裝 KumoRoute、mihomo 核心與必要資料檔。設定與訂閱會保留在使用者資料夾，卸載程式不會任意刪除你的配置。</p>
             <div class="install-progress"><span></span></div>
@@ -148,12 +148,12 @@
       <div class="feature">
         <div class="ficon">🛡️</div>
         <h3>Windows VPN</h3>
-        <p>可新增、編輯、刪除 Windows VPN；首次登入後憑證由 Windows 認證管理員加密保存，並可自動關閉系統代理避免路由衝突。</p>
+        <p>可新增、編輯、刪除 Windows VPN；首次登入後憑證由 Windows 認證管理員加密保存。支援只用代理／只用 VPN／兩者共存，VPN 斷線或失敗時可自動恢復系統代理。</p>
       </div>
       <div class="feature">
         <div class="ficon">📡</div>
         <h3>延遲與連線診斷</h3>
-        <p>節點延遲顯示更新時間、支援單節點重測與過期自動重測；IPv6 自動偵測避免無效連線，日誌可搜尋與合併重複訊息。</p>
+        <p>節點延遲顯示成功率、抖動與最近失敗原因；IPv6／DNS 診斷會檢查實際連線、洩漏、DoH／DoT 衝突與優先問題，並提供一鍵修復。</p>
       </div>
       <div class="feature">
         <div class="ficon">📚</div>
@@ -163,7 +163,7 @@
       <div class="feature">
         <div class="ficon">🧩</div>
         <h3>節點選擇與測速</h3>
-        <p>策略組可視化，點一下即切換節點；支援整組延遲測試，好壞一眼看清。</p>
+        <p>策略組可視化，支援固定節點／自動選擇／最低延遲；群組測速可並行、顯示進度並中途取消，結果會保存在本機。</p>
       </div>
       <div class="feature">
         <div class="ficon">📈</div>
@@ -173,7 +173,7 @@
       <div class="feature">
         <div class="ficon">📊</div>
         <h3>統計與節點健康度</h3>
-        <p>流量趨勢、節點延遲成功率、核心事件、流量歸屬與上限提醒；支援 CSV／JSON 匯出，資料只留本機。</p>
+        <p>流量趨勢、成功率、抖動、逾時排除、核心事件、流量歸屬與上限提醒；支援 CSV／JSON 匯出，資料只留本機。</p>
       </div>
       <div class="feature">
         <div class="ficon">🌓</div>
@@ -242,15 +242,23 @@
       </details>
       <details>
         <summary>應用程式可以直接更新嗎？</summary>
-        <p>可以。設定頁檢查到新版本後，按「立即更新」會下載對應平台的安裝檔並驗證 SHA256；下載完成後再詢問是否啟動安裝程式。若使用較舊版本，仍需先手動安裝一次 v0.7.3。</p>
+        <p>可以。設定頁檢查到新版本後，按「立即更新」會下載對應平台的安裝檔並驗證 SHA256；下載完成後再詢問是否啟動安裝程式。若使用較舊版本，仍需先手動安裝一次 v0.7.4。</p>
       </details>
       <details>
         <summary>KumoRoute 可以管理 Windows VPN 嗎？</summary>
         <p>可以。首次連線需在 KumoRoute 輸入一次帳號密碼，憑證由 Windows 認證管理員加密保存，之後可直接連線；也能新增、編輯、刪除 VPN，並切換計量網路與漫遊選項。</p>
       </details>
       <details>
+        <summary>VPN 和系統代理要怎麼選？</summary>
+        <p>可在 VPN 頁選擇「只用代理」、「只用 VPN」或「兩者共存」。只用代理會先斷開 VPN，只用 VPN 會關閉系統代理；兩者共存則保留手動控制。VPN 連線失敗時，KumoRoute 會依設定恢復原本的系統代理狀態。</p>
+      </details>
+      <details>
+        <summary>節點顯示逾時或延遲很高怎麼辦？</summary>
+        <p>可用「重測」確認單一節點，或按整組測速。代理頁會顯示成功率、抖動與最近失敗原因；連續兩次逾時的節點會自動排除，也可切換到最低延遲或固定節點策略。</p>
+      </details>
+      <details>
         <summary>支援哪些平台？手機能用嗎？</summary>
-        <p>v0.7.3 提供 Windows（安裝包／免安裝）、Linux（AppImage／deb）、macOS（Universal dmg）。手機版目前未提供；Windows、Linux 與 macOS 可直接使用。</p>
+        <p>v0.7.4 提供 Windows（安裝包／免安裝）、Linux（AppImage／deb）、macOS（Universal dmg）。手機版目前未提供；Windows、Linux 與 macOS 可直接使用。</p>
       </details>
     </div>
   </section>
@@ -280,6 +288,6 @@
   </div>
 </footer>
 
-<script src="app.js?v=0.7.3"></script>
+<script src="app.js?v=0.7.4"></script>
 </body>
 </html>

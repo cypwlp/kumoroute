@@ -180,8 +180,12 @@ class WindowsVpnTests(unittest.TestCase):
         delete.assert_called_once_with("office")
 
     def test_vpn_connect_disables_system_proxy_when_enabled(self):
+        class FakeStore:
+            data = {"vpn_disable_system_proxy": True, "vpn_restore_system_proxy": True}
+            def save(self):
+                self.saved = True
         api = app.Api.__new__(app.Api)
-        api._store = type("Store", (), {"data": {"vpn_disable_system_proxy": True}})()
+        api._store = FakeStore()
         profile = {"name": "vn", "saved_username": "super"}
         with mock.patch.object(app.platform, "system", return_value="Windows"), \
              mock.patch.object(api, "_vpn_profile", return_value=profile), \

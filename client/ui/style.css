@@ -371,6 +371,7 @@ main::-webkit-scrollbar-thumb { background: var(--line2); border-radius: 8px; bo
 .proxy-search { width: 180px; border: 1px solid var(--line2); border-radius: 9px; padding: 7px 10px; background: var(--bg2); color: var(--text); font: inherit; font-size: 12px; outline: none; }
 .proxy-search:focus { border-color: var(--accent); }
 .proxy-filters { display: flex; gap: 5px; margin-bottom: 11px; }
+.proxy-strategy-row { display: flex; align-items: center; gap: 5px; margin-bottom: 11px; color: var(--muted); font-size: 10.5px; flex-wrap: wrap; }
 .proxy-filter { border: 0; color: var(--muted); background: transparent; font: inherit; font-size: 11.5px; padding: 4px 9px; border-radius: 7px; cursor: pointer; }
 .proxy-filter:hover { color: var(--text); background: rgba(255,255,255,0.04); }
 .proxy-filter.active { color: #dce8ff; background: rgba(91,140,255,0.15); }
@@ -384,6 +385,10 @@ main::-webkit-scrollbar-thumb { background: var(--line2); border-radius: 8px; bo
 .node-active-label { color: var(--green); font-size: 10.5px; white-space: nowrap; }
 .delay-time { color: var(--muted); font-size: 9.5px; font-variant-numeric: tabular-nums; }
 .delay-time.stale { color: var(--yellow); }
+.node-quality { font-size: 9.5px; font-variant-numeric: tabular-nums; white-space: nowrap; }
+.node-quality.good { color: var(--green); }
+.node-quality.mid { color: var(--yellow); }
+.node-quality.bad { color: var(--red); }
 .node-retest {
   flex: 0 0 auto; border: 1px solid var(--line2); border-radius: 6px;
   background: transparent; color: var(--muted); font: inherit; font-size: 9.5px;
@@ -475,6 +480,23 @@ main::-webkit-scrollbar-thumb { background: var(--line2); border-radius: 8px; bo
 .vpn-warning { position: static; max-width: none; margin-bottom: 14px; }
 .vpn-note { line-height: 1.65; margin-top: 13px; }
 
+.network-mode-card { margin-bottom: 14px; }
+.network-mode-tabs { display: flex; gap: 6px; flex-wrap: wrap; }
+.network-mode-btn {
+  border: 1px solid var(--line2); border-radius: 9px; background: var(--bg2);
+  color: var(--muted); font: inherit; font-size: 12px; padding: 7px 12px; cursor: pointer;
+}
+.network-mode-btn.active { color: var(--text); border-color: var(--accent); background: rgba(91,140,255,0.14); }
+.network-mode-btn:hover { color: var(--text); }
+.network-mode-btn:disabled { opacity: 0.55; cursor: wait; }
+.diagnostics-result {
+  white-space: pre-wrap; margin: 12px 0; padding: 12px 14px;
+  border: 1px solid var(--line); border-radius: 10px; background: var(--bg2);
+  color: var(--muted); font-size: 12px; line-height: 1.7; min-height: 44px;
+}
+.diagnostics-result .ok { color: var(--green); }
+.diagnostics-result .warn { color: var(--yellow); }
+.diagnostics-result .bad { color: var(--red); }
 .vpn-section-label {
   margin: 24px 0 9px; color: var(--muted); font-size: 11.5px; font-weight: 650;
   letter-spacing: 0.7px; text-transform: uppercase;

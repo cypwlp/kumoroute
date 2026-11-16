@@ -7,6 +7,7 @@ import os
 import platform
 import re
 import shutil
+import socket
 import subprocess
 import sys
 import threading
@@ -26,7 +27,7 @@ import yaml
 
 APP_NAME = "KumoRoute"
 LEGACY_APP_NAME = "MyClash"
-APP_VERSION = "0.7.3"
+APP_VERSION = "0.7.4"
 CREATE_NO_WINDOW = 0x08000000
 SUB_UA = f"KumoRoute/{APP_VERSION}"
 TEST_URL = "https://cp.cloudflare.com/generate_204"
@@ -413,6 +414,11 @@ DEFAULT_SETTINGS = {
     "active_profile": "",
     "original_proxy": None,
     "vpn_disable_system_proxy": True,
+    "vpn_restore_system_proxy": True,
+    "vpn_proxy_pending": False,
+    "network_mode": "coexist",
+    "force_disable_ipv6": False,
+    "dns_mode": "auto",
 }
 
 
@@ -740,8 +746,18 @@ class Profiles:
         cfg["log-level"] = "info"
         cfg.setdefault("unified-delay", True)
         cfg.setdefault("tcp-concurrent", True)
-        if "ipv6" not in cfg:
-            cfg["ipv6"] = _has_global_ipv6()
+        if self._store.data.get("force_disable_ipv6") or ("ipv6" not in cfg and not _has_global_ipv6()):
+            cfg["ipv6"] = False
+        elif "ipv6" not in cfg:
+            cfg["ipv6"] = True
+        if self._store.data.get("dns_mode") == "backup":
+            dns = cfg.get("dns")
+            if not isinstance(dns, dict):
+                dns = {}
+            dns["enable"] = True
+            dns["nameserver"] = ["223.5.5.5", "119.29.29.29"]
+            dns["fallback"] = ["1.1.1.1", "8.8.8.8"]
+            cfg["dns"] = dns
         prof = cfg.get("profile")
         if not isinstance(prof, dict):
             prof = {}
@@ -971,6 +987,108 @@ def _proxy_last_delay_item(proxy: dict) -> tuple[str, int] | None:
     return max(candidates, key=lambda item: item[0])
 
 
+def _test_ipv6_connectivity() -> bool:
+    probe = None
+    try:
+        probe = socket.socket(socket.AF_INET6, socket.SOCK_STREAM)
+        probe.settimeout(2.5)
+        probe.connect(("2606:4700:4700::1111", 443))
+        return True
+    except OSError:
+        return False
+    finally:
+        try:
+            probe.close()
+        except Exception:
+            pass
+
+
+def _system_dns_servers() -> list[str]:
+    try:
+        out = subprocess.run(
+            ["powershell.exe", "-NoLogo", "-NoProfile", "-NonInteractive", "-Command",
+             "Get-DnsClientServerAddress -AddressFamily IPv4 -ErrorAction SilentlyContinue | Select-Object -ExpandProperty ServerAddresses -Unique"],
+            capture_output=True, text=True, timeout=10, creationflags=CREATE_NO_WINDOW,
+        )
+        return sorted({line.strip() for line in (out.stdout or "").splitlines() if line.strip()})
+    except Exception:
+        return []
+
+
+def _doh_template_count() -> int:
+    try:
+        out = subprocess.run(
+            ["powershell.exe", "-NoLogo", "-NoProfile", "-NonInteractive", "-Command",
+             "(Get-DnsClientDohServerAddress -ErrorAction SilentlyContinue | Measure-Object).Count"],
+            capture_output=True, text=True, timeout=10, creationflags=CREATE_NO_WINDOW,
+        )
+        return int((out.stdout or "0").strip() or 0)
+    except Exception:
+        return 0
+
+
+def _configured_dns_protocols(profiles) -> tuple[int, int]:
+    """Count DoH/DoT resolvers configured by the active profile."""
+    doh = 0
+    dot = 0
+    try:
+        entry = profiles.active_entry()
+        path = profiles.path_of(entry["id"])
+        if not hasattr(path, "read_text"):
+            path = Path(path)
+        text = path.read_text(encoding="utf-8", errors="replace")
+        cfg = yaml.safe_load(text) or {}
+        dns = cfg.get("dns") if isinstance(cfg, dict) else None
+        values: list[str] = []
+
+        def walk(value):
+            if isinstance(value, str):
+                values.append(value.strip().lower())
+            elif isinstance(value, dict):
+                for nested in value.values():
+                    walk(nested)
+            elif isinstance(value, (list, tuple)):
+                for nested in value:
+                    walk(nested)
+
+        walk(dns)
+        doh = sum(1 for value in values if value.startswith(("https://", "quic://")))
+        dot = sum(1 for value in values if value.startswith("tls://"))
+    except Exception:
+        pass
+    return doh, dot
+
+
+def _merge_network_issue(issues: list[dict], kind: str, count: int, message: str) -> None:
+    existing = next((item for item in issues if item.get("type") == kind), None)
+    if existing:
+        existing["count"] = int(existing.get("count", 0)) + max(1, count)
+        existing["message"] = message
+    else:
+        issues.append({"type": kind, "count": max(1, count), "message": message})
+
+
+def _group_network_issues(lines: list[str]) -> list[dict]:
+    buckets = {
+        "ipv6": {"type": "ipv6", "count": 0, "message": "IPv6 連線不可達"},
+        "dns": {"type": "dns", "count": 0, "message": "DNS 解析失敗"},
+        "timeout": {"type": "timeout", "count": 0, "message": "連線逾時"},
+    }
+    for line in lines:
+        low = line.lower()
+        ipv6_text = "ipv6" in low or "unreachable network" in low
+        network_error = any(word in low for word in (
+            "error", "fail", "unreachable", "timeout", "deadline exceeded", "refused",
+        ))
+        if ipv6_text and network_error:
+            buckets["ipv6"]["count"] += 1
+        if "dns" in low and network_error:
+            buckets["dns"]["count"] += 1
+        if "timeout" in low or "deadline exceeded" in low:
+            buckets["timeout"]["count"] += 1
+    return [item for item in buckets.values() if item["count"] > 0]
+
+
 class Api:
     def __init__(self, store: Store, profiles: Profiles, core: Core):
         self._store = store
@@ -1010,6 +1128,7 @@ class Api:
             "data_dir": str(data_dir()),
             "core_found": core_binary() is not None,
             "test_url": TEST_URL,
+            "network_mode": self._store.data.get("network_mode", "coexist"),
             "proxy_recovery": recovery,
         }
 
@@ -1466,6 +1585,15 @@ class Api:
         if self._on_quit:
             self._on_quit()
 
+    def _vpn_settings(self) -> dict:
+        store = getattr(self, "_store", None)
+        data = store.data if store else {}
+        return {
+            "disable_system_proxy": bool(data.get("vpn_disable_system_proxy", True)),
+            "restore_system_proxy": bool(data.get("vpn_restore_system_proxy", True)),
+            "network_mode": data.get("network_mode", "coexist"),
+        }
+
     def vpn_list(self) -> dict:
         if platform.system().lower() != "windows":
             return {
@@ -1473,6 +1601,7 @@ class Api:
                 "supported": False,
                 "connections": [],
                 "advanced": {"allow_metered": True, "allow_roaming": True},
+                "settings": self._vpn_settings(),
             }
         try:
             result = subprocess.run(
@@ -1492,6 +1621,7 @@ class Api:
                     "supported": True,
                     "connections": [],
                     "advanced": {"allow_metered": True, "allow_roaming": True},
+                    "settings": self._vpn_settings(),
                 }
 
             data = json.loads(raw)
@@ -1539,7 +1669,7 @@ class Api:
                 "supported": True,
                 "connections": connections,
                 "advanced": advanced,
-                "settings": {"disable_system_proxy": bool(getattr(self, "_store", None).data.get("vpn_disable_system_proxy", True)) if getattr(self, "_store", None) else True},
+                "settings": self._vpn_settings(),
             }
         except Exception as exc:
             return {
@@ -1547,6 +1677,7 @@ class Api:
                 "supported": True,
                 "connections": [],
                 "advanced": {"allow_metered": True, "allow_roaming": True},
+                "settings": self._vpn_settings(),
                 "error": f"讀取 Windows VPN 失敗：{exc}",
             }
 
@@ -1562,12 +1693,44 @@ class Api:
 
     def _vpn_prepare_proxy(self) -> dict | None:
         store = getattr(self, "_store", None)
-        if store and store.data.get("vpn_disable_system_proxy", True) and is_system_proxy_on(store):
-            result = self.set_system_proxy(False)
-            if not result.get("ok"):
-                return {"ok": False, "error": "關閉系統代理失敗：" + str(result.get("error") or "")}
-            return {"ok": True, "proxy_disabled": True}
-        return None
+        if not store or not store.data.get("vpn_disable_system_proxy", True):
+            return None
+        if not is_system_proxy_on(store):
+            return None
+        result = self.set_system_proxy(False)
+        if not result.get("ok"):
+            return {"ok": False, "error": "關閉系統代理失敗：" + str(result.get("error") or "")}
+        store.data["vpn_proxy_pending"] = True
+        try:
+            store.save()
+        except Exception as exc:
+            app_log(f"VPN proxy pending save failed: {exc}")
+        return {"ok": True, "proxy_disabled": True}
+
+    def _vpn_restore_proxy(self) -> bool:
+        store = getattr(self, "_store", None)
+        if not store or not store.data.get("vpn_proxy_pending"):
+            return False
+        if not store.data.get("vpn_restore_system_proxy", True):
+            store.data["vpn_proxy_pending"] = False
+            try:
+                store.save()
+            except Exception as exc:
+                app_log(f"VPN proxy pending clear failed: {exc}")
+            return False
+        try:
+            result = self.set_system_proxy(True)
+        except Exception as exc:
+            result = {"ok": False, "error": str(exc)}
+        if not result.get("ok"):
+            app_log(f"VPN proxy restore failed: {result.get('error', 'unknown error')}")
+            return False
+        store.data["vpn_proxy_pending"] = False
+        try:
+            store.save()
+        except Exception as exc:
+            app_log(f"VPN proxy pending clear failed: {exc}")
+        return True
 
     def vpn_connect(self, name: str) -> dict:
         if platform.system().lower() != "windows":
@@ -1581,20 +1744,26 @@ class Api:
             return {"ok": False, "error": f"讀取 Windows VPN 憑證失敗：{exc}"}
         if not credential:
             return {"ok": False, "needs_credentials": True, "username": profile.get("saved_username", "")}
-        proxy_result = self._vpn_prepare_proxy()
-        if proxy_result and not proxy_result.get("ok"):
-            return proxy_result
+        proxy_prepared = False
         try:
+            proxy_result = self._vpn_prepare_proxy()
+            if proxy_result and not proxy_result.get("ok"):
+                return proxy_result
+            proxy_prepared = bool(proxy_result and proxy_result.get("proxy_disabled"))
             code, message = _vpn_ras_dial(
                 profile["name"], credential["username"], credential["password"]
             )
             if code == 0:
-                return {"ok": True, "connected": True}
+                return {"ok": True, "connected": True, "proxy_disabled": proxy_prepared}
+            if proxy_prepared:
+                self._vpn_restore_proxy()
             if code in (645, 691):
                 _vpn_credential_delete(profile["name"])
                 return {"ok": False, "needs_credentials": True, "username": credential["username"], "stale_credentials": True}
             return {"ok": False, "error": message, "code": code}
         except Exception as exc:
+            if proxy_prepared:
+                self._vpn_restore_proxy()
             return {"ok": False, "error": f"啟動 VPN 連線失敗：{exc}"}
 
     def vpn_connect_with_credentials(
@@ -1609,20 +1778,37 @@ class Api:
         password = str(password or "")
         if not username or not password:
             return {"ok": False, "error": "請輸入 VPN 使用者名稱與密碼"}
-        proxy_result = self._vpn_prepare_proxy()
-        if proxy_result and not proxy_result.get("ok"):
-            return proxy_result
+        proxy_prepared = False
         try:
+            proxy_result = self._vpn_prepare_proxy()
+            if proxy_result and not proxy_result.get("ok"):
+                return proxy_result
+            proxy_prepared = bool(proxy_result and proxy_result.get("proxy_disabled"))
             code, message = _vpn_ras_dial(profile["name"], username, password)
             if code != 0:
+                if proxy_prepared:
+                    self._vpn_restore_proxy()
                 return {"ok": False, "error": message, "code": code}
             if remember:
                 if not _vpn_credential_write(profile["name"], username, password):
-                    return {"ok": True, "connected": True, "credentials_saved": False, "warning": "已連線，但無法保存 VPN 憑證"}
+                    return {
+                        "ok": True,
+                        "connected": True,
+                        "credentials_saved": False,
+                        "proxy_disabled": proxy_prepared,
+                        "warning": "已連線，但無法保存 VPN 憑證",
+                    }
             else:
                 _vpn_credential_delete(profile["name"])
-            return {"ok": True, "connected": True, "credentials_saved": bool(remember)}
+            return {
+                "ok": True,
+                "connected": True,
+                "credentials_saved": bool(remember),
+                "proxy_disabled": proxy_prepared,
+            }
         except Exception as exc:
+            if proxy_prepared:
+                self._vpn_restore_proxy()
             return {"ok": False, "error": f"啟動 VPN 連線失敗：{exc}"}
 
     def vpn_disconnect(self, name: str) -> dict:
@@ -1641,7 +1827,8 @@ class Api:
             )
             if result.returncode != 0:
                 return {"ok": False, "error": f"VPN 斷線失敗（代碼 {result.returncode}）"}
-            return {"ok": True, "disconnected": True}
+            restored = self._vpn_restore_proxy()
+            return {"ok": True, "disconnected": True, "proxy_restored": restored}
         except Exception as exc:
             return {"ok": False, "error": f"VPN 斷線失敗：{exc}"}
 
@@ -1740,6 +1927,138 @@ class Api:
         self._store.data["vpn_disable_system_proxy"] = bool(enabled)
         self._store.save()
         return {"ok": True, "disable_system_proxy": bool(enabled)}
+
+    def vpn_set_restore_proxy(self, enabled: bool) -> dict:
+        self._store.data["vpn_restore_system_proxy"] = bool(enabled)
+        self._store.save()
+        return {"ok": True, "restore_system_proxy": bool(enabled)}
+
+    def set_network_mode(self, mode: str) -> dict:
+        mode = str(mode or "").strip().lower()
+        if mode not in ("proxy", "vpn", "coexist"):
+            return {"ok": False, "error": "無效的網路接管模式"}
+        previous_mode = self._store.data.get("network_mode", "coexist")
+        try:
+            if mode == "vpn" and is_system_proxy_on(self._store):
+                result = self.set_system_proxy(False)
+                if not result.get("ok"):
+                    return result
+            elif mode == "proxy":
+                failures = []
+                listed = self.vpn_list()
+                if not listed.get("ok"):
+                    return {"ok": False, "error": listed.get("error") or "無法讀取 VPN 連線"}
+                for item in listed.get("connections", []):
+                    if not item.get("connected"):
+                        continue
+                    result = self.vpn_disconnect(item["name"])
+                    if not result.get("ok"):
+                        failures.append(f"{item['name']}：{result.get('error') or '斷線失敗'}")
+                if failures:
+                    return {"ok": False, "error": "無法切換到只用代理：" + "；".join(failures)}
+                if not is_system_proxy_on(self._store):
+                    result = self.set_system_proxy(True)
+                    if not result.get("ok"):
+                        return result
+            self._store.data["network_mode"] = mode
+            self._store.save()
+            return {"ok": True, "network_mode": mode}
+        except Exception as exc:
+            self._store.data["network_mode"] = previous_mode
+            return {"ok": False, "error": str(exc)}
+
+    def network_diagnostics(self) -> dict:
+        route = _has_global_ipv6()
+        connectivity = _test_ipv6_connectivity()
+        dns_servers = _system_dns_servers()
+        system_doh = _doh_template_count()
+        config_doh, dot_templates = _configured_dns_protocols(getattr(self, "_profiles", None))
+        doh_templates = system_doh + config_doh
+        dns_ok = True
+        ipv6_preferred = False
+        try:
+            addresses = socket.getaddrinfo("cp.cloudflare.com", 443, type=socket.SOCK_STREAM)
+            dns_ok = bool(addresses)
+            ipv6_preferred = bool(addresses) and addresses[0][0] == socket.AF_INET6
+        except OSError:
+            dns_ok = False
+        proxy_on = is_system_proxy_on(self._store)
+        dns_leak_suspected = bool(proxy_on and dns_servers and not any(
+            server.startswith(("127.", "::1")) for server in dns_servers
+        ))
+        dns_encryption_conflict = bool((system_doh or config_doh) and dot_templates)
+        lines = self.get_logs().get("lines", [])
+        issues = _group_network_issues(lines)
+        if route and not connectivity:
+            _merge_network_issue(issues, "ipv6", 1, "IPv6 已有路由，但實際連線失敗")
+        if not dns_ok:
+            _merge_network_issue(issues, "dns", 1, "DNS 查詢失敗")
+        if dns_leak_suspected:
+            _merge_network_issue(issues, "dns-leak", 1, "系統代理開啟，但系統 DNS 不是本機位址")
+        if ipv6_preferred and not connectivity:
+            _merge_network_issue(issues, "ipv6-preference", 1, "DNS 優先回傳 IPv6，但 IPv6 無法連線")
+        if dns_encryption_conflict:
+            _merge_network_issue(issues, "dns-encrypted", 1, "同時偵測到 DoH 與 DoT 設定，可能造成解析衝突")
+        return {
+            "ok": True,
+            "ipv6_route": route,
+            "ipv6_connectivity": connectivity,
+            "ipv6_preferred": ipv6_preferred,
+            "dns_ok": dns_ok,
+            "dns_servers": dns_servers,
+            "system_doh_templates": system_doh,
+            "config_doh_templates": config_doh,
+            "doh_templates": doh_templates,
+            "dot_templates": dot_templates,
+            "dns_encryption_conflict": dns_encryption_conflict,
+            "dns_leak_suspected": dns_leak_suspected,
+            "proxy_on": proxy_on,
+            "network_mode": self._store.data.get("network_mode", "coexist"),
+            "issues": issues,
+        }
+
+    def network_repair(self, action: str) -> dict:
+        action = str(action or "").strip().lower()
+        previous = None
+        key = ""
+        if action == "ipv6":
+            key = "force_disable_ipv6"
+            previous = self._store.data.get(key, False)
+            self._store.data[key] = True
+        elif action == "dns":
+            key = "dns_mode"
+            previous = self._store.data.get(key, "auto")
+            self._store.data[key] = "backup"
+        elif action == "dns-system":
+            key = "dns_mode"
+            previous = self._store.data.get(key, "auto")
+            self._store.data[key] = "auto"
+        elif action == "flush":
+            try:
+                subprocess.run(["ipconfig.exe", "/flushdns"], capture_output=True, text=True, timeout=12, creationflags=CREATE_NO_WINDOW)
+            except Exception:
+                pass
+        else:
+            return {"ok": False, "error": "無效的網路修復動作"}
+        self._store.save()
+        if action == "flush":
+            return {"ok": True, "action": action}
+        try:
+            ok, message = self._core.reload_runtime()
+            if not ok:
+                if key:
+                    self._store.data[key] = previous
+                    self._store.save()
+                return {"ok": False, "error": message}
+            return {"ok": True, "action": action}
+        except Exception as exc:
+            if key:
+                self._store.data[key] = previous
+                try:
+                    self._store.save()
+                except Exception:
+                    pass
+            return {"ok": False, "error": str(exc)}
 
     def vpn_open_settings(self) -> dict:
         if platform.system().lower() != "windows":

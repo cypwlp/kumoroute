@@ -12,8 +12,11 @@
 
 - 一鍵系統代理（退出自動還原；Windows 登錄檔 / GNOME gsettings / macOS networksetup）
 - Windows 內建 VPN 管理：新增／編輯／刪除設定檔、首次登入後由 Windows 認證管理員加密保存憑證、清除憑證、連線時自動關閉系統代理，以及計量網路與漫遊進階設定
+- VPN／代理協調：只用代理、只用 VPN、兩者共存三種模式；VPN 連線時可自動暫停系統代理，斷線或連線失敗時可選擇恢復原本代理狀態
 - Clash 訂閱管理（遠端訂閱 / 本機 YAML）
-- 代理頁以「目前策略組 → 實際出口」呈現；節點延遲含更新時間、支援單節點重測、過期自動重測、局部刷新保留捲動位置，以及大型清單分段載入
+- 代理頁以「目前策略組 → 實際出口」呈現；節點延遲含更新時間、成功率、抖動、最近失敗原因，支援單節點重測、過期自動重測、局部刷新保留捲動位置，以及大型清單分段載入
+- 節點品質策略：固定節點／自動選擇／最低延遲；連續兩次逾時會自動排除，策略與最近 10 次測速結果會保存在本機
+- 群組測速支援最多 6 個節點並行、顯示進度並可中途取消
 - 介面個人化：跟隨系統／深色／淺色主題，繁體中文／简体中文／English 即時切換並保存偏好；自訂配置與節點名稱不被翻譯
 - 節點選擇、整組測速、模式切換（規則 / 全局 / 直連）
 - 即時上下行速度、連線數、日誌
@@ -31,10 +34,11 @@
 - 隱私政策與使用條款
 - GitHub Actions 乾淨 runner 的 Windows／Linux／macOS core 與建置 smoke tests
 - 內置 GeoIP/GeoSite 資料庫，導入訂閱即用（免從 GitHub 下載 geodata）
-- 核心崩潰自動重啟（60 秒內最多 5 次）＋日誌自動輪轉
 - 核心崩潰自動重啟（60 秒內最多 5 次）＋日誌自動輪轉；日誌支援搜尋、只顯示警告／錯誤與重複訊息合併
+- IPv6／DNS 智慧診斷：除路由外會測試實際 IPv6 連線，檢查 DNS 洩漏、DoH／DoT 衝突與 IPv6 優先問題；重複錯誤會合併成單一診斷事件
+- 一鍵網路修復：關閉 IPv6、切換備用 DNS、恢復自動 DNS、清除 DNS 快取並重新載入核心
 - IPv6 自動偵測：沒有預設 IPv6 路由時關閉核心 IPv6，避免反覆出現 unreachable network 日誌
-- 版本發佈工具：`python scripts/release.py 0.7.3` 同步版本並驗證跨後端契約
+- 版本發佈工具：`python scripts/release.py 0.7.4` 同步版本並驗證跨後端契約
 - 托盤常駐、關窗不退出、單實例
 - Windows Job Object 綁定 mihomo：主程序被強制終止時核心由系統一併結束
 - NSIS 安裝／卸載前檢查 `core\mihomo.exe`，避免核心鎖檔造成覆寫失敗
@@ -87,8 +91,8 @@ python app.py
 推送 `v*` tag 即由 GitHub Actions 自動編譯、打包並建立 Release（含 `KumoRoute-win-x64.zip` 與 `SHA256SUMS.txt`）：
 
 ```powershell
-git tag v0.7.3
-git push origin v0.7.3
+git tag v0.7.4
+git push origin v0.7.4
 ```
 
 下載站按鈕指向 `releases/latest/download/KumoRoute-win-x64.zip`（見 `site/app.js`）。

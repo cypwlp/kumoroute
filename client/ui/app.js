@@ -20,6 +20,7 @@ let diagnosticsText = "";
 
 const STATS_KEY = "kumoroute.stats.v1";
 const PREFS_KEY = "kumoroute.preferences.v1";
+const PROXY_STRATEGY_KEY = "kumoroute.proxy-strategies.v1";
 const STATS_KEEP_DAYS = 35;
 const MAX_EVENTS = 100;
 let usageData = loadUsageData();
@@ -42,6 +43,10 @@ let proxyFilter = "all";
 let logSearch = "";
 let logOnlyProblems = false;
 let proxyNodeLimit = 240;
+let proxyStrategies = loadProxyStrategies();
+let proxyFixedNodes = loadProxyFixedNodes();
+let groupTestState = null;
+let proxyStrategyApplying = false;
 let clearStatsPending = false;
 let clearStatsTimer = null;
 let vpnData = null;
@@ -50,6 +55,7 @@ let vpnAdvancedBusy = false;
 let vpnRefreshTimer = null;
 let pendingVpnCredential = null;
 let pendingVpnProfile = null;
+let networkModeBusy = false;
 
 /* ---------- helpers ---------- */
 
@@ -67,6 +73,27 @@ function localDayKey(date = new Date()) {
   const m = String(date.getMonth() + 1).padStart(2, "0");
   const d = String(date.getDate()).padStart(2, "0");
   return `${y}-${m}-${d}`;
+}
+
+function loadProxyStrategies() {
+  try {
+    const parsed = JSON.parse(localStorage.getItem(PROXY_STRATEGY_KEY + ".modes") || "{}");
+    return parsed && typeof parsed === "object" && !Array.isArray(parsed) ? parsed : {};
+  } catch (e) { return {}; }
+}
+
+function loadProxyFixedNodes() {
+  try {
+    const parsed = JSON.parse(localStorage.getItem(PROXY_STRATEGY_KEY + ".fixed") || "{}");
+    return parsed && typeof parsed === "object" && !Array.isArray(parsed) ? parsed : {};
+  } catch (e) { return {}; }
+}
+
+function saveProxyStrategy() {
+  try {
+    localStorage.setItem(PROXY_STRATEGY_KEY + ".modes", JSON.stringify(proxyStrategies));
+    localStorage.setItem(PROXY_STRATEGY_KEY + ".fixed", JSON.stringify(proxyFixedNodes));
+  } catch (e) { /* storage may be unavailable */ }
 }
 
 function loadPreferences() {
@@ -511,6 +538,10 @@ const TAURI_SIG = {
   vpn_set_advanced: ["setting", "enabled"],
   vpn_set_auto_proxy: ["enabled"],
   vpn_forget_credentials: ["name"],
+  vpn_set_restore_proxy: ["enabled"],
+  set_network_mode: ["mode"],
+  network_diagnostics: [],
+  network_repair: ["action"],
   vpn_add: ["name", "server", "tunnelType"],
   vpn_edit: ["name", "server", "tunnelType"],
   vpn_delete: ["name"],
@@ -535,13 +566,16 @@ const demoCfg = {
   vpnConnected: false,
   vpnAdvanced: { metered: true, roaming: true },
   vpnDisableSystemProxy: true,
+  vpnRestoreProxy: true,
+  vpnProxyPending: false,
+  networkMode: "coexist",
   vpnCredentialSaved: false,
   vpnUsername: "super",
   mode: "rule",
   mixed_port: 7890,
   controller_port: 9090,
   core_version: "v1.19.33",
-  app_version: "0.7.3",
+  app_version: "0.7.4",
   data_dir: "C:\\Users\\…\\AppData\\Roaming\\KumoRoute",
   test_url: "https://cp.cloudflare.com/generate_204",
   profiles: [
@@ -592,6 +626,7 @@ function demoState() {
     core_version: demoCfg.running ? demoCfg.core_version : null,
     running: demoCfg.running,
     sys_proxy: demoCfg.sys_proxy,
+    network_mode: demoCfg.networkMode,
     mode: demoCfg.mode,
     mixed_port: demoCfg.mixed_port,
     controller_port: demoCfg.controller_port,
@@ -637,6 +672,10 @@ async function demoApi(fn, ...args) {
       if (g) for (const n of g.nodes) if (n.type !== "Direct") delays[n.name] = Math.round(25 + Math.random() * 600);
       return { ok: true, delays };
     }
+    case "test_node_delay": {
+      const name = String(args[0] || "");
+      return { ok: true, name, delay: Math.round(25 + Math.random() * 600) };
+    }
     case "set_mode": demoCfg.mode = args[0]; return { ok: true };
     case "start_core": demoCfg.running = true; return { ok: true };
     case "stop_core": demoCfg.running = false; demoCfg.sys_proxy = false; prevTotals = null; return { ok: true };
@@ -672,17 +711,45 @@ async function demoApi(fn, ...args) {
       supported: true,
       connections: [{ name: "vn", server: "192.168.86.18", type: "Pptp", status: demoCfg.vpnConnected ? "Connected" : "Disconnected", connected: demoCfg.vpnConnected, remember_credential: true, all_user: false, credential_saved: demoCfg.vpnCredentialSaved, saved_username: demoCfg.vpnCredentialSaved ? demoCfg.vpnUsername : "" }],
       advanced: { allow_metered: demoCfg.vpnAdvanced.metered, allow_roaming: demoCfg.vpnAdvanced.roaming },
-      settings: { disable_system_proxy: demoCfg.vpnDisableSystemProxy },
+      settings: {
+        disable_system_proxy: demoCfg.vpnDisableSystemProxy,
+        restore_system_proxy: demoCfg.vpnRestoreProxy,
+        network_mode: demoCfg.networkMode,
+      },
     };
     case "vpn_connect":
       if (!demoCfg.vpnCredentialSaved) return { ok: false, needs_credentials: true, username: demoCfg.vpnUsername };
-      demoCfg.vpnConnected = true; return { ok: true, connected: true };
+      if (demoCfg.vpnDisableSystemProxy && demoCfg.sys_proxy) {
+        demoCfg.sys_proxy = false;
+        demoCfg.vpnProxyPending = true;
+      }
+      demoCfg.vpnConnected = true; return { ok: true, connected: true, proxy_disabled: demoCfg.vpnProxyPending };
     case "vpn_connect_with_credentials":
+      if (demoCfg.vpnDisableSystemProxy && demoCfg.sys_proxy) {
+        demoCfg.sys_proxy = false;
+        demoCfg.vpnProxyPending = true;
+      }
       demoCfg.vpnConnected = true; demoCfg.vpnUsername = String(args[1] || ""); demoCfg.vpnCredentialSaved = !!args[3];
-      return { ok: true, connected: true, credentials_saved: !!args[3] };
-    case "vpn_disconnect": demoCfg.vpnConnected = false; return { ok: true, disconnected: true };
+      return { ok: true, connected: true, credentials_saved: !!args[3], proxy_disabled: demoCfg.vpnProxyPending };
+    case "vpn_disconnect":
+      demoCfg.vpnConnected = false;
+      if (demoCfg.vpnProxyPending) {
+        demoCfg.vpnProxyPending = false;
+        if (demoCfg.vpnRestoreProxy) demoCfg.sys_proxy = true;
+      }
+      return { ok: true, disconnected: true, proxy_restored: demoCfg.sys_proxy };
     case "vpn_set_advanced": demoCfg.vpnAdvanced[args[0]] = !!args[1]; return { ok: true, pending: false };
     case "vpn_set_auto_proxy": demoCfg.vpnDisableSystemProxy = !!args[0]; return { ok: true, disable_system_proxy: !!args[0] };
+    case "vpn_set_restore_proxy": demoCfg.vpnRestoreProxy = !!args[0]; return { ok: true, restore_system_proxy: !!args[0] };
+    case "set_network_mode": {
+      const mode = String(args[0] || "coexist");
+      demoCfg.networkMode = mode;
+      if (mode === "vpn") demoCfg.sys_proxy = false;
+      if (mode === "proxy") { demoCfg.vpnConnected = false; demoCfg.sys_proxy = true; }
+      return { ok: true, network_mode: demoCfg.networkMode };
+    }
+    case "network_diagnostics": return { ok: true, ipv6_route: false, ipv6_connectivity: false, ipv6_preferred: true, dns_ok: true, dns_servers: ["192.168.1.1"], doh_templates: 0, dot_templates: 0, dns_encryption_conflict: false, dns_leak_suspected: false, proxy_on: demoCfg.sys_proxy, network_mode: demoCfg.networkMode, issues: [{ type: "ipv6", count: 3, message: "IPv6 連線不可達" }] };
+    case "network_repair": return { ok: true, action: String(args[0] || "") };
     case "vpn_open_settings": return { ok: true };
     default: return { ok: true };
   }
@@ -752,6 +819,7 @@ function renderAll() {
   renderProfiles();
   if (!state.running) { setSpeeds(0, 0, 0); }
   if (page === "vpn") renderVpnPage();
+  renderNetworkMode();
 }
 
 function renderProfiles() {
@@ -879,14 +947,14 @@ function drawSpark() {
   drawLine(sparkUp, palette.sparkUp);
 }
 
-function recordDelayHistory(groupName, delays) {
+function recordDelayHistory(groupName, delays, reasons = {}) {
   if (!groupName || !delays || typeof delays !== "object") return;
   const now = new Date().toISOString();
   const bucket = usageData.nodeHealth[groupName] || {};
   Object.entries(delays).forEach(([nodeName, value]) => {
     const ms = Number(value) > 0 ? Number(value) : null;
     const history = Array.isArray(bucket[nodeName]) ? bucket[nodeName] : [];
-    history.push({ t: now, ms });
+    history.push({ t: now, ms, reason: ms === null ? String(reasons[nodeName] || "timeout") : "" });
     if (history.length > 10) history.splice(0, history.length - 10);
     bucket[nodeName] = history;
   });
@@ -896,19 +964,24 @@ function recordDelayHistory(groupName, delays) {
 }
 
 function healthSummary(samples) {
-  const recent = samples.slice(-10);
+  const recent = (Array.isArray(samples) ? samples : [])
+    .filter((sample) => sample && typeof sample === "object")
+    .slice(-10);
   const successes = recent.map((s) => s.ms).filter((v) => typeof v === "number" && v > 0);
   const tests = recent.length;
   const avg = successes.length ? successes.reduce((a, b) => a + b, 0) / successes.length : null;
   const timeoutRate = tests ? 1 - successes.length / tests : 1;
   let stability = 0;
+  let jitter = 0;
   if (successes.length && avg) {
     const variance = successes.reduce((sum, v) => sum + (v - avg) ** 2, 0) / successes.length;
-    stability = Math.max(0, Math.min(100, Math.round(100 - (Math.sqrt(variance) / Math.max(avg, 1)) * 100)));
+    jitter = Math.sqrt(variance);
+    stability = Math.max(0, Math.min(100, Math.round(100 - (jitter / Math.max(avg, 1)) * 100)));
   }
   const score = (1 - timeoutRate) * 10000 - (avg || 5000) - (100 - stability) * 2;
   const grade = timeoutRate > 0.4 || (avg || 9999) > 500 ? "bad" : timeoutRate > 0.15 || (avg || 9999) > 250 || stability < 55 ? "mid" : "good";
-  return { tests, successes: successes.length, avg, timeoutRate, stability, score, grade, recent };
+  const lastFailure = [...recent].reverse().find((item) => item.ms === null);
+  return { tests, successes: successes.length, avg, jitter, timeoutRate, stability, score, grade, recent, lastFailure: lastFailure ? lastFailure.reason || "timeout" : "" };
 }
 
 function healthDotClass(ms) {
@@ -1413,6 +1486,7 @@ async function refreshGroups() {
     const res = demo ? await demoApi("get_proxy_groups") : await api("get_proxy_groups");
     groups = (res && res.groups) || [];
     knownGroupNames = new Set(groups.map((g) => g.name));
+    hydrateDelaysFromHistory();
     syncGroupDelaysFromGroups();
     const previousIndex = groups.findIndex((g) => g.name === previousName);
     proxyGroupIndex = previousIndex >= 0 ? previousIndex : defaultProxyGroupIndex();
@@ -1435,6 +1509,7 @@ async function refreshGroups() {
     } else {
       renderGroups();
     }
+    await applyProxyStrategy();
     if (page === "stats") renderNodeHealth();
   } catch (e) {
     console.error(e);
@@ -1490,9 +1565,107 @@ function delayUpdatedLabel(groupName, node) {
 function delayBadge(groupName, node) {
   const d = (groupDelays[groupName] || {})[node.name];
   if (d === undefined || d === null) return '<span class="delay none">—</span>';
-  if (!d) return '<span class="delay bad">逾時</span>';
+  if (!d) {
+    const reason = nodeQualityInfo(groupName, node.name)?.lastFailure;
+    return `<span class="delay bad"${reason ? ` title="${esc("最近失敗：" + reason)}"` : ""}>逾時</span>`;
+  }
   const cls = d <= 200 ? "good" : d <= 500 ? "mid" : "bad";
   return `<span class="delay ${cls}">${d} ms</span>${delayUpdatedLabel(groupName, node)}`;
+}
+
+function hydrateDelaysFromHistory() {
+  for (const group of groups) {
+    groupDelays[group.name] = groupDelays[group.name] || {};
+    nodeDelayUpdated[group.name] = nodeDelayUpdated[group.name] || {};
+    for (const node of group.nodes || []) {
+      const history = usageData.nodeHealth?.[group.name]?.[node.name];
+      if (!Array.isArray(history) || !history.length) continue;
+      const last = history[history.length - 1];
+      if (!last || (typeof last.ms !== "number" && last.ms !== null)) continue;
+      groupDelays[group.name][node.name] = typeof last.ms === "number" ? last.ms : 0;
+      nodeDelayUpdated[group.name][node.name] = last.t || new Date().toISOString();
+    }
+  }
+}
+
+function nodeQualityInfo(groupName, nodeName) {
+  const history = usageData.nodeHealth?.[groupName]?.[nodeName];
+  if (!Array.isArray(history) || !history.length) return null;
+  const summary = healthSummary(history);
+  return {
+    ...summary,
+    successRate: summary.tests ? Math.round((summary.successes / summary.tests) * 100) : 0,
+  };
+}
+
+function consecutiveTimeouts(groupName, nodeName) {
+  const history = usageData.nodeHealth?.[groupName]?.[nodeName];
+  if (!Array.isArray(history)) return 0;
+  let count = 0;
+  for (let i = history.length - 1; i >= 0; i -= 1) {
+    if (history[i] && history[i].ms === null) count += 1;
+    else break;
+  }
+  return count;
+}
+
+function qualityBadge(groupName, nodeName) {
+  const info = nodeQualityInfo(groupName, nodeName);
+  if (!info || info.tests < 2) return "";
+  const cls = info.successRate >= 80 ? "good" : info.successRate >= 50 ? "mid" : "bad";
+  const detail = `成功率 ${info.successRate}% · 抖動 ${Math.round(info.jitter)} ms${info.lastFailure ? " · 最近失敗：" + info.lastFailure : ""}`;
+  return `<span class="node-quality ${cls}" title="${esc(detail)}">${info.successRate}% ±${Math.round(info.jitter)}</span>`;
+}
+
+function proxyStrategy(groupName) {
+  const value = proxyStrategies[groupName];
+  return ["fixed", "auto", "lowest"].includes(value) ? value : "auto";
+}
+
+function setProxyStrategy(groupName, strategy) {
+  if (!groupName || !["fixed", "auto", "lowest"].includes(strategy)) return;
+  proxyStrategies[groupName] = strategy;
+  saveProxyStrategy();
+  renderGroups();
+  applyProxyStrategy();
+}
+
+function bestHealthyNode(group) {
+  const candidates = (group.nodes || []).filter((node) => !proxyIsGroup(node.name) && String(node.type || "").toLowerCase() !== "direct");
+  let best = null;
+  for (const node of candidates) {
+    if (consecutiveTimeouts(group.name, node.name) >= 2) continue;
+    const value = Number((groupDelays[group.name] || {})[node.name]);
+    if (!Number.isFinite(value) || value <= 0) continue;
+    const info = nodeQualityInfo(group.name, node.name);
+    const score = (info ? info.successRate * 10 : 500) - value - (info ? info.jitter : 0);
+    if (!best || score > best.score) best = { node, score };
+  }
+  return best && best.node;
+}
+
+async function applyProxyStrategy() {
+  if (proxyStrategyApplying || page !== "proxies") return;
+  const group = groups[proxyGroupIndex];
+  if (!group || !["Selector", "URLTest", "Fallback", "LoadBalance", "Relay", "Compatible"].includes(group.type)) return;
+  const strategy = proxyStrategy(group.name);
+  let target = "";
+  if (strategy === "fixed") target = proxyFixedNodes[group.name] || group.now;
+  else if (strategy === "lowest") target = bestHealthyNode(group)?.name || group.now;
+  else if (consecutiveTimeouts(group.name, group.now) >= 2) target = bestHealthyNode(group)?.name || "";
+  if (!target || target === group.now) return;
+  proxyStrategyApplying = true;
+  try {
+    const res = demo ? await demoApi("select_proxy", group.name, target) : await api("select_proxy", group.name, target);
+    if (res && res.ok) {
+      group.now = target;
+      if (strategy === "fixed") proxyFixedNodes[group.name] = target;
+      saveProxyStrategy();
+      renderGroups();
+      toast("策略已切換至：" + target, "ok");
+    }
+  } catch (e) { /* background strategy */ }
+  finally { proxyStrategyApplying = false; }
 }
 
 function syncGroupDelaysFromGroups() {
@@ -1524,6 +1697,86 @@ function syncGroupDelaysFromGroups() {
   }
 }
 
+function groupTestButtons(index = proxyGroupIndex) {
+  return $$(`[data-test="${index}"]`);
+}
+
+function setGroupTestUi(running, text = "測速", index = proxyGroupIndex) {
+  groupTestButtons(index).forEach((button) => {
+    button.disabled = false;
+    button.textContent = running ? text : (button.dataset.testLabel || "測速");
+  });
+}
+
+async function runGroupTest(group) {
+  if (!group || groupTestState) return;
+  const groupIndex = proxyGroupIndex;
+  const nodes = (group.nodes || []).filter((node) => !proxyIsGroup(node.name) && String(node.type || "").toLowerCase() !== "direct");
+  if (!nodes.length) {
+    toast("此策略組沒有可測速節點", "error");
+    return;
+  }
+  const testState = { groupName: group.name, groupIndex, cancelled: false, completed: 0, total: nodes.length };
+  groupTestState = testState;
+  setGroupTestUi(true, `取消（0/${nodes.length}）`, groupIndex);
+  const delays = {};
+  const reasons = {};
+  let cursor = 0;
+  const worker = async () => {
+    while (true) {
+      const state = groupTestState;
+      if (!state || state !== testState || state.cancelled) return;
+      const index = cursor++;
+      if (index >= nodes.length) return;
+      const node = nodes[index];
+      try {
+        const res = demo ? await demoApi("test_node_delay", node.name) : await api("test_node_delay", node.name);
+        if (groupTestState !== testState || testState.cancelled) return;
+        if (res && res.ok) {
+          delays[node.name] = Number(res.delay) || 0;
+          if (!delays[node.name]) reasons[node.name] = "timeout";
+        } else {
+          delays[node.name] = 0;
+          reasons[node.name] = String((res && res.error) || "test failed");
+        }
+      } catch (e) {
+        delays[node.name] = 0;
+        reasons[node.name] = String(e);
+      }
+      if (groupTestState !== testState || testState.cancelled) return;
+      groupDelays[group.name] = groupDelays[group.name] || {};
+      groupDelays[group.name][node.name] = delays[node.name];
+      nodeDelayUpdated[group.name] = nodeDelayUpdated[group.name] || {};
+      nodeDelayUpdated[group.name][node.name] = new Date().toISOString();
+      testState.completed += 1;
+      setGroupTestUi(true, `取消（${testState.completed}/${testState.total}）`, groupIndex);
+    }
+  };
+  await Promise.all(Array.from({ length: Math.min(6, nodes.length) }, () => worker()));
+  const superseded = groupTestState && groupTestState !== testState;
+  const cancelled = !groupTestState || groupTestState === testState && testState.cancelled;
+  if (groupTestState === testState) groupTestState = null;
+  if (superseded) return;
+  setGroupTestUi(false, "測速", groupIndex);
+  if (Object.keys(delays).length) {
+    recordDelayHistory(group.name, delays, reasons);
+    renderGroups();
+    if (page === "stats") renderNodeHealth();
+    await applyProxyStrategy();
+    if (!cancelled) toast(`測速完成：${Object.keys(delays).length} 個節點`, "ok");
+  }
+}
+
+function cancelGroupTest() {
+  if (!groupTestState) return;
+  const groupIndex = groupTestState.groupIndex;
+  groupTestState.cancelled = true;
+  groupTestState = null;
+  setGroupTestUi(false, "測速", groupIndex);
+  renderGroups();
+  toast("已取消群組測速", "ok");
+}
+
 async function autoRetestStaleActive() {
   if (!state || !state.running || page !== "proxies" || document.hidden) return;
   if (Date.now() - lastAutoRetest < 60_000) return;
@@ -1537,16 +1790,23 @@ async function autoRetestStaleActive() {
   lastAutoRetest = Date.now();
   try {
     const res = demo ? await demoApi("test_node_delay", node.name) : await api("test_node_delay", node.name);
-    if (res && res.ok) {
-      groupDelays[group.name] = groupDelays[group.name] || {};
-      groupDelays[group.name][node.name] = res.delay;
-      nodeDelayUpdated[group.name] = nodeDelayUpdated[group.name] || {};
-      nodeDelayUpdated[group.name][node.name] = new Date().toISOString();
-      recordDelayHistory(group.name, { [node.name]: res.delay });
-      updateProxyNodeCards();
-      updateGroupPane();
-    }
-  } catch (e) { /* background refresh */ }
+    const delay = res && res.ok ? (Number(res.delay) || 0) : 0;
+    const reason = res && res.ok ? (delay ? "" : "timeout") : String((res && res.error) || "test failed");
+    groupDelays[group.name] = groupDelays[group.name] || {};
+    groupDelays[group.name][node.name] = delay;
+    nodeDelayUpdated[group.name] = nodeDelayUpdated[group.name] || {};
+    nodeDelayUpdated[group.name][node.name] = new Date().toISOString();
+    recordDelayHistory(group.name, { [node.name]: delay }, { [node.name]: reason });
+    updateProxyNodeCards();
+    updateGroupPane();
+    await applyProxyStrategy();
+  } catch (e) {
+    groupDelays[group.name] = groupDelays[group.name] || {};
+    groupDelays[group.name][node.name] = 0;
+    nodeDelayUpdated[group.name] = nodeDelayUpdated[group.name] || {};
+    nodeDelayUpdated[group.name][node.name] = new Date().toISOString();
+    recordDelayHistory(group.name, { [node.name]: 0 }, { [node.name]: String(e) });
+  }
 }
 
 function renderProxyNodeList() {
@@ -1580,6 +1840,7 @@ function renderProxyNodeList() {
         <span class="node-meta">
           ${active ? '<span class="node-active-label">使用中</span>' : ""}
           ${delayBadge(group.name, node)}
+          ${qualityBadge(group.name, node.name)}
           <button class="node-retest" data-retest-node="${esc(node.name)}" title="重新測試此節點">重測</button>
         </span>
       </div>`;
@@ -1615,7 +1876,7 @@ function updateProxyNodeCards() {
     if (kind) kind.textContent = type;
     const meta = card.querySelector(".node-meta");
     if (meta) {
-      meta.innerHTML = `${active ? '<span class="node-active-label">使用中</span>' : ""}${delayBadge(group.name, node)}<button class="node-retest" data-retest-node="${esc(node.name)}" title="重新測試此節點">重測</button>`;
+      meta.innerHTML = `${active ? '<span class="node-active-label">使用中</span>' : ""}${delayBadge(group.name, node)}${qualityBadge(group.name, node.name)}<button class="node-retest" data-retest-node="${esc(node.name)}" title="重新測試此節點">重測</button>`;
     }
   });
 }
@@ -1668,7 +1929,7 @@ function renderGroups() {
         <strong data-no-i18n>${esc(effective)}</strong>
         <span class="proxy-summary-type">${esc(currentType)}</span>
       </div>
-      <button class="btn primary" data-test="${proxyGroupIndex}">測速目前組</button>
+      <button class="btn primary" data-test="${proxyGroupIndex}" data-test-label="測速目前組">測速目前組</button>
     </div>
     <div class="proxy-workspace">
       <aside class="proxy-group-pane card">
@@ -1692,13 +1953,21 @@ function renderGroups() {
           </div>
           <div class="proxy-node-actions">
             <input id="proxy-node-search" class="proxy-search" type="search" placeholder="搜尋節點…" value="${esc(proxySearch)}">
-            <button class="btn ghost small" data-test="${proxyGroupIndex}">測速</button>
+            <button class="btn ghost small" data-test="${proxyGroupIndex}" data-test-label="測速">測速</button>
           </div>
         </div>
         <div class="proxy-filters">
           <button class="proxy-filter${proxyFilter === "all" ? " active" : ""}" data-node-filter="all">全部</button>
           <button class="proxy-filter${proxyFilter === "nodes" ? " active" : ""}" data-node-filter="nodes">節點</button>
           <button class="proxy-filter${proxyFilter === "groups" ? " active" : ""}" data-node-filter="groups">策略組</button>
+        </div>
+        <div class="proxy-strategy-row">
+          <span>切換策略</span>
+          ${[
+            ["fixed", "固定節點"],
+            ["auto", "自動選擇"],
+            ["lowest", "最低延遲"],
+          ].map(([key, label]) => `<button class="proxy-filter${proxyStrategy(group.name) === key ? " active" : ""}" data-proxy-strategy="${key}">${label}</button>`).join("")}
         </div>
         <div id="proxy-node-list" class="node-list"></div>
       </section>
@@ -1726,6 +1995,13 @@ function vpnStatusInfo(item) {
   return { label: "未連線", cls: "" };
 }
 
+function renderNetworkMode() {
+  const mode = (state && state.network_mode) || "coexist";
+  $$(".network-mode-btn").forEach((button) => {
+    button.classList.toggle("active", button.dataset.networkMode === mode);
+  });
+}
+
 function renderVpnAdvanced() {
   const available = !!(vpnData && vpnData.ok && vpnData.supported !== false);
   const advanced = vpnData && vpnData.advanced ? vpnData.advanced : {};
@@ -1741,6 +2017,12 @@ function renderVpnAdvanced() {
     const value = available && !!(vpnData.settings && vpnData.settings.disable_system_proxy);
     autoProxy.setAttribute("aria-checked", value ? "true" : "false");
     autoProxy.disabled = !available || vpnAdvancedBusy;
+  }
+  const restoreProxy = $("#toggle-vpn-restore-proxy");
+  if (restoreProxy) {
+    const value = available && !!(vpnData.settings && vpnData.settings.restore_system_proxy);
+    restoreProxy.setAttribute("aria-checked", value ? "true" : "false");
+    restoreProxy.disabled = !available || vpnAdvancedBusy;
   }
 }
 
@@ -1989,7 +2271,9 @@ async function setVpnAdvanced(setting, enabled) {
   try {
     const res = setting === "auto_proxy"
       ? (demo ? await demoApi("vpn_set_auto_proxy", enabled) : await api("vpn_set_auto_proxy", enabled))
-      : (demo ? await demoApi("vpn_set_advanced", setting, enabled) : await api("vpn_set_advanced", setting, enabled));
+      : setting === "restore_proxy"
+        ? (demo ? await demoApi("vpn_set_restore_proxy", enabled) : await api("vpn_set_restore_proxy", enabled))
+        : (demo ? await demoApi("vpn_set_advanced", setting, enabled) : await api("vpn_set_advanced", setting, enabled));
     if (!res || !res.ok) {
       toast((res && res.error) || "VPN 進階設定更新失敗", "error");
       return;
@@ -1998,6 +2282,12 @@ async function setVpnAdvanced(setting, enabled) {
       if (!vpnData.settings) vpnData.settings = {};
       vpnData.settings.disable_system_proxy = enabled;
       toast("VPN 自動代理設定已更新", "ok");
+      return;
+    }
+    if (setting === "restore_proxy") {
+      if (!vpnData.settings) vpnData.settings = {};
+      vpnData.settings.restore_system_proxy = enabled;
+      toast("VPN 代理恢復設定已更新", "ok");
       return;
     }
     if (res.pending) {
@@ -2065,6 +2355,82 @@ async function refreshLogs() {
   } catch (e) { /* ignore */ }
 }
 
+/* ---------- network diagnostics ---------- */
+
+function renderNetworkDiagnostics(data) {
+  const box = $("#network-diagnostics-result");
+  if (!box) return;
+  if (!data || !data.ok) {
+    box.textContent = (data && data.error) || "診斷失敗";
+    return;
+  }
+  const status = (ok, good, bad) => `<span class="${ok ? "ok" : "bad"}">${ok ? good : bad}</span>`;
+  const issues = Array.isArray(data.issues) && data.issues.length
+    ? data.issues.map((item) => `• ${esc(item.message)} ×${Number(item.count || 0)}`).join("\n")
+    : "• 未發現重複網路錯誤";
+  box.innerHTML = [
+    `IPv6 路由：${status(data.ipv6_route, "可用", "不可用")}`,
+    `IPv6 實際連線：${status(data.ipv6_connectivity, "成功", "失敗")}`,
+    `DNS 查詢：${status(data.dns_ok, "成功", "失敗")}`,
+    `系統 DNS：${esc((data.dns_servers || []).join(", ") || "未設定")}`,
+    `DoH 範本：${Number(data.doh_templates || 0)} 個${data.doh_templates ? "（可能與核心 DNS 衝突）" : ""}`,
+    `DoT 範本：${Number(data.dot_templates || 0)} 個`,
+    data.dns_encryption_conflict ? '<span class="warn">同時偵測到 DoH 與 DoT，建議只保留一種加密 DNS。</span>' : "",
+    data.ipv6_preferred && !data.ipv6_connectivity ? '<span class="warn">DNS 優先回傳 IPv6，但 IPv6 不可用。</span>' : "",
+    data.dns_leak_suspected ? '<span class="warn">可能存在 DNS 洩漏：系統代理開啟，但 DNS 伺服器不是本機。</span>' : "",
+    "\n重複網路事件：",
+    issues,
+  ].filter(Boolean).join("\n");
+}
+
+async function runNetworkDiagnostics() {
+  const btn = $("#btn-network-diagnostics");
+  if (btn) { btn.disabled = true; btn.textContent = "診斷中…"; }
+  try {
+    const data = demo ? await demoApi("network_diagnostics") : await api("network_diagnostics");
+    renderNetworkDiagnostics(data);
+  } catch (e) {
+    if ($("#network-diagnostics-result")) $("#network-diagnostics-result").textContent = String(e);
+  } finally {
+    if (btn) { btn.disabled = false; btn.textContent = "執行診斷"; }
+  }
+}
+
+async function repairNetwork(action, btn) {
+  if (!btn) return;
+  btn.disabled = true;
+  try {
+    const res = demo ? await demoApi("network_repair", action) : await api("network_repair", action);
+    if (!res || !res.ok) toast((res && res.error) || "網路修復失敗", "error");
+    else {
+      toast("網路修復已套用", "ok");
+      await refreshState();
+      await runNetworkDiagnostics();
+    }
+  } catch (e) { toast(String(e), "error"); }
+  finally { btn.disabled = false; }
+}
+
+async function disableVpnsForProxy() {
+  try {
+    const res = demo ? await demoApi("vpn_list") : await api("vpn_list");
+    const connected = (res && res.connections || []).filter((item) => item.connected);
+    if (!connected.length) return true;
+    if (!confirm(tr("VPN 目前連線中。開啟系統代理前要斷開 VPN 嗎？"))) return false;
+    for (const item of connected) {
+      const result = demo ? await demoApi("vpn_disconnect", item.name) : await api("vpn_disconnect", item.name);
+      if (!result || !result.ok) {
+        toast((result && result.error) || "VPN 斷線失敗", "error");
+        return false;
+      }
+    }
+    return true;
+  } catch (e) {
+    toast(String(e), "error");
+    return false;
+  }
+}
+
 /* ---------- page nav ---------- */
 
 function switchPage(name) {
@@ -2113,12 +2479,16 @@ function bindActions() {
     const on = ev.target.checked;
     ev.target.disabled = true;
     try {
+      if (on && !(await disableVpnsForProxy())) {
+        ev.target.checked = false;
+        return;
+      }
       const res = await api("set_system_proxy", on);
       if (res && res.ok === false) toast(res.error || "系統代理設定失敗", "error");
       else toast(on ? "系統代理已開啟" : "系統代理已關閉", "ok");
       await refreshState();
     } catch (e) { toast(String(e), "error"); }
-    ev.target.disabled = false;
+    finally { ev.target.disabled = false; }
   });
 
   $("#mode-seg").addEventListener("click", async (ev) => {
@@ -2160,28 +2530,18 @@ function bindActions() {
       renderGroups();
       return;
     }
+    const strategyButton = ev.target.closest("[data-proxy-strategy]");
+    if (strategyButton) {
+      const group = groups[proxyGroupIndex];
+      if (group) setProxyStrategy(group.name, strategyButton.dataset.proxyStrategy);
+      return;
+    }
     const t = ev.target.closest("button[data-test]");
     if (t) {
       const g = groups[Number(t.dataset.test)];
       if (!g) return;
-      const previousText = t.textContent;
-      t.disabled = true; t.textContent = "測速中…";
-      try {
-        const res = demo ? await demoApi("test_group_delay", g.name) : await api("test_group_delay", g.name);
-        if (res && res.ok) {
-          groupDelays[g.name] = res.delays || {};
-          nodeDelayUpdated[g.name] = nodeDelayUpdated[g.name] || {};
-          for (const nodeName of Object.keys(res.delays || {})) nodeDelayUpdated[g.name][nodeName] = new Date().toISOString();
-          recordDelayHistory(g.name, res.delays || {});
-          renderGroups();
-          if (page === "stats") renderNodeHealth();
-          toast("測速完成", "ok");
-        } else toast((res && res.error) || "測速失敗", "error");
-      } catch (e) { toast(String(e), "error"); }
-      finally {
-        t.disabled = false;
-        t.textContent = previousText || "測速目前組";
-      }
+      if (groupTestState && groupTestState.groupName === g.name) cancelGroupTest();
+      else runGroupTest(g);
       return;
     }
     const more = ev.target.closest("[data-node-more]");
@@ -2197,18 +2557,21 @@ function bindActions() {
       retest.textContent = "測試中";
       try {
         const res = demo ? await demoApi("test_node_delay", retest.dataset.retestNode) : await api("test_node_delay", retest.dataset.retestNode);
-        if (res && res.ok) {
-          const group = groups[proxyGroupIndex];
-          if (group) {
-            groupDelays[group.name] = groupDelays[group.name] || {};
-            groupDelays[group.name][res.name] = res.delay;
-          }
+        const group = groups[proxyGroupIndex];
+        if (group) {
+          const nodeName = (res && res.name) || retest.dataset.retestNode;
+          const delay = res && res.ok ? (Number(res.delay) || 0) : 0;
+          const reason = res && res.ok ? (delay ? "" : "timeout") : String((res && res.error) || "test failed");
+          groupDelays[group.name] = groupDelays[group.name] || {};
+          groupDelays[group.name][nodeName] = delay;
           nodeDelayUpdated[group.name] = nodeDelayUpdated[group.name] || {};
-          nodeDelayUpdated[group.name][res.name] = new Date().toISOString();
-          recordDelayHistory(group.name, { [res.name]: res.delay });
+          nodeDelayUpdated[group.name][nodeName] = new Date().toISOString();
+          recordDelayHistory(group.name, { [nodeName]: delay }, { [nodeName]: reason });
           renderGroups();
-          toast(res.delay > 0 ? "節點延遲：" + res.delay + " ms" : "節點逾時", res.delay > 0 ? "ok" : "error");
-        } else toast((res && res.error) || "節點測試失敗", "error");
+          await applyProxyStrategy();
+        }
+        if (res && res.ok) toast(res.delay > 0 ? "節點延遲：" + res.delay + " ms" : "節點逾時", res.delay > 0 ? "ok" : "error");
+        else toast((res && res.error) || "節點測試失敗", "error");
       } catch (e) { toast(String(e), "error"); }
       finally { retest.disabled = false; retest.textContent = "重測"; }
       return;
@@ -2218,7 +2581,14 @@ function bindActions() {
     if (n) {
       const res = demo ? await demoApi("select_proxy", n.dataset.group, n.dataset.node) : await api("select_proxy", n.dataset.group, n.dataset.node);
       if (res && res.ok === false) toast(res.error || "切換失敗", "error");
-      else toast("已切換節點", "ok");
+      else {
+        const group = groups[proxyGroupIndex];
+        if (group && proxyStrategy(group.name) === "fixed") {
+          proxyFixedNodes[group.name] = n.dataset.node;
+          saveProxyStrategy();
+        }
+        toast("已切換節點", "ok");
+      }
       await refreshGroups();
     }
   });
@@ -2558,6 +2928,32 @@ function bindActions() {
   $("#vpn-profile-modal").addEventListener("click", (ev) => {
     if (ev.target === $("#vpn-profile-modal")) closeVpnProfileModal();
   });
+
+  $$(".network-mode-btn").forEach((button) => {
+    button.addEventListener("click", async () => {
+      if (networkModeBusy) return;
+      const mode = button.dataset.networkMode;
+      networkModeBusy = true;
+      $$(".network-mode-btn").forEach((item) => { item.disabled = true; });
+      try {
+        const res = demo ? await demoApi("set_network_mode", mode) : await api("set_network_mode", mode);
+        if (!res || !res.ok) toast((res && res.error) || "切換網路模式失敗", "error");
+        else toast("網路接管模式已更新", "ok");
+        await refreshState();
+        await refreshVpn(true);
+      } catch (e) { toast(String(e), "error"); }
+      finally {
+        networkModeBusy = false;
+        $$(".network-mode-btn").forEach((item) => { item.disabled = false; });
+        renderNetworkMode();
+      }
+    });
+  });
+  $("#btn-network-diagnostics").addEventListener("click", runNetworkDiagnostics);
+  $("#btn-repair-ipv6").addEventListener("click", (ev) => repairNetwork("ipv6", ev.currentTarget));
+  $("#btn-repair-dns").addEventListener("click", (ev) => repairNetwork("dns", ev.currentTarget));
+  $("#btn-repair-dns-system").addEventListener("click", (ev) => repairNetwork("dns-system", ev.currentTarget));
+  $("#btn-flush-dns").addEventListener("click", (ev) => repairNetwork("flush", ev.currentTarget));
 
   $$("[data-open-url]").forEach((b) => b.addEventListener("click", () => {
     const url = b.dataset.openUrl;
