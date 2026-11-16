@@ -1,4 +1,5 @@
 .tmp/
+.tmp-smoke-*/
 build/
 dist/
 tauri/target/
@@ -6,6 +7,7 @@ __pycache__/
 *.pyc
 *.pyo
 *.spec
+!KumoRoute.spec
 client/core/*.exe
 client/core/mihomo.exe
 client/core/geoip.metadb
