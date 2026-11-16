@@ -60,6 +60,7 @@ client/                 共用 UI＋Python 後備版
   core/                 mihomo.exe＋geodata（不提交）與 GPL-3.0 授權文本
   tools/                fetch_core / make_icon
 site/                   下載站（GitHub Pages；截圖原檔在 packaging/screenshots）
+docs/                   部署與鏡像說明
 .github/workflows/      Pages 部署工作流
 ```
 
@@ -106,13 +107,15 @@ Pages：Settings → Pages → Source 選「GitHub Actions」，推送後自動�
 - `site/404.html` 為 GitHub Pages 錯誤頁；各頁以 `<meta http-equiv="Content-Security-Policy">` 限制來源（Pages 無法送 response header）。
 - `python scripts/release.py <version>` 會同步版本字串並刷新 `site/sitemap.xml` 的 `<lastmod>`。
 
-## 鏡像（騰訊雲裸 IP）
+## 部署與鏡像
 
-- 主站：https://cypwlp.github.io/kumoroute/ （GitHub Pages）
-- IP 備援：http://129.204.149.106/
-- 自訂鏡像：`kumoroute.cypilu.cloud`、`kumoroute.cypilu.online`（暫緩；中國大陸主機需 ICP 備案才能穩定使用 HTTPS）
-- 同步：`bash packaging/deploy-tencent.sh`（SSH 到 `ubuntu@129.204.149.106`，上傳 `site/` 到 `/var/www/kumoroute`）
-- nginx 站點：`/etc/nginx/sites-available/kumoroute`；Let’s Encrypt 憑證已配置，待域名可合規對外服務後啟用
+- 主站：https://cypwlp.github.io/kumoroute/（GitHub Pages，push `site/**` 自動部署）
+- 第二站：Cloudflare Pages（`.github/workflows/deploy-cloudflare.yml`，需 CF secrets；提供真正的 HTTP 安全標頭與自訂域名）
+- 裸 IP 備援：http://129.204.149.106/（`bash packaging/deploy-tencent.sh`）
+- 程式碼鏡像：Gitee（`.github/workflows/mirror-gitee.yml`）。Gitee Pages 已於 2024 年停止服務，因此不提供 gitee.io 站點。
+- 自訂鏡像域名：`kumoroute.cypilu.cloud`、`kumoroute.cypilu.online`（騰訊雲主機需 ICP 備案才能穩定使用 HTTPS；改用 Cloudflare Pages 可免備案）
+
+完整設定步驟見 [docs/deploy.md](docs/deploy.md)。
 
 本機打包（已編譯後）：`python packaging/pack.py`，產物在 `dist/`。
 

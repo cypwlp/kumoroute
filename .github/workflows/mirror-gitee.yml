@@ -1,0 +1,77 @@
+name: Mirror repository to Gitee
+
+# Gitee Pages was discontinued in 2024, so Gitee is used purely as a code
+# mirror for mainland-China visitors. Set up a Gitee repo plus an SSH deploy
+# key (Settings > Deploy Keys, write access) and store:
+#   GITEE_SSH_KEY          - private half of that deploy key
+#   GITEE_SSH_KNOWN_HOSTS  - output of `ssh-keyscan gitee.com`
+#   GITEE_REPO             - variable, e.g. git@gitee.com:cypwlp/kumoroute.git
+# Without them the job skips, so forks are unaffected.
+
+on:
+  push:
+    branches: [main]
+    tags: ["v*"]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: mirror-gitee
+  cancel-in-progress: true
+
+jobs:
+  mirror:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check mirror credentials
+        id: creds
+        env:
+          KEY: ${{ secrets.GITEE_SSH_KEY }}
+          REPO: ${{ vars.GITEE_REPO }}
+        run: |
+          if [ -n "$KEY" ] && [ -n "$REPO" ]; then
+            echo "enabled=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "enabled=false" >> "$GITHUB_OUTPUT"
+            echo "::notice::Gitee mirror not configured - skipping"
+          fi
+
+      - name: Checkout full history
+        if: steps.creds.outputs.enabled == 'true'
+        uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
+
+      - name: Configure SSH
+        if: steps.creds.outputs.enabled == 'true'
+        env:
+          KEY: ${{ secrets.GITEE_SSH_KEY }}
+          KNOWN_HOSTS: ${{ secrets.GITEE_SSH_KNOWN_HOSTS }}
+        run: |
+          mkdir -p ~/.ssh && chmod 700 ~/.ssh
+          printf '%s\n' "$KEY" > ~/.ssh/gitee && chmod 600 ~/.ssh/gitee
+          if [ -n "$KNOWN_HOSTS" ]; then
+            printf '%s\n' "$KNOWN_HOSTS" > ~/.ssh/known_hosts
+          else
+            ssh-keyscan -t ed25519,rsa gitee.com > ~/.ssh/known_hosts 2>/dev/null
+          fi
+          chmod 644 ~/.ssh/known_hosts
+          cat > ~/.ssh/config <<'CFG'
+          Host gitee.com
+            HostName gitee.com
+            IdentityFile ~/.ssh/gitee
+            IdentitiesOnly yes
+            StrictHostKeyChecking yes
+          CFG
+
+      - name: Push mirror
+        if: steps.creds.outputs.enabled == 'true'
+        env:
+          REPO: ${{ vars.GITEE_REPO }}
+        run: |
+          git push --prune "$REPO" \
+            "+refs/heads/*:refs/heads/*" \
+            "+refs/tags/*:refs/tags/*"
+          echo "mirrored to $REPO"

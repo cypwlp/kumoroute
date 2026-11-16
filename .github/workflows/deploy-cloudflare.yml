@@ -1,0 +1,56 @@
+name: Deploy site to Cloudflare Pages
+
+# Second, independent host for site/. GitHub Pages stays the primary; this runs
+# only when the optional Cloudflare secrets exist, so the repo works for forks.
+#
+# Required repository secrets:
+#   CLOUDFLARE_API_TOKEN   - Pages:Edit token (Account > API Tokens)
+#   CLOUDFLARE_ACCOUNT_ID  - Account ID from the Cloudflare dashboard
+# Optional repository variable:
+#   CLOUDFLARE_PROJECT     - Pages project name (default: kumoroute)
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - "site/**"
+      - ".github/workflows/deploy-cloudflare.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: cloudflare-pages
+  cancel-in-progress: true
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+
+      - name: Check Cloudflare credentials
+        id: creds
+        env:
+          TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          ACCOUNT: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+        run: |
+          if [ -n "$TOKEN" ] && [ -n "$ACCOUNT" ]; then
+            echo "enabled=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "enabled=false" >> "$GITHUB_OUTPUT"
+            echo "::notice::Cloudflare secrets not configured - skipping Pages deploy"
+          fi
+
+      - name: Deploy site/
+        if: steps.creds.outputs.enabled == 'true'
+        uses: cloudflare/wrangler-action@v3
+        with:
+          apiToken: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          accountId: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          command: >-
+            pages deploy site
+            --project-name=${{ vars.CLOUDFLARE_PROJECT || 'kumoroute' }}
+            --branch=main
+            --commit-dirty=true

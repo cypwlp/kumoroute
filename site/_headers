@@ -1,0 +1,21 @@
+# Cloudflare Pages response headers for the download site.
+# GitHub Pages ignores this file (it cannot send custom headers); it is picked
+# up only by Cloudflare Pages.
+
+/assets/*
+  Cache-Control: public, max-age=604800
+  X-Content-Type-Options: nosniff
+
+/style.css
+  Cache-Control: public, max-age=0, must-revalidate
+
+/app.js
+  Cache-Control: public, max-age=0, must-revalidate
+
+/*
+  X-Content-Type-Options: nosniff
+  Referrer-Policy: strict-origin-when-cross-origin
+  X-Frame-Options: DENY
+  Permissions-Policy: geolocation=(), microphone=(), camera=(), payment=()
+  Strict-Transport-Security: max-age=31536000; includeSubDomains
+  Content-Security-Policy: default-src 'self'; img-src 'self' data:; style-src 'self'; script-src 'self'; connect-src 'self'; object-src 'none'; base-uri 'self'; form-action 'none'; frame-ancestors 'none'
