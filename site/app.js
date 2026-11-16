@@ -1,5 +1,7 @@
 "use strict";
-// trigger deploy
+// Keeps repo/download URLs in one place. All links are also hard-coded in the
+// HTML so the page still works when scripting is blocked; this script only
+// rewrites them when REPO_URL / filenames change.
 
 // GitHub repo（部署前如需更換，改這裡）
 const REPO_URL = "https://github.com/cypwlp/kumoroute";
@@ -14,9 +16,10 @@ const ASSETS = {
   "mac-dmg": "KumoRoute-macos-universal.dmg",
 };
 
-document.getElementById("github-top").href = REPO_URL;
-document.getElementById("github-btn").href = REPO_URL;
-document.getElementById("github-foot").href = REPO_URL;
+["github-top", "github-btn", "github-foot"].forEach((id) => {
+  const el = document.getElementById(id);
+  if (el) el.href = REPO_URL;
+});
 
 Object.entries(ASSETS).forEach(([key, file]) => {
   const elements = new Set([

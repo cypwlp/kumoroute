@@ -59,7 +59,7 @@ client/                 共用 UI＋Python 後備版
   app.py                Python 後備後端
   core/                 mihomo.exe＋geodata（不提交）與 GPL-3.0 授權文本
   tools/                fetch_core / make_icon
-site/                   下載站（GitHub Pages）
+site/                   下載站（GitHub Pages；截圖原檔在 packaging/screenshots）
 .github/workflows/      Pages 部署工作流
 ```
 
@@ -98,6 +98,13 @@ git push origin v0.8.1
 
 下載站按鈕指向 `releases/latest/download/KumoRoute-win-x64.zip`（見 `site/app.js`）。
 Pages：Settings → Pages → Source 選「GitHub Actions」，推送後自動部署 `site/`。
+
+下載站維護：
+
+- 截圖原檔放 `packaging/screenshots/*.png`（不進部署目錄），改圖後執行 `python scripts/optimize_site_images.py` 產生 `site/assets/*-800.webp`、`*-1600.webp` 與 1200×630 的 `og.jpg`。
+- 頁面全部下載連結都寫死在 HTML（`app.js` 只做 URL 覆寫），JS 被攔截也能下載。
+- `site/404.html` 為 GitHub Pages 錯誤頁；各頁以 `<meta http-equiv="Content-Security-Policy">` 限制來源（Pages 無法送 response header）。
+- `python scripts/release.py <version>` 會同步版本字串並刷新 `site/sitemap.xml` 的 `<lastmod>`。
 
 ## 鏡像（騰訊雲裸 IP）
 

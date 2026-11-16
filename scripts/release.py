@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import argparse
+import datetime
 import re
 from pathlib import Path
 
@@ -54,7 +55,21 @@ def bump(new_version: str) -> None:
     if old_block not in text:
         raise SystemExit("Cargo.lock 找不到 kumoroute package 版本")
     lock.write_text(text.replace(old_block, new_block, 1), encoding="utf-8", newline="\n")
+    stale_sitemap()
     print(f"bumped {old_version} -> {new_version}")
+
+
+def stale_sitemap() -> None:
+    """Refresh <lastmod> in site/sitemap.xml so crawlers see the new release."""
+    path = ROOT / "site/sitemap.xml"
+    if not path.exists():
+        return
+    today = datetime.date.today().isoformat()
+    text = path.read_text(encoding="utf-8")
+    updated = re.sub(
+        r"<lastmod>[^<]*</lastmod>", f"<lastmod>{today}</lastmod>", text
+    )
+    path.write_text(updated, encoding="utf-8", newline="\n")
 
 
 def check() -> None:

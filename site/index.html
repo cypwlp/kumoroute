@@ -2,6 +2,7 @@
 <html lang="zh-Hant">
 <head>
 <meta charset="utf-8">
+<meta http-equiv="Content-Security-Policy" content="default-src 'self'; img-src 'self' data:; style-src 'self'; script-src 'self'; connect-src 'self'; object-src 'none'; base-uri 'self'; form-action 'none'">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <meta name="theme-color" content="#070a10">
 <title>KumoRoute — 輕量 Mihomo 跨平台桌面客戶端</title>
@@ -13,12 +14,19 @@
 <meta property="og:title" content="KumoRoute — 輕量 Mihomo 桌面客戶端">
 <meta property="og:description" content="本機優先、開源免費的 Mihomo 桌面客戶端，內建 VPN／代理協調、節點品質策略與網路診斷。">
 <meta property="og:url" content="https://cypwlp.github.io/kumoroute/">
-<meta property="og:image" content="https://cypwlp.github.io/kumoroute/assets/screenshot-overview.png">
+<meta property="og:image" content="https://cypwlp.github.io/kumoroute/assets/og.jpg">
+<meta property="og:image:width" content="1200">
+<meta property="og:image:height" content="630">
+<meta property="og:image:type" content="image/jpeg">
+<meta property="og:image:alt" content="KumoRoute 桌面介面截圖">
 <meta name="twitter:card" content="summary_large_image">
 <meta name="twitter:title" content="KumoRoute — 輕量 Mihomo 桌面客戶端">
 <meta name="twitter:description" content="本機優先、開源免費的 Mihomo 桌面客戶端，內建 VPN／代理協調、節點品質策略與網路診斷。">
-<meta name="twitter:image" content="https://cypwlp.github.io/kumoroute/assets/screenshot-overview.png">
+<meta name="twitter:image" content="https://cypwlp.github.io/kumoroute/assets/og.jpg">
+<meta name="twitter:image:alt" content="KumoRoute 桌面介面截圖">
 <script type="application/ld+json">{"@context":"https://schema.org","@type":"SoftwareApplication","name":"KumoRoute","applicationCategory":"UtilitiesApplication","operatingSystem":"Windows 10/11, Linux, macOS","description":"基於 mihomo 核心的輕量、本機優先桌面客戶端，支援 VPN／代理協調、節點品質策略與網路診斷。","url":"https://cypwlp.github.io/kumoroute/","downloadUrl":"https://github.com/cypwlp/kumoroute/releases/latest","codeRepository":"https://github.com/cypwlp/kumoroute","license":"https://github.com/cypwlp/kumoroute/blob/main/LICENSE","offers":{"@type":"Offer","price":"0","priceCurrency":"USD"}}</script>
+<script type="application/ld+json">{"@context":"https://schema.org","@type":"FAQPage","mainEntity":[{"@type":"Question","name":"Windows 顯示「已保護您的電腦」？","acceptedAnswer":{"@type":"Answer","text":"這是未簽名程式的 SmartScreen 提示。專案開源，可自行檢查原始碼；設定簽章 secrets 後，Release 會自動產生 Authenticode 簽章。"}},{"@type":"Question","name":"更新需要先刪除舊版嗎？","acceptedAnswer":{"@type":"Answer","text":"不需要。Windows 安裝版使用原地更新模式，只顯示精簡進度並自動重啟；ZIP 版同樣會備份、覆蓋並套用更新，失敗時可還原上一版。設定、訂閱與 VPN 憑證都保存在使用者資料夾。"}},{"@type":"Question","name":"需要自己準備節點嗎？","acceptedAnswer":{"@type":"Answer","text":"是。KumoRoute 只提供客戶端，不包含或販售節點與訂閱服務。請自備合法的 Clash／Mihomo 配置。"}},{"@type":"Question","name":"資料會上傳到哪裡？","acceptedAnswer":{"@type":"Answer","text":"不會。設定、訂閱、日誌與統計保存在本機（%APPDATA%\\KumoRoute），沒有帳號系統或背景上傳。"}},{"@type":"Question","name":"支援哪些平台？","acceptedAnswer":{"@type":"Answer","text":"v0.8.1 提供 Windows（安裝包／免安裝）、Linux（AppImage／deb）與 macOS（Universal dmg）。手機版尚未提供。"}},{"@type":"Question","name":"VPN 和系統代理怎麼選？","acceptedAnswer":{"@type":"Answer","text":"VPN 頁提供只用代理、只用 VPN、兩者共存。連線成功後會實際發送 HTTP 請求驗證；若 VPN 建立但網路不可用，會自動斷線並恢復原本代理。"}},{"@type":"Question","name":"備份會包含 VPN 密碼嗎？","acceptedAnswer":{"@type":"Answer","text":"不會。JSON 備份包含設定、遠端訂閱與本機 YAML；Windows VPN 憑證仍只存在系統認證管理員。還原前會先建立安全備份。"}},{"@type":"Question","name":"節點逾時怎麼辦？","acceptedAnswer":{"@type":"Answer","text":"使用重測或整組測速。代理頁會顯示成功率、抖動與最近失敗原因，並自動排除連續兩次逾時的節點。"}},{"@type":"Question","name":"可以從舊版 MyClash 升級嗎？","acceptedAnswer":{"@type":"Answer","text":"可以。首次啟動會自動遷移舊資料，憑證與設定不會因更名而遺失。"}}]}</script>
+<link rel="preload" as="image" href="assets/screenshot-overview-1600.webp" imagesrcset="assets/screenshot-overview-800.webp 800w, assets/screenshot-overview-1600.webp 1600w" imagesizes="(max-width: 900px) 92vw, 540px" fetchpriority="high">
 <link rel="stylesheet" href="style.css?v=0.8.1">
 </head>
 <body>
@@ -36,18 +44,18 @@
       <div class="badge">v0.8.1 · Windows / Linux / macOS</div>
       <h1>網路切換，<br><span class="grad">不該這麼複雜。</span></h1>
       <p class="lead">KumoRoute 把 Mihomo、Windows VPN、節點品質與網路診斷收進一個乾淨的本機桌面介面。沒有廣告，沒有帳號，也不會上傳你的設定。</p>
-      <div class="cta"><a class="btn primary big" id="download-btn" href="#" target="_blank" rel="noopener">下載 Windows 版<span class="sub">安裝版 · 支援自動更新</span></a><a class="btn ghost big" id="github-btn" href="#" target="_blank" rel="noopener">查看原始碼</a></div>
+      <div class="cta"><a class="btn primary big" id="download-btn" href="https://github.com/cypwlp/kumoroute/releases/latest/download/KumoRoute-win-x64-setup.exe" data-dl="download-btn" target="_blank" rel="noopener">下載 Windows 版<span class="sub">安裝版 · 支援自動更新</span></a><a class="btn ghost big" id="github-btn" href="#" target="_blank" rel="noopener">查看原始碼</a></div>
       <div class="trust-row"><span>本機優先</span><span>開源 MIT</span><span>三平台支援</span><span>無需登錄</span></div>
     </div>
-    <div class="hero-visual"><div class="hero-glow"></div><div class="app-frame"><div class="window-bar"><i></i><i></i><i></i></div><img src="assets/screenshot-overview.png" alt="KumoRoute 概覽介面"></div><div class="floating-card float-a"><b>VPN + 代理</b><span>自動協調與回滾</span></div><div class="floating-card float-b"><b>節點品質</b><span>成功率 · 抖動 · 延遲</span></div></div>
+    <div class="hero-visual"><div class="hero-glow"></div><div class="app-frame"><div class="window-bar"><i></i><i></i><i></i></div><img src="assets/screenshot-overview-1600.webp" srcset="assets/screenshot-overview-800.webp 800w, assets/screenshot-overview-1600.webp 1600w" sizes="(max-width: 900px) 92vw, 540px" width="2240" height="1440" fetchpriority="high" decoding="async" alt="KumoRoute 概覽介面"></div><div class="floating-card float-a"><b>VPN + 代理</b><span>自動協調與回滾</span></div><div class="floating-card float-b"><b>節點品質</b><span>成功率 · 抖動 · 延遲</span></div></div>
   </section>
 
   <section class="download-section" id="download">
     <div class="section-head"><div><span class="eyebrow">DOWNLOAD</span><h2>選一個平台，立即開始</h2></div><p>Windows 推薦安裝版；ZIP 適合免安裝使用。Linux 與 macOS 提供原生打包。</p></div>
     <div class="download-grid">
-      <article class="download-card featured"><div class="platform-head"><span class="platform-icon">⊞</span><div><h3>Windows 10/11</h3><span class="pill">推薦</span></div></div><p>安裝版支援原地覆蓋更新，只顯示精簡進度並自動重啟，不需先卸載；另有下載進度、取消與上一版失敗回復。</p><div class="download-actions"><a class="btn primary" id="win-setup" data-dl="win-setup" href="#" target="_blank" rel="noopener">下載安裝版 .exe</a><a class="btn ghost small" id="win-zip" data-dl="win-zip" href="#" target="_blank" rel="noopener">免安裝 .zip</a></div></article>
-      <article class="download-card"><div class="platform-head"><span class="platform-icon">◈</span><div><h3>Linux x86_64</h3></div></div><p>AppImage 免安裝直接執行；DEB 適合 Debian / Ubuntu。需要 WebKitGTK 4.1。</p><div class="download-actions"><a class="btn ghost" id="linux-appimage" data-dl="linux-appimage" href="#" target="_blank" rel="noopener">下載 AppImage</a><a class="btn ghost small" id="linux-deb" data-dl="linux-deb" href="#" target="_blank" rel="noopener">.deb</a></div></article>
-      <article class="download-card"><div class="platform-head"><span class="platform-icon">⌘</span><div><h3>macOS Universal</h3></div></div><p>Intel 與 Apple Silicon 通用 DMG。未簽名版本首次開啟請右鍵 →「打開」。</p><div class="download-actions"><a class="btn ghost" id="mac-dmg" data-dl="mac-dmg" href="#" target="_blank" rel="noopener">下載 .dmg</a></div></article>
+      <article class="download-card featured"><div class="platform-head"><span class="platform-icon">⊞</span><div><h3>Windows 10/11</h3><span class="pill">推薦</span></div></div><p>安裝版支援原地覆蓋更新，只顯示精簡進度並自動重啟，不需先卸載；另有下載進度、取消與上一版失敗回復。</p><div class="download-actions"><a class="btn primary" id="win-setup" data-dl="win-setup" href="https://github.com/cypwlp/kumoroute/releases/latest/download/KumoRoute-win-x64-setup.exe" target="_blank" rel="noopener">下載安裝版 .exe</a><a class="btn ghost small" id="win-zip" data-dl="win-zip" href="https://github.com/cypwlp/kumoroute/releases/latest/download/KumoRoute-win-x64.zip" target="_blank" rel="noopener">免安裝 .zip</a></div></article>
+      <article class="download-card"><div class="platform-head"><span class="platform-icon">◈</span><div><h3>Linux x86_64</h3></div></div><p>AppImage 免安裝直接執行；DEB 適合 Debian / Ubuntu。需要 WebKitGTK 4.1。</p><div class="download-actions"><a class="btn ghost" id="linux-appimage" data-dl="linux-appimage" href="https://github.com/cypwlp/kumoroute/releases/latest/download/KumoRoute-linux-x86_64.AppImage" target="_blank" rel="noopener">下載 AppImage</a><a class="btn ghost small" id="linux-deb" data-dl="linux-deb" href="https://github.com/cypwlp/kumoroute/releases/latest/download/KumoRoute-linux-amd64.deb" target="_blank" rel="noopener">.deb</a></div></article>
+      <article class="download-card"><div class="platform-head"><span class="platform-icon">⌘</span><div><h3>macOS Universal</h3></div></div><p>Intel 與 Apple Silicon 通用 DMG。未簽名版本首次開啟請右鍵 →「打開」。</p><div class="download-actions"><a class="btn ghost" id="mac-dmg" data-dl="mac-dmg" href="https://github.com/cypwlp/kumoroute/releases/latest/download/KumoRoute-macos-universal.dmg" target="_blank" rel="noopener">下載 .dmg</a></div></article>
     </div>
   </section>
 
@@ -70,7 +78,7 @@
 
   <section class="section" id="screens">
     <div class="section-head"><div><span class="eyebrow">INTERFACE</span><h2>資訊清楚，但不吵鬧</h2></div><p>深色／淺色主題，繁體中文／简体中文／English 即時切換。</p></div>
-    <div class="screenshot-grid"><figure class="shot-card large"><img src="assets/screenshot-proxies.png" alt="KumoRoute 代理與節點品質介面"><figcaption><b>代理與節點品質</b><span>延遲、成功率、抖動與策略切換</span></figcaption></figure><figure class="shot-card"><img src="assets/screenshot-profiles.png" alt="KumoRoute 訂閱管理介面"><figcaption><b>訂閱管理</b><span>更新、備份與多配置切換</span></figcaption></figure></div>
+    <div class="screenshot-grid"><figure class="shot-card large"><img src="assets/screenshot-proxies-1600.webp" srcset="assets/screenshot-proxies-800.webp 800w, assets/screenshot-proxies-1600.webp 1600w" sizes="(max-width: 900px) 92vw, 660px" width="2240" height="1440" loading="lazy" decoding="async" alt="KumoRoute 代理與節點品質介面"><figcaption><b>代理與節點品質</b><span>延遲、成功率、抖動與策略切換</span></figcaption></figure><figure class="shot-card"><img src="assets/screenshot-profiles-1600.webp" srcset="assets/screenshot-profiles-800.webp 800w, assets/screenshot-profiles-1600.webp 1600w" sizes="(max-width: 900px) 92vw, 440px" width="2240" height="1440" loading="lazy" decoding="async" alt="KumoRoute 訂閱管理介面"><figcaption><b>訂閱管理</b><span>更新、備份與多配置切換</span></figcaption></figure></div>
   </section>
 
   <section class="section faq-section" id="faq">
@@ -88,7 +96,7 @@
     </div>
   </section>
 
-  <section class="final-cta"><div><span class="eyebrow">READY WHEN YOU ARE</span><h2>把網路控制權拿回來。</h2><p>開源、本機優先，沒有帳號，也沒有廣告。</p></div><a class="btn primary big" id="download-bottom" href="#" target="_blank" rel="noopener" data-dl="win-setup">下載最新版</a></section>
+  <section class="final-cta"><div><span class="eyebrow">READY WHEN YOU ARE</span><h2>把網路控制權拿回來。</h2><p>開源、本機優先，沒有帳號，也沒有廣告。</p></div><a class="btn primary big" id="download-bottom" href="https://github.com/cypwlp/kumoroute/releases/latest/download/KumoRoute-win-x64-setup.exe" data-dl="win-setup" target="_blank" rel="noopener">下載最新版</a></section>
 </main>
 
 <footer><div class="foot-inner"><div class="foot-brand"><img src="assets/icon.png" alt=""><span>KumoRoute</span></div><p class="disclaimer">本站僅提供 KumoRoute 的下載與授權資訊，不提供、不銷售任何代理節點或訂閱服務。請自行準備合法配置並遵守所在地法律。客戶端以 MIT 授權；內置 mihomo 核心以 GPL-3.0 授權。</p><p class="foot-links"><a id="github-foot" href="#" target="_blank" rel="noopener">GitHub</a><a href="https://github.com/MetaCubeX/mihomo" target="_blank" rel="noopener">mihomo</a><a href="privacy.html">隱私政策</a><a href="terms.html">服務條款</a></p></div></footer>
