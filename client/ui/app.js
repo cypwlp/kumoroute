@@ -97,7 +97,7 @@ function saveProxyStrategy() {
 }
 
 function loadPreferences() {
-  const defaults = { autoUpdateCheck: true, lastUpdateCheck: 0, theme: "system", language: "system" };
+  const defaults = { autoUpdateCheck: true, lastUpdateCheck: 0, lastUpdatePromptVersion: "", theme: "system", language: "system" };
   try {
     const raw = localStorage.getItem(PREFS_KEY);
     if (!raw) return defaults;
@@ -105,6 +105,7 @@ function loadPreferences() {
     return {
       autoUpdateCheck: parsed.autoUpdateCheck !== false,
       lastUpdateCheck: Number(parsed.lastUpdateCheck || 0),
+      lastUpdatePromptVersion: typeof parsed.lastUpdatePromptVersion === "string" ? parsed.lastUpdatePromptVersion : "",
       theme: ["system", "dark", "light"].includes(parsed.theme) ? parsed.theme : "system",
       language: ["system", "zh-Hant", "zh-Hans", "en"].includes(parsed.language) ? parsed.language : "system",
     };
@@ -194,11 +195,101 @@ function renderUpdateUi() {
   }
 }
 
+function closeUpdatePrompt() {
+  const modal = $("#update-modal");
+  if (modal) modal.classList.add("hidden");
+}
+
+function openUpdatePage() {
+  const url = latestUpdate && latestUpdate.url;
+  if (!url) return;
+  if (demo) window.open(url, "_blank");
+  else api("open_url", url);
+}
+
+function maybeShowUpdatePrompt(update) {
+  if (!update || !update.update_available) return false;
+  const latest = String(update.latest || "").trim();
+  const modal = $("#update-modal");
+  if (!latest || !modal || prefs.lastUpdatePromptVersion === latest) return false;
+  prefs.lastUpdatePromptVersion = latest;
+  savePreferences();
+  $("#update-modal-current").textContent = "v" + (update.current || (state ? state.app_version : "—"));
+  $("#update-modal-latest").textContent = "v" + latest;
+  const asset = update.asset || null;
+  const size = asset && asset.size_mb ? ` · ${asset.size_mb} MB` : "";
+  $("#update-modal-size").textContent = size;
+  const notes = String(update.notes || "").trim().slice(0, 1200);
+  const notesEl = $("#update-modal-notes");
+  if (notesEl) {
+    notesEl.textContent = notes;
+    notesEl.classList.toggle("hidden", !notes);
+  }
+  const updateNow = $("#btn-update-now");
+  if (updateNow) updateNow.disabled = !(asset && asset.download_url && asset.sha256_url);
+  modal.classList.remove("hidden");
+  window.setTimeout(() => $("#btn-update-now")?.focus(), 0);
+  return true;
+}
+
+async function downloadAndInstallUpdate() {
+  const asset = latestUpdate && latestUpdate.asset;
+  if (!asset || !asset.download_url) {
+    openUpdatePage();
+    return;
+  }
+  const settingsButton = $("#btn-install-update");
+  const promptButton = $("#btn-update-now");
+  const buttons = [settingsButton, promptButton].filter(Boolean);
+  buttons.forEach((button) => { button.disabled = true; });
+  if (promptButton) promptButton.textContent = "下載中…";
+  const status = $("#update-status");
+  if (status) status.textContent = "正在下載更新安裝檔…";
+  try {
+    toast("正在下載更新…", "ok");
+    const res = await api("install_update", asset.download_url, asset.filename, asset.sha256_url || "");
+    if (!res || !res.ok) {
+      if (status) status.textContent = (res && res.error) || "下載更新失敗";
+      toast((res && res.error) || "下載更新失敗", "error");
+      return;
+    }
+    toast("更新已下載：", "ok", res.path);
+    if (status) status.textContent = "更新安裝檔已下載，請確認後由系統安裝。";
+    if (confirm(tr("更新安裝檔已下載完成。是否立即啟動安裝程式？\nKumoRoute 會在安裝程式啟動後自動退出。"))) {
+      const run = await api("run_update_installer", res.path);
+      if (!run || !run.ok) toast((run && run.error) || "啟動更新安裝檔失敗", "error");
+    }
+  } catch (e) {
+    if (status) status.textContent = String(e);
+    toast(String(e), "error");
+  } finally {
+    buttons.forEach((button) => { button.disabled = false; });
+    if (promptButton) promptButton.textContent = "立即更新";
+    renderUpdateUi();
+  }
+}
+
 async function checkForUpdates(manual = true) {
   if (demo) {
-    latestUpdate = { ok: true, current: demoCfg.app_version, latest: demoCfg.app_version, update_available: false, url: "https://github.com/cypwlp/kumoroute/releases" };
+    const previewVersion = new URLSearchParams(location.search).get("preview-update");
+    const hasPreviewUpdate = !!previewVersion;
+    latestUpdate = {
+      ok: true,
+      current: demoCfg.app_version,
+      latest: previewVersion || demoCfg.app_version,
+      update_available: hasPreviewUpdate,
+      url: "https://github.com/cypwlp/kumoroute/releases",
+      notes: hasPreviewUpdate ? "本次更新加入每個版本只提示一次的非強制更新視窗，並保留手動檢查與 SHA256 安全驗證。" : "",
+      asset: hasPreviewUpdate ? {
+        filename: "KumoRoute-win-x64-setup.exe",
+        download_url: "https://github.com/cypwlp/kumoroute/releases/latest/download/KumoRoute-win-x64-setup.exe",
+        sha256_url: "https://github.com/cypwlp/kumoroute/releases/latest/download/SHA256SUMS.txt",
+        size_mb: 22.6,
+      } : null,
+    };
     renderUpdateUi();
-    if (manual) toast("目前已是最新版本", "ok");
+    if (hasPreviewUpdate) maybeShowUpdatePrompt(latestUpdate);
+    else if (manual) toast("目前已是最新版本", "ok");
     return latestUpdate;
   }
   const btn = $("#btn-check-update");
@@ -210,8 +301,10 @@ async function checkForUpdates(manual = true) {
       prefs.lastUpdateCheck = Date.now();
       savePreferences();
       renderUpdateUi();
-      if (res.update_available) toast("發現新版本 v" + res.latest + "，可選擇立即更新", "ok");
-      else if (manual) toast("目前已是最新版本", "ok");
+      if (res.update_available) {
+        const prompted = maybeShowUpdatePrompt(res);
+        if (!prompted && manual) toast("發現新版本 v" + res.latest + "，可選擇立即更新", "ok");
+      } else if (manual) toast("目前已是最新版本", "ok");
       return res;
     }
     if (manual) toast((res && res.error) || "檢查更新失敗", "error");
@@ -575,7 +668,7 @@ const demoCfg = {
   mixed_port: 7890,
   controller_port: 9090,
   core_version: "v1.19.33",
-  app_version: "0.7.4",
+  app_version: "0.7.5",
   data_dir: "C:\\Users\\…\\AppData\\Roaming\\KumoRoute",
   test_url: "https://cp.cloudflare.com/generate_204",
   profiles: [
@@ -750,6 +843,8 @@ async function demoApi(fn, ...args) {
     }
     case "network_diagnostics": return { ok: true, ipv6_route: false, ipv6_connectivity: false, ipv6_preferred: true, dns_ok: true, dns_servers: ["192.168.1.1"], doh_templates: 0, dot_templates: 0, dns_encryption_conflict: false, dns_leak_suspected: false, proxy_on: demoCfg.sys_proxy, network_mode: demoCfg.networkMode, issues: [{ type: "ipv6", count: 3, message: "IPv6 連線不可達" }] };
     case "network_repair": return { ok: true, action: String(args[0] || "") };
+    case "install_update": return { ok: true, path: "C:\\Users\\…\\Downloads\\" + String(args[1] || "KumoRoute-update.exe") };
+    case "run_update_installer": return { ok: true };
     case "vpn_open_settings": return { ok: true };
     default: return { ok: true };
   }
@@ -2794,40 +2889,20 @@ function bindActions() {
     if (page === "stats") renderStatsPage();
     if (window.KumoI18n) window.KumoI18n.refresh();
   });
-  $("#btn-open-update").addEventListener("click", () => {
-    if (!latestUpdate || !latestUpdate.url) return;
-    if (demo) window.open(latestUpdate.url, "_blank");
-    else api("open_url", latestUpdate.url);
+  $("#btn-open-update").addEventListener("click", openUpdatePage);
+  $("#btn-install-update").addEventListener("click", downloadAndInstallUpdate);
+  $("#btn-close-update").addEventListener("click", closeUpdatePrompt);
+  $("#btn-update-later").addEventListener("click", closeUpdatePrompt);
+  $("#btn-update-view").addEventListener("click", () => {
+    closeUpdatePrompt();
+    openUpdatePage();
   });
-  $("#btn-install-update").addEventListener("click", async () => {
-    const asset = latestUpdate && latestUpdate.asset;
-    if (!asset || !asset.download_url) {
-      if (latestUpdate && latestUpdate.url) {
-        if (demo) window.open(latestUpdate.url, "_blank");
-        else api("open_url", latestUpdate.url);
-      }
-      return;
-    }
-    const btn = $("#btn-install-update");
-    btn.disabled = true;
-    try {
-      toast("正在下載更新…", "ok");
-      const res = await api("install_update", asset.download_url, asset.filename, asset.sha256_url || "");
-      if (!res || !res.ok) {
-        toast((res && res.error) || "下載更新失敗", "error");
-        return;
-      }
-      toast("更新已下載：", "ok", res.path);
-      $("#update-status").textContent = "更新安裝檔已下載，請確認後由系統安裝。";
-      if (confirm(tr("更新安裝檔已下載完成。是否立即啟動安裝程式？\nKumoRoute 會在安裝程式啟動後自動退出。"))) {
-        const run = await api("run_update_installer", res.path);
-        if (!run || !run.ok) toast((run && run.error) || "啟動更新安裝檔失敗", "error");
-      }
-    } catch (e) {
-      toast(String(e), "error");
-    } finally {
-      renderUpdateUi();
-    }
+  $("#btn-update-now").addEventListener("click", async () => {
+    closeUpdatePrompt();
+    await downloadAndInstallUpdate();
+  });
+  $("#update-modal").addEventListener("click", (ev) => {
+    if (ev.target === $("#update-modal")) closeUpdatePrompt();
   });
   const closeDiagnostics = () => {
     $("#diagnostics-modal").classList.add("hidden");
@@ -2893,7 +2968,8 @@ function bindActions() {
   });
   document.addEventListener("keydown", (ev) => {
     if (ev.key !== "Escape") return;
-    if (!$("#vpn-credential-modal").classList.contains("hidden")) closeVpnCredentialModal();
+    if (!$("#update-modal").classList.contains("hidden")) closeUpdatePrompt();
+    else if (!$("#vpn-credential-modal").classList.contains("hidden")) closeVpnCredentialModal();
     else if (!$("#vpn-profile-modal").classList.contains("hidden")) closeVpnProfileModal();
     else if (!$("#diagnostics-modal").classList.contains("hidden")) closeDiagnostics();
   });

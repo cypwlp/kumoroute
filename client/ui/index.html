@@ -14,7 +14,7 @@
       <img src="icon.png" alt="KumoRoute" class="brand-icon">
       <div>
         <div class="brand-name">KumoRoute</div>
-        <div class="brand-ver" id="app-version">v0.7.4</div>
+        <div class="brand-ver" id="app-version">v0.7.5</div>
       </div>
     </div>
 
@@ -450,6 +450,32 @@
       </div>
     </section>
   </main>
+
+  <div id="update-modal" class="modal hidden" role="dialog" aria-modal="true" aria-labelledby="update-modal-title" aria-describedby="update-modal-summary">
+    <div class="modal-card update-prompt-card">
+      <div class="modal-head">
+        <div>
+          <div class="eyebrow">KumoRoute Update</div>
+          <div class="card-title" id="update-modal-title">發現新版本</div>
+          <p class="hint" id="update-modal-summary">有新版本可用。更新不會自動安裝，你可以稍後再處理。</p>
+        </div>
+        <button class="modal-close" id="btn-close-update" aria-label="稍後再更新">×</button>
+      </div>
+      <div class="update-version-row">
+        <div><span>目前版本</span><b id="update-modal-current">—</b></div>
+        <span class="update-version-arrow" aria-hidden="true">→</span>
+        <div><span>最新版本</span><strong id="update-modal-latest">—</strong></div>
+        <span id="update-modal-size" class="update-prompt-size"></span>
+      </div>
+      <p id="update-modal-notes" class="update-prompt-notes hidden" data-no-i18n></p>
+      <p class="hint">每個新版本只會提示一次；你也可以隨時到設定頁檢查更新。</p>
+      <div class="modal-actions">
+        <button class="btn ghost" id="btn-update-later">稍後</button>
+        <button class="btn ghost" id="btn-update-view">查看更新</button>
+        <button class="btn primary" id="btn-update-now">立即更新</button>
+      </div>
+    </div>
+  </div>
 
   <div id="diagnostics-modal" class="modal hidden" role="dialog" aria-modal="true" aria-labelledby="diagnostics-title">
     <div class="modal-card">

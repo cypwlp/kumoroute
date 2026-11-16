@@ -91,6 +91,11 @@ class UiPersonalizationTests(unittest.TestCase):
             "最近失敗：",
             "DoT 範本：",
             "同時偵測到 DoH 與 DoT，建議只保留一種加密 DNS。",
+            "發現新版本",
+            "有新版本可用。更新不會自動安裝，你可以稍後再處理。",
+            "每個新版本只會提示一次；你也可以隨時到設定頁檢查更新。",
+            "稍後",
+            "下載中…",
         ]
         for source in required:
             self.assertRegex(self.i18n, re.escape(source) + r'"\s*:\s*"')
