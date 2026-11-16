@@ -70,7 +70,9 @@ class UpdateAssetTests(unittest.TestCase):
                 result = api.run_update_installer(str(installer), "0.8.1")
         self.assertTrue(result["ok"], result)
         popen.assert_called_once()
-        self.assertEqual(popen.call_args.args[0], [str(installer), "/P", "/UPDATE", "/R"])
+        args = popen.call_args.args[0]
+        self.assertEqual(Path(args[0]).resolve(), installer.resolve())
+        self.assertEqual(args[1:], ["/P", "/UPDATE", "/R"])
         thread.assert_called_once()
 
     def test_update_prompt_is_shown_once_per_version(self):
