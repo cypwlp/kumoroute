@@ -1,0 +1,111 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta http-equiv="Content-Security-Policy" content="default-src 'self'; img-src 'self' data:; style-src 'self'; script-src 'self'; connect-src 'self'; object-src 'none'; base-uri 'self'; form-action 'none'">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="theme-color" content="#070a10">
+<title>KumoRoute — Lightweight Mihomo desktop client for Windows, Linux and macOS</title>
+<meta name="description" content="KumoRoute is a lightweight cross-platform desktop client built on the mihomo core, with automatic subscription updates and backups, verified VPN/proxy handoff with rollback, node quality policies, real DNS leak tests and safe updates.">
+<link rel="canonical" href="https://cypwlp.github.io/kumoroute/en/">
+<link rel="alternate" hreflang="zh-Hant" href="https://cypwlp.github.io/kumoroute/">
+<link rel="alternate" hreflang="zh-Hans" href="https://cypwlp.github.io/kumoroute/zh-cn/">
+<link rel="alternate" hreflang="en" href="https://cypwlp.github.io/kumoroute/en/">
+<link rel="alternate" hreflang="x-default" href="https://cypwlp.github.io/kumoroute/">
+<link rel="icon" href="../assets/icon.png">
+<meta property="og:type" content="website">
+<meta property="og:site_name" content="KumoRoute">
+<meta property="og:locale" content="en_US">
+<meta property="og:title" content="KumoRoute — Lightweight Mihomo desktop client">
+<meta property="og:description" content="Local-first, open source and free Mihomo desktop client with VPN/proxy coordination, node quality policies and network diagnostics.">
+<meta property="og:url" content="https://cypwlp.github.io/kumoroute/en/">
+<meta property="og:image" content="https://cypwlp.github.io/kumoroute/assets/og.jpg">
+<meta property="og:image:width" content="1200">
+<meta property="og:image:height" content="630">
+<meta property="og:image:type" content="image/jpeg">
+<meta property="og:image:alt" content="KumoRoute desktop interface">
+<meta name="twitter:card" content="summary_large_image">
+<meta name="twitter:title" content="KumoRoute — Lightweight Mihomo desktop client">
+<meta name="twitter:description" content="Local-first, open source and free Mihomo desktop client with VPN/proxy coordination, node quality policies and network diagnostics.">
+<meta name="twitter:image" content="https://cypwlp.github.io/kumoroute/assets/og.jpg">
+<meta name="twitter:image:alt" content="KumoRoute desktop interface">
+<script type="application/ld+json">{"@context":"https://schema.org","@type":"SoftwareApplication","name":"KumoRoute","inLanguage":"en","applicationCategory":"UtilitiesApplication","operatingSystem":"Windows 10/11, Linux, macOS","description":"A lightweight, local-first desktop client built on the mihomo core with VPN/proxy coordination, node quality policies and network diagnostics.","url":"https://cypwlp.github.io/kumoroute/en/","downloadUrl":"https://github.com/cypwlp/kumoroute/releases/latest","codeRepository":"https://github.com/cypwlp/kumoroute","license":"https://github.com/cypwlp/kumoroute/blob/main/LICENSE","offers":{"@type":"Offer","price":"0","priceCurrency":"USD"}}</script>
+<script type="application/ld+json">{"@context":"https://schema.org","@type":"FAQPage","inLanguage":"en","mainEntity":[{"@type":"Question","name":"Why does Windows show a SmartScreen warning?","acceptedAnswer":{"@type":"Answer","text":"That is the SmartScreen prompt for an unsigned binary. The project is open source, so you can review the code yourself; once signing secrets are configured, releases are Authenticode-signed automatically."}},{"@type":"Question","name":"Do I have to uninstall the old version before updating?","acceptedAnswer":{"@type":"Answer","text":"No. The Windows installer updates in place with a compact progress indicator and an automatic restart. The portable build backs up, replaces and applies the update the same way, and can restore the previous build if anything fails. Settings, subscriptions and VPN credentials stay in your user profile."}},{"@type":"Question","name":"Do I need to bring my own nodes?","acceptedAnswer":{"@type":"Answer","text":"Yes. KumoRoute only provides the client; it does not include or sell nodes or subscription services. Bring your own lawful Clash/Mihomo configuration."}},{"@type":"Question","name":"Where is my data uploaded?","acceptedAnswer":{"@type":"Answer","text":"Nowhere. Settings, subscriptions, logs and statistics stay on the local machine (%APPDATA%\\KumoRoute). There is no account system and no background upload."}},{"@type":"Question","name":"Which platforms are supported?","acceptedAnswer":{"@type":"Answer","text":"v0.8.1 ships Windows (installer and portable), Linux (AppImage and deb) and macOS (universal dmg). No mobile build yet."}},{"@type":"Question","name":"VPN or system proxy?","acceptedAnswer":{"@type":"Answer","text":"The VPN page offers proxy only, VPN only and both together. After connecting, KumoRoute sends a real HTTP request to verify connectivity; if the tunnel is up but the network is unusable, it disconnects and restores the previous proxy."}},{"@type":"Question","name":"Do backups include the VPN password?","acceptedAnswer":{"@type":"Answer","text":"No. JSON backups contain settings, remote subscriptions and local YAML files; Windows VPN credentials stay in the system credential manager. A safety backup is taken before restoring."}},{"@type":"Question","name":"What if a node times out?","acceptedAnswer":{"@type":"Answer","text":"Retest it or run the whole group test. The proxies page shows success rate, jitter and the last failure reason, and nodes that time out twice in a row are excluded automatically."}},{"@type":"Question","name":"Can I upgrade from the older MyClash build?","acceptedAnswer":{"@type":"Answer","text":"Yes. On first launch your old data is migrated, so credentials and settings survive the rename."}}]}</script>
+<link rel="preload" as="image" href="../assets/screenshot-overview-1600.webp" imagesrcset="../assets/screenshot-overview-800.webp 800w, ../assets/screenshot-overview-1600.webp 1600w" imagesizes="(max-width: 900px) 92vw, 540px" fetchpriority="high">
+<link rel="stylesheet" href="../style.css?v=0.8.1">
+</head>
+<body>
+<header class="nav">
+  <div class="nav-inner">
+    <a class="brand" href="../"><img src="../assets/icon.png" alt="KumoRoute" width="256" height="256" decoding="async"><span>KumoRoute</span></a>
+    <nav class="nav-links"><a href="#download">Download</a><a href="#features">Features</a><a href="#workflow">How it works</a><a href="#screens">Interface</a><a href="#faq">FAQ</a></nav>
+    <div class="lang-switch" aria-label="Language"><a href="../" hreflang="zh-Hant" lang="zh-Hant">繁中</a><a href="../zh-cn/" hreflang="zh-Hans" lang="zh-Hans">简中</a><a href="./" hreflang="en" lang="en" aria-current="true">EN</a></div>
+    <a class="btn ghost small" id="github-top" href="https://github.com/cypwlp/kumoroute" target="_blank" rel="noopener">GitHub</a>
+  </div>
+</header>
+
+<main>
+  <section class="hero" id="top">
+    <div class="hero-copy">
+      <div class="badge">v0.8.1 · Windows / Linux / macOS</div>
+      <h1>Switching networks<br><span class="grad">shouldn’t be this hard.</span></h1>
+      <p class="lead">KumoRoute folds Mihomo, Windows VPN, node quality and network diagnostics into one clean local desktop UI. No ads, no account, and your configuration never leaves your machine.</p>
+      <div class="cta"><a class="btn primary big" id="download-btn" href="https://github.com/cypwlp/kumoroute/releases/latest/download/KumoRoute-win-x64-setup.exe" data-dl="download-btn" target="_blank" rel="noopener">Download for Windows<span class="sub">Installer · auto-update</span></a><a class="btn ghost big" id="github-btn" href="https://github.com/cypwlp/kumoroute" target="_blank" rel="noopener">View source</a></div>
+      <div class="trust-row"><span>Local-first</span><span>MIT open source</span><span>Three platforms</span><span>No sign-up</span></div>
+    </div>
+    <div class="hero-visual"><div class="hero-glow"></div><div class="app-frame"><div class="window-bar"><i></i><i></i><i></i></div><img src="../assets/screenshot-overview-1600.webp" srcset="../assets/screenshot-overview-800.webp 800w, ../assets/screenshot-overview-1600.webp 1600w" sizes="(max-width: 900px) 92vw, 540px" width="2240" height="1440" fetchpriority="high" decoding="async" alt="KumoRoute overview screen"></div><div class="floating-card float-a"><b>VPN + proxy</b><span>Coordinated, with rollback</span></div><div class="floating-card float-b"><b>Node quality</b><span>Success · jitter · latency</span></div></div>
+  </section>
+
+  <section class="download-section" id="download">
+    <div class="section-head"><div><span class="eyebrow">DOWNLOAD</span><h2>Pick a platform and start</h2></div><p>The Windows installer is recommended; the ZIP is for portable use. Linux and macOS ship native packages.</p></div>
+    <div class="download-grid">
+      <article class="download-card featured"><div class="platform-head"><span class="platform-icon">⊞</span><div><h3>Windows 10/11</h3><span class="pill">Recommended</span></div></div><p>In-place updates only show a compact progress bar and restart the app for you — no uninstall step. Download progress, cancel and rollback to the previous build are built in.</p><div class="download-actions"><a class="btn primary" id="win-setup" data-dl="win-setup" href="https://github.com/cypwlp/kumoroute/releases/latest/download/KumoRoute-win-x64-setup.exe" target="_blank" rel="noopener">Download installer .exe</a><a class="btn ghost small" id="win-zip" data-dl="win-zip" href="https://github.com/cypwlp/kumoroute/releases/latest/download/KumoRoute-win-x64.zip" target="_blank" rel="noopener">Portable .zip</a></div></article>
+      <article class="download-card"><div class="platform-head"><span class="platform-icon">◈</span><div><h3>Linux x86_64</h3></div></div><p>AppImage runs without installing; the DEB targets Debian and Ubuntu. Requires WebKitGTK 4.1.</p><div class="download-actions"><a class="btn ghost" id="linux-appimage" data-dl="linux-appimage" href="https://github.com/cypwlp/kumoroute/releases/latest/download/KumoRoute-linux-x86_64.AppImage" target="_blank" rel="noopener">Download AppImage</a><a class="btn ghost small" id="linux-deb" data-dl="linux-deb" href="https://github.com/cypwlp/kumoroute/releases/latest/download/KumoRoute-linux-amd64.deb" target="_blank" rel="noopener">.deb</a></div></article>
+      <article class="download-card"><div class="platform-head"><span class="platform-icon">⌘</span><div><h3>macOS Universal</h3></div></div><p>One DMG for Intel and Apple Silicon. The build is unsigned, so right-click → Open the first time.</p><div class="download-actions"><a class="btn ghost" id="mac-dmg" data-dl="mac-dmg" href="https://github.com/cypwlp/kumoroute/releases/latest/download/KumoRoute-macos-universal.dmg" target="_blank" rel="noopener">Download .dmg</a></div></article>
+    </div>
+  </section>
+
+  <section class="section" id="features">
+    <div class="section-head centered"><div><span class="eyebrow">BUILT FOR CONTROL</span><h2>One UI for the problems that actually bite</h2></div><p>Instead of piling every switch in one place, proxy, VPN, DNS and node policies are made to work together.</p></div>
+    <div class="feature-grid">
+      <article class="feature-card accent-blue"><div class="feature-icon">↔</div><h3>VPN / proxy coordination</h3><p>Proxy only, VPN only, or both together. Every connection is verified with a real HTTP request and rolled back automatically when it fails.</p><span class="feature-tag">Verified + rollback</span></article>
+      <article class="feature-card accent-violet"><div class="feature-icon">◎</div><h3>Node quality policies</h3><p>Latency, success rate, jitter and the last failure reason; fixed, automatic and lowest-latency modes, with repeated timeouts excluded automatically.</p><span class="feature-tag">Quality first</span></article>
+      <article class="feature-card accent-green"><div class="feature-icon">⌁</div><h3>IPv6 / DNS leak tests</h3><p>Compare the resolver egress with the proxy egress IP to confirm leaks, and check DoH/DoT conflicts plus IPv6 preference problems.</p><span class="feature-tag">Measured, not guessed</span></article>
+      <article class="feature-card accent-amber"><div class="feature-icon">▣</div><h3>Safe updates</h3><p>One prompt per version, SHA256 verification, progress and cancel. Installers upgrade in place; portable builds apply their own patch.</p><span class="feature-tag">No silent install</span></article>
+      <article class="feature-card accent-violet"><div class="feature-icon">⟳</div><h3>Subscription reliability</h3><p>Auto-refresh every 6, 12 or 24 hours, or refresh every subscription at once. A failed core reload rolls back, and backups restore safely.</p><span class="feature-tag">Auto-update + backup</span></article>
+      <article class="feature-card accent-blue"><div class="feature-icon">⌂</div><h3>Local by design</h3><p>No account, no cloud sync. Settings, subscriptions and statistics stay on your machine; VPN credentials live in the Windows credential manager.</p><span class="feature-tag">Local by design</span></article>
+    </div>
+  </section>
+
+  <section class="section workflow-section" id="workflow">
+    <div class="section-head"><div><span class="eyebrow">QUICK START</span><h2>Three steps</h2></div><p>No account to create, no configuration handed to a cloud.</p></div>
+    <div class="steps"><div class="step"><b>01</b><div><h3>Download and install</h3><p>Use the installer on Windows for automatic updates, or pick the portable, Linux or macOS package.</p></div></div><div class="step"><b>02</b><div><h3>Add a Clash subscription</h3><p>Paste a Clash/Mihomo subscription URL, or import a local YAML configuration.</p></div></div><div class="step"><b>03</b><div><h3>Choose how to take over</h3><p>Enable the system proxy or the VPN; KumoRoute handles nodes, DNS and updates from there.</p></div></div></div>
+  </section>
+
+  <section class="section" id="screens">
+    <div class="section-head"><div><span class="eyebrow">INTERFACE</span><h2>Clear, never noisy</h2></div><p>Dark and light themes, with live switching between Traditional Chinese, Simplified Chinese and English.</p></div>
+    <div class="screenshot-grid"><figure class="shot-card large"><img src="../assets/screenshot-proxies-1600.webp" srcset="../assets/screenshot-proxies-800.webp 800w, ../assets/screenshot-proxies-1600.webp 1600w" sizes="(max-width: 900px) 92vw, 660px" width="2240" height="1440" loading="lazy" decoding="async" alt="KumoRoute proxies and node quality screen"><figcaption><b>Proxies and node quality</b><span>Latency, success rate, jitter and policy switching</span></figcaption></figure><figure class="shot-card"><img src="../assets/screenshot-profiles-1600.webp" srcset="../assets/screenshot-profiles-800.webp 800w, ../assets/screenshot-profiles-1600.webp 1600w" sizes="(max-width: 900px) 92vw, 440px" width="2240" height="1440" loading="lazy" decoding="async" alt="KumoRoute subscription management screen"><figcaption><b>Subscription management</b><span>Updates, backups and multiple profiles</span></figcaption></figure></div>
+  </section>
+
+  <section class="section faq-section" id="faq">
+    <div class="section-head"><div><span class="eyebrow">FAQ</span><h2>Frequently asked</h2></div><p>Only what you need to know before downloading.</p></div>
+    <div class="faq-grid">
+      <details><summary>Why does Windows show a SmartScreen warning?</summary><p>That is the SmartScreen prompt for an unsigned binary. The project is open source, so you can review the code yourself; once signing secrets are configured, releases are Authenticode-signed automatically.</p></details>
+      <details><summary>Do I have to uninstall the old version first?</summary><p>No. The Windows installer updates in place with a compact progress indicator and an automatic restart. The portable build backs up, replaces and applies the update the same way, and restores the previous build if anything fails. Settings, subscriptions and VPN credentials stay in your user profile.</p></details>
+      <details><summary>Do I need to bring my own nodes?</summary><p>Yes. KumoRoute only provides the client; it does not include or sell nodes or subscription services. Bring your own lawful Clash/Mihomo configuration.</p></details>
+      <details><summary>Where is my data uploaded?</summary><p>Nowhere. Settings, subscriptions, logs and statistics stay on the local machine (%APPDATA%\KumoRoute). There is no account system and no background upload.</p></details>
+      <details><summary>Which platforms are supported?</summary><p>v0.8.1 ships Windows (installer and portable), Linux (AppImage and deb) and macOS (universal dmg). No mobile build yet.</p></details>
+      <details><summary>VPN or system proxy?</summary><p>The VPN page offers proxy only, VPN only and both together. After connecting, KumoRoute sends a real HTTP request to verify connectivity; if the tunnel is up but the network is unusable, it disconnects and restores the previous proxy.</p></details>
+      <details><summary>Do backups include the VPN password?</summary><p>No. JSON backups contain settings, remote subscriptions and local YAML files; Windows VPN credentials stay in the system credential manager. A safety backup is taken before restoring.</p></details>
+      <details><summary>What if a node times out?</summary><p>Retest it or run the whole group test. The proxies page shows success rate, jitter and the last failure reason, and nodes that time out twice in a row are excluded automatically.</p></details>
+      <details><summary>Can I upgrade from the older MyClash build?</summary><p>Yes. On first launch your old data is migrated, so credentials and settings survive the rename.</p></details>
+    </div>
+  </section>
+
+  <section class="final-cta"><div><span class="eyebrow">READY WHEN YOU ARE</span><h2>Take back control of your network.</h2><p>Open source, local-first, no account and no ads.</p></div><a class="btn primary big" id="download-bottom" href="https://github.com/cypwlp/kumoroute/releases/latest/download/KumoRoute-win-x64-setup.exe" data-dl="win-setup" target="_blank" rel="noopener">Download the latest</a></section>
+</main>
+
+<footer><div class="foot-inner"><div class="foot-brand"><img src="../assets/icon.png" alt="" width="256" height="256" decoding="async"><span>KumoRoute</span></div><p class="disclaimer">This site only hosts download and licensing information for KumoRoute. It does not provide or sell proxy nodes or subscription services — bring your own lawful configuration and follow the law where you live. The client is MIT licensed; the bundled mihomo core is GPL-3.0.</p><p class="foot-links"><a id="github-foot" href="https://github.com/cypwlp/kumoroute" target="_blank" rel="noopener">GitHub</a><a href="https://github.com/MetaCubeX/mihomo" target="_blank" rel="noopener">mihomo</a><a href="../privacy.html">Privacy policy</a><a href="../terms.html">Terms of service</a></p></div></footer>
+<script src="../app.js?v=0.8.1"></script>
+</body>
+</html>

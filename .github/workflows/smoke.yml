@@ -3,6 +3,12 @@ name: Clean runner smoke tests
 on:
   push:
     branches: [main]
+    # Site and doc edits cannot break the app build; skip the three-platform
+    # rebuild for them. Release tags and PRs still run every matrix entry.
+    paths-ignore:
+      - "site/**"
+      - "docs/**"
+      - "**.md"
   pull_request:
   workflow_dispatch:
 

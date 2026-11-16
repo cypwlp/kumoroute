@@ -1,0 +1,111 @@
+<!DOCTYPE html>
+<html lang="zh-Hans">
+<head>
+<meta charset="utf-8">
+<meta http-equiv="Content-Security-Policy" content="default-src 'self'; img-src 'self' data:; style-src 'self'; script-src 'self'; connect-src 'self'; object-src 'none'; base-uri 'self'; form-action 'none'">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="theme-color" content="#070a10">
+<title>KumoRoute — 轻量 Mihomo 跨平台桌面客户端</title>
+<meta name="description" content="KumoRoute 是基于 mihomo 核心的轻量跨平台桌面客户端，支持订阅自动更新与备份、VPN／代理真实验证与回滚、节点质量策略、DNS 泄漏实测与安全更新。">
+<link rel="canonical" href="https://cypwlp.github.io/kumoroute/zh-cn/">
+<link rel="alternate" hreflang="zh-Hant" href="https://cypwlp.github.io/kumoroute/">
+<link rel="alternate" hreflang="zh-Hans" href="https://cypwlp.github.io/kumoroute/zh-cn/">
+<link rel="alternate" hreflang="en" href="https://cypwlp.github.io/kumoroute/en/">
+<link rel="alternate" hreflang="x-default" href="https://cypwlp.github.io/kumoroute/">
+<link rel="icon" href="../assets/icon.png">
+<meta property="og:type" content="website">
+<meta property="og:site_name" content="KumoRoute">
+<meta property="og:locale" content="zh_CN">
+<meta property="og:title" content="KumoRoute — 轻量 Mihomo 桌面客户端">
+<meta property="og:description" content="本地优先、开源免费的 Mihomo 桌面客户端，内置 VPN／代理协调、节点质量策略与网络诊断。">
+<meta property="og:url" content="https://cypwlp.github.io/kumoroute/zh-cn/">
+<meta property="og:image" content="https://cypwlp.github.io/kumoroute/assets/og.jpg">
+<meta property="og:image:width" content="1200">
+<meta property="og:image:height" content="630">
+<meta property="og:image:type" content="image/jpeg">
+<meta property="og:image:alt" content="KumoRoute 桌面界面截图">
+<meta name="twitter:card" content="summary_large_image">
+<meta name="twitter:title" content="KumoRoute — 轻量 Mihomo 桌面客户端">
+<meta name="twitter:description" content="本地优先、开源免费的 Mihomo 桌面客户端，内置 VPN／代理协调、节点质量策略与网络诊断。">
+<meta name="twitter:image" content="https://cypwlp.github.io/kumoroute/assets/og.jpg">
+<meta name="twitter:image:alt" content="KumoRoute 桌面界面截图">
+<script type="application/ld+json">{"@context":"https://schema.org","@type":"SoftwareApplication","name":"KumoRoute","inLanguage":"zh-Hans","applicationCategory":"UtilitiesApplication","operatingSystem":"Windows 10/11, Linux, macOS","description":"基于 mihomo 核心的轻量、本地优先桌面客户端，支持 VPN／代理协调、节点质量策略与网络诊断。","url":"https://cypwlp.github.io/kumoroute/zh-cn/","downloadUrl":"https://github.com/cypwlp/kumoroute/releases/latest","codeRepository":"https://github.com/cypwlp/kumoroute","license":"https://github.com/cypwlp/kumoroute/blob/main/LICENSE","offers":{"@type":"Offer","price":"0","priceCurrency":"USD"}}</script>
+<script type="application/ld+json">{"@context":"https://schema.org","@type":"FAQPage","inLanguage":"zh-Hans","mainEntity":[{"@type":"Question","name":"Windows 显示“已保护你的电脑”？","acceptedAnswer":{"@type":"Answer","text":"这是未签名程序的 SmartScreen 提示。项目开源，可自行检查源代码；设置签名 secrets 后，Release 会自动生成 Authenticode 签名。"}},{"@type":"Question","name":"更新前需要先删除旧版吗？","acceptedAnswer":{"@type":"Answer","text":"不需要。Windows 安装版使用原地更新模式，只显示精简进度并自动重启；ZIP 版同样会备份、覆盖并应用更新，失败时可还原上一版。设置、订阅与 VPN 证书都保存在用户文件夹。"}},{"@type":"Question","name":"需要自己准备节点吗？","acceptedAnswer":{"@type":"Answer","text":"是。KumoRoute 只提供客户端，不包含也不销售节点与订阅服务。请自备合法的 Clash／Mihomo 配置。"}},{"@type":"Question","name":"数据会上传到哪？","acceptedAnswer":{"@type":"Answer","text":"不会上传。设置、订阅、日志与统计保存在本机（%APPDATA%\\KumoRoute），没有账号系统或后台上传。"}},{"@type":"Question","name":"支持哪些平台？","acceptedAnswer":{"@type":"Answer","text":"v0.8.1 提供 Windows（安装包／免安装）、Linux（AppImage／deb）与 macOS（Universal dmg）。手机版尚未提供。"}},{"@type":"Question","name":"VPN 和系统代理怎么选？","acceptedAnswer":{"@type":"Answer","text":"VPN 页面提供只用代理、只用 VPN、两者共存。连接成功后会实际发送 HTTP 请求验证；若 VPN 已建立但网络不可用，会自动断开并恢复原代理。"}},{"@type":"Question","name":"备份会包含 VPN 密码吗？","acceptedAnswer":{"@type":"Answer","text":"不会。JSON 备份包含设置、远程订阅与本机 YAML；Windows VPN 证书仍只保存在系统凭据管理器。还原前会先建立安全备份。"}},{"@type":"Question","name":"节点超时怎么办？","acceptedAnswer":{"@type":"Answer","text":"使用重测或整组测速。代理页面会显示成功率、抖动与最近失败原因，并自动排除连续两次超时的节点。"}},{"@type":"Question","name":"可以从旧版 MyClash 升级吗？","acceptedAnswer":{"@type":"Answer","text":"可以。首次启动会自动迁移旧数据，证书与设置不会因更名而丢失。"}}]}</script>
+<link rel="preload" as="image" href="../assets/screenshot-overview-1600.webp" imagesrcset="../assets/screenshot-overview-800.webp 800w, ../assets/screenshot-overview-1600.webp 1600w" imagesizes="(max-width: 900px) 92vw, 540px" fetchpriority="high">
+<link rel="stylesheet" href="../style.css?v=0.8.1">
+</head>
+<body>
+<header class="nav">
+  <div class="nav-inner">
+    <a class="brand" href="../"><img src="../assets/icon.png" alt="KumoRoute" width="256" height="256" decoding="async"><span>KumoRoute</span></a>
+    <nav class="nav-links"><a href="#download">下载</a><a href="#features">功能</a><a href="#workflow">使用方式</a><a href="#screens">界面</a><a href="#faq">常见问题</a></nav>
+    <div class="lang-switch" aria-label="语言"><a href="../" hreflang="zh-Hant" lang="zh-Hant">繁中</a><a href="./" hreflang="zh-Hans" lang="zh-Hans" aria-current="true">简中</a><a href="../en/" hreflang="en" lang="en">EN</a></div>
+    <a class="btn ghost small" id="github-top" href="https://github.com/cypwlp/kumoroute" target="_blank" rel="noopener">GitHub</a>
+  </div>
+</header>
+
+<main>
+  <section class="hero" id="top">
+    <div class="hero-copy">
+      <div class="badge">v0.8.1 · Windows / Linux / macOS</div>
+      <h1>网络切换，<br><span class="grad">不该这么复杂。</span></h1>
+      <p class="lead">KumoRoute 把 Mihomo、Windows VPN、节点质量与网络诊断收进一个干净的本地桌面界面。没有广告，没有账号，也不会上传你的配置。</p>
+      <div class="cta"><a class="btn primary big" id="download-btn" href="https://github.com/cypwlp/kumoroute/releases/latest/download/KumoRoute-win-x64-setup.exe" data-dl="download-btn" target="_blank" rel="noopener">下载 Windows 版<span class="sub">安装版 · 支持自动更新</span></a><a class="btn ghost big" id="github-btn" href="https://github.com/cypwlp/kumoroute" target="_blank" rel="noopener">查看源代码</a></div>
+      <div class="trust-row"><span>本地优先</span><span>开源 MIT</span><span>三平台支持</span><span>无需登录</span></div>
+    </div>
+    <div class="hero-visual"><div class="hero-glow"></div><div class="app-frame"><div class="window-bar"><i></i><i></i><i></i></div><img src="../assets/screenshot-overview-1600.webp" srcset="../assets/screenshot-overview-800.webp 800w, ../assets/screenshot-overview-1600.webp 1600w" sizes="(max-width: 900px) 92vw, 540px" width="2240" height="1440" fetchpriority="high" decoding="async" alt="KumoRoute 概览界面"></div><div class="floating-card float-a"><b>VPN + 代理</b><span>自动协调与回滚</span></div><div class="floating-card float-b"><b>节点质量</b><span>成功率 · 抖动 · 延迟</span></div></div>
+  </section>
+
+  <section class="download-section" id="download">
+    <div class="section-head"><div><span class="eyebrow">DOWNLOAD</span><h2>选一个平台，立即开始</h2></div><p>Windows 推荐安装版；ZIP 适合免安装使用。Linux 与 macOS 提供原生打包。</p></div>
+    <div class="download-grid">
+      <article class="download-card featured"><div class="platform-head"><span class="platform-icon">⊞</span><div><h3>Windows 10/11</h3><span class="pill">推荐</span></div></div><p>安装版支持原地覆盖更新，只显示精简进度并自动重启，不需要先卸载；另有下载进度、取消与上一版失败回滚。</p><div class="download-actions"><a class="btn primary" id="win-setup" data-dl="win-setup" href="https://github.com/cypwlp/kumoroute/releases/latest/download/KumoRoute-win-x64-setup.exe" target="_blank" rel="noopener">下载安装版 .exe</a><a class="btn ghost small" id="win-zip" data-dl="win-zip" href="https://github.com/cypwlp/kumoroute/releases/latest/download/KumoRoute-win-x64.zip" target="_blank" rel="noopener">免安装 .zip</a></div></article>
+      <article class="download-card"><div class="platform-head"><span class="platform-icon">◈</span><div><h3>Linux x86_64</h3></div></div><p>AppImage 免安装直接运行；DEB 适合 Debian / Ubuntu。需要 WebKitGTK 4.1。</p><div class="download-actions"><a class="btn ghost" id="linux-appimage" data-dl="linux-appimage" href="https://github.com/cypwlp/kumoroute/releases/latest/download/KumoRoute-linux-x86_64.AppImage" target="_blank" rel="noopener">下载 AppImage</a><a class="btn ghost small" id="linux-deb" data-dl="linux-deb" href="https://github.com/cypwlp/kumoroute/releases/latest/download/KumoRoute-linux-amd64.deb" target="_blank" rel="noopener">.deb</a></div></article>
+      <article class="download-card"><div class="platform-head"><span class="platform-icon">⌘</span><div><h3>macOS Universal</h3></div></div><p>Intel 与 Apple Silicon 通用 DMG。未签名版本首次打开请右键 →“打开”。</p><div class="download-actions"><a class="btn ghost" id="mac-dmg" data-dl="mac-dmg" href="https://github.com/cypwlp/kumoroute/releases/latest/download/KumoRoute-macos-universal.dmg" target="_blank" rel="noopener">下载 .dmg</a></div></article>
+    </div>
+  </section>
+
+  <section class="section" id="features">
+    <div class="section-head centered"><div><span class="eyebrow">BUILT FOR CONTROL</span><h2>一个界面，处理真正麻烦的事</h2></div><p>不是把所有开关堆在一起，而是让代理、VPN、DNS 与节点策略彼此协调。</p></div>
+    <div class="feature-grid">
+      <article class="feature-card accent-blue"><div class="feature-icon">↔</div><h3>VPN／代理协调</h3><p>只用代理、只用 VPN、两者共存。连接后做真实 HTTP 验证，失败时自动断开并恢复原本代理。</p><span class="feature-tag">Verified + rollback</span></article>
+      <article class="feature-card accent-violet"><div class="feature-icon">◎</div><h3>节点质量策略</h3><p>延迟、成功率、抖动与最近失败原因；支持固定、自动、最低延迟，连续超时自动排除。</p><span class="feature-tag">Quality first</span></article>
+      <article class="feature-card accent-green"><div class="feature-icon">⌁</div><h3>IPv6／DNS 实测</h3><p>比对 DNS 解析出口与代理出口 IP，确认是否泄漏；同时检查 DoH／DoT 冲突与 IPv6 优先问题。</p><span class="feature-tag">Measured, not guessed</span></article>
+      <article class="feature-card accent-amber"><div class="feature-icon">▣</div><h3>安全更新</h3><p>每版一次提示、SHA256 校验、下载进度与取消；安装版直接升级，免安装版独立应用。</p><span class="feature-tag">No silent install</span></article>
+      <article class="feature-card accent-violet"><div class="feature-icon">⟳</div><h3>订阅可靠性</h3><p>6／12／24 小时自动更新、全部订阅一键刷新；核心重载失败会回滚，备份可安全还原。</p><span class="feature-tag">Auto-update + backup</span></article>
+      <article class="feature-card accent-blue"><div class="feature-icon">⌂</div><h3>本地优先</h3><p>没有账号、没有云同步。设置、订阅与统计留在本机；VPN 密码由 Windows 凭据管理器保管。</p><span class="feature-tag">Local by design</span></article>
+    </div>
+  </section>
+
+  <section class="section workflow-section" id="workflow">
+    <div class="section-head"><div><span class="eyebrow">QUICK START</span><h2>三步开始</h2></div><p>不需要创建账号，也不用把配置交给云端。</p></div>
+    <div class="steps"><div class="step"><b>01</b><div><h3>下载并安装</h3><p>Windows 使用安装版自动更新；免安装或 Linux／macOS 选择对应包。</p></div></div><div class="step"><b>02</b><div><h3>添加 Clash 订阅</h3><p>粘贴 Clash／Mihomo 订阅链接，或导入本机 YAML 配置文件。</p></div></div><div class="step"><b>03</b><div><h3>选择接管方式</h3><p>开启系统代理或 VPN；之后的节点、DNS 与更新都由 KumoRoute 协助处理。</p></div></div></div>
+  </section>
+
+  <section class="section" id="screens">
+    <div class="section-head"><div><span class="eyebrow">INTERFACE</span><h2>信息清楚，但不吵闹</h2></div><p>深色／浅色主题，繁體中文／简体中文／English 即时切换。</p></div>
+    <div class="screenshot-grid"><figure class="shot-card large"><img src="../assets/screenshot-proxies-1600.webp" srcset="../assets/screenshot-proxies-800.webp 800w, ../assets/screenshot-proxies-1600.webp 1600w" sizes="(max-width: 900px) 92vw, 660px" width="2240" height="1440" loading="lazy" decoding="async" alt="KumoRoute 代理与节点质量界面"><figcaption><b>代理与节点质量</b><span>延迟、成功率、抖动与策略切换</span></figcaption></figure><figure class="shot-card"><img src="../assets/screenshot-profiles-1600.webp" srcset="../assets/screenshot-profiles-800.webp 800w, ../assets/screenshot-profiles-1600.webp 1600w" sizes="(max-width: 900px) 92vw, 440px" width="2240" height="1440" loading="lazy" decoding="async" alt="KumoRoute 订阅管理界面"><figcaption><b>订阅管理</b><span>更新、备份与多配置切换</span></figcaption></figure></div>
+  </section>
+
+  <section class="section faq-section" id="faq">
+    <div class="section-head"><div><span class="eyebrow">FAQ</span><h2>常见问题</h2></div><p>只保留下载前真正需要知道的信息。</p></div>
+    <div class="faq-grid">
+      <details><summary>Windows 显示“已保护你的电脑”？</summary><p>这是未签名程序的 SmartScreen 提示。项目开源，可自行检查源代码；设置签名 secrets 后，Release 会自动生成 Authenticode 签名。</p></details>
+      <details><summary>更新前需要先删除旧版吗？</summary><p>不需要。Windows 安装版使用原地更新模式，只显示精简进度并自动重启；ZIP 版同样会备份、覆盖并应用更新，失败时可还原上一版。设置、订阅与 VPN 证书都保存在用户文件夹。</p></details>
+      <details><summary>需要自己准备节点吗？</summary><p>是。KumoRoute 只提供客户端，不包含也不销售节点与订阅服务。请自备合法的 Clash／Mihomo 配置。</p></details>
+      <details><summary>数据会上传到哪？</summary><p>不会上传。设置、订阅、日志与统计保存在本机（%APPDATA%\KumoRoute），没有账号系统或后台上传。</p></details>
+      <details><summary>支持哪些平台？</summary><p>v0.8.1 提供 Windows（安装包／免安装）、Linux（AppImage／deb）与 macOS（Universal dmg）。手机版尚未提供。</p></details>
+      <details><summary>VPN 和系统代理怎么选？</summary><p>VPN 页面提供只用代理、只用 VPN、两者共存。连接成功后会实际发送 HTTP 请求验证；若 VPN 已建立但网络不可用，会自动断开并恢复原代理。</p></details>
+      <details><summary>备份会包含 VPN 密码吗？</summary><p>不会。JSON 备份包含设置、远程订阅与本机 YAML；Windows VPN 证书仍只保存在系统凭据管理器。还原前会先建立安全备份。</p></details>
+      <details><summary>节点超时怎么办？</summary><p>使用重测或整组测速。代理页面会显示成功率、抖动与最近失败原因，并自动排除连续两次超时的节点。</p></details>
+      <details><summary>可以从旧版 MyClash 升级吗？</summary><p>可以。首次启动会自动迁移旧数据，证书与设置不会因更名而丢失。</p></details>
+    </div>
+  </section>
+
+  <section class="final-cta"><div><span class="eyebrow">READY WHEN YOU ARE</span><h2>把网络控制权拿回来。</h2><p>开源、本地优先，没有账号，也没有广告。</p></div><a class="btn primary big" id="download-bottom" href="https://github.com/cypwlp/kumoroute/releases/latest/download/KumoRoute-win-x64-setup.exe" data-dl="win-setup" target="_blank" rel="noopener">下载最新版</a></section>
+</main>
+
+<footer><div class="foot-inner"><div class="foot-brand"><img src="../assets/icon.png" alt="" width="256" height="256" decoding="async"><span>KumoRoute</span></div><p class="disclaimer">本站仅提供 KumoRoute 的下载与授权信息，不提供、不销售任何代理节点或订阅服务。请自行准备合法配置并遵守所在地法律。客户端以 MIT 授权；内置 mihomo 核心以 GPL-3.0 授权。</p><p class="foot-links"><a id="github-foot" href="https://github.com/cypwlp/kumoroute" target="_blank" rel="noopener">GitHub</a><a href="https://github.com/MetaCubeX/mihomo" target="_blank" rel="noopener">mihomo</a><a href="../privacy.html">隐私政策</a><a href="../terms.html">服务条款</a></p></div></footer>
+<script src="../app.js?v=0.8.1"></script>
+</body>
+</html>

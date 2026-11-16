@@ -1,6 +1,35 @@
 <?xml version="1.0" encoding="UTF-8"?>
-<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">
-  <url><loc>https://cypwlp.github.io/kumoroute/</loc><lastmod>2026-11-16</lastmod><changefreq>weekly</changefreq><priority>1.0</priority></url>
-  <url><loc>https://cypwlp.github.io/kumoroute/privacy.html</loc><lastmod>2026-11-16</lastmod><changefreq>yearly</changefreq><priority>0.4</priority></url>
-  <url><loc>https://cypwlp.github.io/kumoroute/terms.html</loc><lastmod>2026-11-16</lastmod><changefreq>yearly</changefreq><priority>0.4</priority></url>
+<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9" xmlns:xhtml="http://www.w3.org/1999/xhtml">
+  <url>
+    <loc>https://cypwlp.github.io/kumoroute/</loc>
+    <lastmod>2026-11-16</lastmod>
+    <changefreq>weekly</changefreq>
+    <priority>1.0</priority>
+    <xhtml:link rel="alternate" hreflang="zh-Hant" href="https://cypwlp.github.io/kumoroute/"/>
+    <xhtml:link rel="alternate" hreflang="zh-Hans" href="https://cypwlp.github.io/kumoroute/zh-cn/"/>
+    <xhtml:link rel="alternate" hreflang="en" href="https://cypwlp.github.io/kumoroute/en/"/>
+    <xhtml:link rel="alternate" hreflang="x-default" href="https://cypwlp.github.io/kumoroute/"/>
+  </url>
+  <url>
+    <loc>https://cypwlp.github.io/kumoroute/zh-cn/</loc>
+    <lastmod>2026-11-16</lastmod>
+    <changefreq>weekly</changefreq>
+    <priority>0.9</priority>
+    <xhtml:link rel="alternate" hreflang="zh-Hant" href="https://cypwlp.github.io/kumoroute/"/>
+    <xhtml:link rel="alternate" hreflang="zh-Hans" href="https://cypwlp.github.io/kumoroute/zh-cn/"/>
+    <xhtml:link rel="alternate" hreflang="en" href="https://cypwlp.github.io/kumoroute/en/"/>
+    <xhtml:link rel="alternate" hreflang="x-default" href="https://cypwlp.github.io/kumoroute/"/>
+  </url>
+  <url>
+    <loc>https://cypwlp.github.io/kumoroute/en/</loc>
+    <lastmod>2026-11-16</lastmod>
+    <changefreq>weekly</changefreq>
+    <priority>0.9</priority>
+    <xhtml:link rel="alternate" hreflang="zh-Hant" href="https://cypwlp.github.io/kumoroute/"/>
+    <xhtml:link rel="alternate" hreflang="zh-Hans" href="https://cypwlp.github.io/kumoroute/zh-cn/"/>
+    <xhtml:link rel="alternate" hreflang="en" href="https://cypwlp.github.io/kumoroute/en/"/>
+    <xhtml:link rel="alternate" hreflang="x-default" href="https://cypwlp.github.io/kumoroute/"/>
+  </url>
+  <url><loc>https://cypwlp.github.io/kumoroute/privacy.html</loc><lastmod>2026-11-16</lastmod><changefreq>yearly</changefreq><priority>0.3</priority></url>
+  <url><loc>https://cypwlp.github.io/kumoroute/terms.html</loc><lastmod>2026-11-16</lastmod><changefreq>yearly</changefreq><priority>0.3</priority></url>
 </urlset>
