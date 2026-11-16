@@ -354,15 +354,16 @@ async function downloadAndInstallUpdate() {
       }
     }
     toast("更新已下載：", "ok", result.path);
-    if (status) status.textContent = "更新安裝檔已下載，請確認後由系統安裝。";
+    if (status) status.textContent = latestUpdate.install_mode === "portable" ? "更新 ZIP 已下載完成。" : "更新安裝檔已下載，將以原地覆蓋方式安裝，不需先卸載。";
     const confirmText = latestUpdate.install_mode === "portable"
       ? "更新 ZIP 已下載完成。是否立即套用並重新啟動 KumoRoute？"
-      : "更新安裝檔已下載完成。是否立即啟動安裝程式？\nKumoRoute 會在安裝程式啟動後自動退出。";
+      : "更新安裝檔已下載完成。將以原地覆蓋方式安裝，不需先卸載，完成後會自動重新啟動。\n是否立即更新？";
     if (confirm(tr(confirmText))) {
       const run = demo
         ? await demoApi("run_update_installer", result.path, latestUpdate.latest || "")
         : await api("run_update_installer", result.path, latestUpdate.latest || "");
       if (!run || !run.ok) toast((run && run.error) || "啟動更新安裝檔失敗", "error");
+      else toast("正在啟動原地更新，完成後會自動重新啟動", "ok");
     }
   } catch (e) {
     if (status) status.textContent = String(e);
@@ -789,7 +790,7 @@ const demoCfg = {
   mixed_port: 7890,
   controller_port: 9090,
   core_version: "v1.19.33",
-  app_version: "0.8.0",
+  app_version: "0.8.1",
   data_dir: "C:\\Users\\…\\AppData\\Roaming\\KumoRoute",
   test_url: "https://cp.cloudflare.com/generate_204",
   profiles: [

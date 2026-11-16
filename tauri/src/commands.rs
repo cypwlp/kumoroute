@@ -99,6 +99,8 @@ fn safe_update_url(value: &str) -> bool {
         && parsed.password().is_none()
 }
 
+const WINDOWS_UPDATE_INSTALLER_ARGS: &[&str] = &["/P", "/UPDATE", "/R"];
+
 fn install_mode() -> &'static str {
     if std::env::current_exe()
         .ok()
@@ -1636,7 +1638,18 @@ fn open_update_installer(path: &str) -> Result<(), String> {
     if !valid {
         return Err("不支援的更新安裝檔格式".to_string());
     }
-    open::that(&target).map_err(|e| format!("啟動更新安裝檔失敗：{e}"))
+    #[cfg(windows)]
+    {
+        Command::new(&target)
+            .args(WINDOWS_UPDATE_INSTALLER_ARGS)
+            .spawn()
+            .map(|_| ())
+            .map_err(|e| format!("啟動原地更新安裝程式失敗：{e}"))
+    }
+    #[cfg(not(windows))]
+    {
+        open::that(&target).map_err(|e| format!("啟動更新安裝檔失敗：{e}"))
+    }
 }
 
 #[tauri::command]
@@ -2796,11 +2809,11 @@ mod update_tests {
     fn release() -> Value {
         json!({
             "assets": [
-                {"name": "KumoRoute-win-x64-setup.exe", "browser_download_url": "https://github.com/cypwlp/kumoroute/releases/download/v0.8.0/KumoRoute-win-x64-setup.exe", "size": 23000000},
-                {"name": "KumoRoute-win-x64.zip", "browser_download_url": "https://github.com/cypwlp/kumoroute/releases/download/v0.8.0/KumoRoute-win-x64.zip", "size": 30000000},
-                {"name": "KumoRoute-macos-universal.dmg", "browser_download_url": "https://github.com/cypwlp/kumoroute/releases/download/v0.8.0/KumoRoute-macos-universal.dmg", "size": 54000000},
-                {"name": "KumoRoute-linux-x86_64.AppImage", "browser_download_url": "https://github.com/cypwlp/kumoroute/releases/download/v0.8.0/KumoRoute-linux-x86_64.AppImage", "size": 108000000},
-                {"name": "SHA256SUMS.txt", "browser_download_url": "https://github.com/cypwlp/kumoroute/releases/download/v0.8.0/SHA256SUMS.txt", "size": 600}
+                {"name": "KumoRoute-win-x64-setup.exe", "browser_download_url": "https://github.com/cypwlp/kumoroute/releases/download/v0.8.1/KumoRoute-win-x64-setup.exe", "size": 23000000},
+                {"name": "KumoRoute-win-x64.zip", "browser_download_url": "https://github.com/cypwlp/kumoroute/releases/download/v0.8.1/KumoRoute-win-x64.zip", "size": 30000000},
+                {"name": "KumoRoute-macos-universal.dmg", "browser_download_url": "https://github.com/cypwlp/kumoroute/releases/download/v0.8.1/KumoRoute-macos-universal.dmg", "size": 54000000},
+                {"name": "KumoRoute-linux-x86_64.AppImage", "browser_download_url": "https://github.com/cypwlp/kumoroute/releases/download/v0.8.1/KumoRoute-linux-x86_64.AppImage", "size": 108000000},
+                {"name": "SHA256SUMS.txt", "browser_download_url": "https://github.com/cypwlp/kumoroute/releases/download/v0.8.1/SHA256SUMS.txt", "size": 600}
             ]
         })
     }
@@ -2828,11 +2841,16 @@ mod update_tests {
     }
 
     #[test]
+    fn windows_updater_uses_in_place_passive_restart_mode() {
+        assert_eq!(WINDOWS_UPDATE_INSTALLER_ARGS, &["/P", "/UPDATE", "/R"]);
+    }
+
+    #[test]
     fn parses_checksum_and_rejects_unsafe_urls() {
         let digest = "a".repeat(64);
         let sums = format!("{digest}  KumoRoute-win-x64-setup.exe\n");
         assert_eq!(parse_sha256sums(&sums, "KumoRoute-win-x64-setup.exe"), Some(digest));
-        assert!(safe_update_url("https://github.com/cypwlp/kumoroute/releases/download/v0.8.0/file.exe"));
+        assert!(safe_update_url("https://github.com/cypwlp/kumoroute/releases/download/v0.8.1/file.exe"));
         assert!(!safe_update_url("https://evil.example/file.exe"));
         assert!(!safe_update_url("http://github.com/file.exe"));
     }

@@ -19,7 +19,7 @@
 <meta name="twitter:description" content="本機優先、開源免費的 Mihomo 桌面客戶端，內建 VPN／代理協調、節點品質策略與網路診斷。">
 <meta name="twitter:image" content="https://cypwlp.github.io/kumoroute/assets/screenshot-overview.png">
 <script type="application/ld+json">{"@context":"https://schema.org","@type":"SoftwareApplication","name":"KumoRoute","applicationCategory":"UtilitiesApplication","operatingSystem":"Windows 10/11, Linux, macOS","description":"基於 mihomo 核心的輕量、本機優先桌面客戶端，支援 VPN／代理協調、節點品質策略與網路診斷。","url":"https://cypwlp.github.io/kumoroute/","downloadUrl":"https://github.com/cypwlp/kumoroute/releases/latest","codeRepository":"https://github.com/cypwlp/kumoroute","license":"https://github.com/cypwlp/kumoroute/blob/main/LICENSE","offers":{"@type":"Offer","price":"0","priceCurrency":"USD"}}</script>
-<link rel="stylesheet" href="style.css?v=0.8.0">
+<link rel="stylesheet" href="style.css?v=0.8.1">
 </head>
 <body>
 <header class="nav">
@@ -33,7 +33,7 @@
 <main>
   <section class="hero" id="top">
     <div class="hero-copy">
-      <div class="badge">v0.8.0 · Windows / Linux / macOS</div>
+      <div class="badge">v0.8.1 · Windows / Linux / macOS</div>
       <h1>網路切換，<br><span class="grad">不該這麼複雜。</span></h1>
       <p class="lead">KumoRoute 把 Mihomo、Windows VPN、節點品質與網路診斷收進一個乾淨的本機桌面介面。沒有廣告，沒有帳號，也不會上傳你的設定。</p>
       <div class="cta"><a class="btn primary big" id="download-btn" href="#" target="_blank" rel="noopener">下載 Windows 版<span class="sub">安裝版 · 支援自動更新</span></a><a class="btn ghost big" id="github-btn" href="#" target="_blank" rel="noopener">查看原始碼</a></div>
@@ -45,7 +45,7 @@
   <section class="download-section" id="download">
     <div class="section-head"><div><span class="eyebrow">DOWNLOAD</span><h2>選一個平台，立即開始</h2></div><p>Windows 推薦安裝版；ZIP 適合免安裝使用。Linux 與 macOS 提供原生打包。</p></div>
     <div class="download-grid">
-      <article class="download-card featured"><div class="platform-head"><span class="platform-icon">⊞</span><div><h3>Windows 10/11</h3><span class="pill">推薦</span></div></div><p>安裝版會建立開始選單與卸載項，支援下載進度、取消、安裝版／ZIP 正確分流與上一版失敗回復。</p><div class="download-actions"><a class="btn primary" id="win-setup" data-dl="win-setup" href="#" target="_blank" rel="noopener">下載安裝版 .exe</a><a class="btn ghost small" id="win-zip" data-dl="win-zip" href="#" target="_blank" rel="noopener">免安裝 .zip</a></div></article>
+      <article class="download-card featured"><div class="platform-head"><span class="platform-icon">⊞</span><div><h3>Windows 10/11</h3><span class="pill">推薦</span></div></div><p>安裝版支援原地覆蓋更新，只顯示精簡進度並自動重啟，不需先卸載；另有下載進度、取消與上一版失敗回復。</p><div class="download-actions"><a class="btn primary" id="win-setup" data-dl="win-setup" href="#" target="_blank" rel="noopener">下載安裝版 .exe</a><a class="btn ghost small" id="win-zip" data-dl="win-zip" href="#" target="_blank" rel="noopener">免安裝 .zip</a></div></article>
       <article class="download-card"><div class="platform-head"><span class="platform-icon">◈</span><div><h3>Linux x86_64</h3></div></div><p>AppImage 免安裝直接執行；DEB 適合 Debian / Ubuntu。需要 WebKitGTK 4.1。</p><div class="download-actions"><a class="btn ghost" id="linux-appimage" data-dl="linux-appimage" href="#" target="_blank" rel="noopener">下載 AppImage</a><a class="btn ghost small" id="linux-deb" data-dl="linux-deb" href="#" target="_blank" rel="noopener">.deb</a></div></article>
       <article class="download-card"><div class="platform-head"><span class="platform-icon">⌘</span><div><h3>macOS Universal</h3></div></div><p>Intel 與 Apple Silicon 通用 DMG。未簽名版本首次開啟請右鍵 →「打開」。</p><div class="download-actions"><a class="btn ghost" id="mac-dmg" data-dl="mac-dmg" href="#" target="_blank" rel="noopener">下載 .dmg</a></div></article>
     </div>
@@ -77,10 +77,10 @@
     <div class="section-head"><div><span class="eyebrow">FAQ</span><h2>常見問題</h2></div><p>只保留下載前真正需要知道的資訊。</p></div>
     <div class="faq-grid">
       <details><summary>Windows 顯示「已保護您的電腦」？</summary><p>這是未簽名程式的 SmartScreen 提示。專案開源，可自行檢查原始碼；設定簽章 secrets 後，Release 會自動產生 Authenticode 簽章。</p></details>
-      <details><summary>更新需要先刪除舊版嗎？</summary><p>不需要。Windows 安裝版直接覆蓋升級；ZIP 版會備份並套用更新，失敗時可還原上一版。設定、訂閱與 VPN 憑證都保存在使用者資料夾。</p></details>
+      <details><summary>更新需要先刪除舊版嗎？</summary><p>不需要。Windows 安裝版使用原地更新模式，只顯示精簡進度並自動重啟；ZIP 版同樣會備份、覆蓋並套用更新，失敗時可還原上一版。設定、訂閱與 VPN 憑證都保存在使用者資料夾。</p></details>
       <details><summary>需要自己準備節點嗎？</summary><p>是。KumoRoute 只提供客戶端，不包含或販售節點與訂閱服務。請自備合法的 Clash／Mihomo 配置。</p></details>
       <details><summary>資料會上傳到哪裡？</summary><p>不會。設定、訂閱、日誌與統計保存在本機（%APPDATA%\\KumoRoute），沒有帳號系統或背景上傳。</p></details>
-      <details><summary>支援哪些平台？</summary><p>v0.8.0 提供 Windows（安裝包／免安裝）、Linux（AppImage／deb）與 macOS（Universal dmg）。手機版尚未提供。</p></details>
+      <details><summary>支援哪些平台？</summary><p>v0.8.1 提供 Windows（安裝包／免安裝）、Linux（AppImage／deb）與 macOS（Universal dmg）。手機版尚未提供。</p></details>
       <details><summary>VPN 和系統代理怎麼選？</summary><p>VPN 頁提供只用代理、只用 VPN、兩者共存。連線成功後會實際發送 HTTP 請求驗證；若 VPN 建立但網路不可用，會自動斷線並恢復原本代理。</p></details>
       <details><summary>備份會包含 VPN 密碼嗎？</summary><p>不會。JSON 備份包含設定、遠端訂閱與本機 YAML；Windows VPN 憑證仍只存在系統認證管理員。還原前會先建立安全備份。</p></details>
       <details><summary>節點逾時怎麼辦？</summary><p>使用重測或整組測速。代理頁會顯示成功率、抖動與最近失敗原因，並自動排除連續兩次逾時的節點。</p></details>
@@ -92,6 +92,6 @@
 </main>
 
 <footer><div class="foot-inner"><div class="foot-brand"><img src="assets/icon.png" alt=""><span>KumoRoute</span></div><p class="disclaimer">本站僅提供 KumoRoute 的下載與授權資訊，不提供、不銷售任何代理節點或訂閱服務。請自行準備合法配置並遵守所在地法律。客戶端以 MIT 授權；內置 mihomo 核心以 GPL-3.0 授權。</p><p class="foot-links"><a id="github-foot" href="#" target="_blank" rel="noopener">GitHub</a><a href="https://github.com/MetaCubeX/mihomo" target="_blank" rel="noopener">mihomo</a><a href="privacy.html">隱私政策</a><a href="terms.html">服務條款</a></p></div></footer>
-<script src="app.js?v=0.8.0"></script>
+<script src="app.js?v=0.8.1"></script>
 </body>
 </html>

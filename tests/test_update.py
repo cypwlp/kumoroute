@@ -14,11 +14,11 @@ class UpdateAssetTests(unittest.TestCase):
     def _release(self):
         return {
             "assets": [
-                {"name": "KumoRoute-win-x64-setup.exe", "browser_download_url": "https://github.com/cypwlp/kumoroute/releases/download/v0.8.0/KumoRoute-win-x64-setup.exe", "size": 23_000_000},
-                {"name": "KumoRoute-win-x64.zip", "browser_download_url": "https://github.com/cypwlp/kumoroute/releases/download/v0.8.0/KumoRoute-win-x64.zip", "size": 30_000_000},
-                {"name": "KumoRoute-macos-universal.dmg", "browser_download_url": "https://github.com/cypwlp/kumoroute/releases/download/v0.8.0/KumoRoute-macos-universal.dmg", "size": 54_000_000},
-                {"name": "KumoRoute-linux-x86_64.AppImage", "browser_download_url": "https://github.com/cypwlp/kumoroute/releases/download/v0.8.0/KumoRoute-linux-x86_64.AppImage", "size": 108_000_000},
-                {"name": "SHA256SUMS.txt", "browser_download_url": "https://github.com/cypwlp/kumoroute/releases/download/v0.8.0/SHA256SUMS.txt", "size": 600},
+                {"name": "KumoRoute-win-x64-setup.exe", "browser_download_url": "https://github.com/cypwlp/kumoroute/releases/download/v0.8.1/KumoRoute-win-x64-setup.exe", "size": 23_000_000},
+                {"name": "KumoRoute-win-x64.zip", "browser_download_url": "https://github.com/cypwlp/kumoroute/releases/download/v0.8.1/KumoRoute-win-x64.zip", "size": 30_000_000},
+                {"name": "KumoRoute-macos-universal.dmg", "browser_download_url": "https://github.com/cypwlp/kumoroute/releases/download/v0.8.1/KumoRoute-macos-universal.dmg", "size": 54_000_000},
+                {"name": "KumoRoute-linux-x86_64.AppImage", "browser_download_url": "https://github.com/cypwlp/kumoroute/releases/download/v0.8.1/KumoRoute-linux-x86_64.AppImage", "size": 108_000_000},
+                {"name": "SHA256SUMS.txt", "browser_download_url": "https://github.com/cypwlp/kumoroute/releases/download/v0.8.1/SHA256SUMS.txt", "size": 600},
             ]
         }
 
@@ -42,7 +42,7 @@ class UpdateAssetTests(unittest.TestCase):
     def test_checksum_parser_and_url_validation(self):
         digest = "a" * 64
         self.assertEqual(app.parse_sha256sums(f"{digest}  KumoRoute-win-x64-setup.exe\n", "KumoRoute-win-x64-setup.exe"), digest)
-        self.assertTrue(app.safe_update_url("https://github.com/cypwlp/kumoroute/releases/download/v0.8.0/file.exe"))
+        self.assertTrue(app.safe_update_url("https://github.com/cypwlp/kumoroute/releases/download/v0.8.1/file.exe"))
         self.assertFalse(app.safe_update_url("https://evil.example/file.exe"))
         self.assertFalse(app.safe_update_url("http://github.com/file.exe"))
 
@@ -52,6 +52,26 @@ class UpdateAssetTests(unittest.TestCase):
         self.assertIn('id="btn-install-update"', html)
         self.assertIn('api("start_update_download", asset.download_url, asset.filename, asset.sha256_url', ui)
         self.assertIn('run_update_installer', ui)
+
+    def test_windows_installer_updates_in_place_without_uninstall(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            downloads = root / "Downloads"
+            downloads.mkdir()
+            installer = downloads / "KumoRoute-win-x64-setup.exe"
+            installer.write_bytes(b"setup")
+            api = app.Api.__new__(app.Api)
+            with mock.patch.object(app.Path, "home", return_value=root), \
+                 mock.patch.object(app, "data_dir", return_value=root / "appdata"), \
+                 mock.patch.object(app.platform, "system", return_value="Windows"), \
+                 mock.patch.object(api, "_create_update_backup", return_value={"ok": True}), \
+                 mock.patch.object(app.subprocess, "Popen") as popen, \
+                 mock.patch.object(app.threading, "Thread") as thread:
+                result = api.run_update_installer(str(installer), "0.8.1")
+        self.assertTrue(result["ok"], result)
+        popen.assert_called_once()
+        self.assertEqual(popen.call_args.args[0], [str(installer), "/P", "/UPDATE", "/R"])
+        thread.assert_called_once()
 
     def test_update_prompt_is_shown_once_per_version(self):
         ui = (ROOT / "client" / "ui" / "app.js").read_text(encoding="utf-8")

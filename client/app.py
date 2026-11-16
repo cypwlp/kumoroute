@@ -30,7 +30,7 @@ import yaml
 
 APP_NAME = "KumoRoute"
 LEGACY_APP_NAME = "MyClash"
-APP_VERSION = "0.8.0"
+APP_VERSION = "0.8.1"
 CREATE_NO_WINDOW = 0x08000000
 SUB_UA = f"KumoRoute/{APP_VERSION}"
 TEST_URL = "https://cp.cloudflare.com/generate_204"
@@ -2005,7 +2005,10 @@ class Api:
                 )
             elif platform.system().lower() == "windows" and suffix == ".exe":
                 self._create_update_backup(target_version)
-                subprocess.Popen([str(target)], cwd=str(target.parent))
+                subprocess.Popen(
+                    [str(target), "/P", "/UPDATE", "/R"],
+                    cwd=str(target.parent),
+                )
             elif platform.system().lower() == "darwin" and suffix == ".dmg":
                 subprocess.Popen(["open", str(target)])
             elif platform.system().lower() == "linux" and suffix in (".appimage", ".deb"):

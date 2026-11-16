@@ -25,7 +25,7 @@
 - 統計管理：CSV／JSON 匯出、清除統計、每日與近 7 日流量上限提醒
 - 核心與代理事件：核心啟動／重啟、最近啟動、系統代理時長、訂閱更新歷史
 - 流量歸屬：配置、策略組、節點；可選記錄熱門網域與規則命中（僅本機）
-- 更新：啟動時自動檢查新版本；每個版本第一次發現時顯示非強制更新視窗（稍後／查看／立即更新），支援下載進度、取消、安裝版／ZIP 分流與上一版備份還原
+- 更新：啟動時自動檢查新版本；每個版本第一次發現時顯示非強制更新視窗（稍後／查看／立即更新），支援下載進度、取消、安裝版／ZIP 分流與上一版備份還原；Windows 安裝版以 `/UPDATE /P /R` 原地覆蓋、只顯示進度並自動重啟，不需先卸載
 - Windows Authenticode 簽章準備：GitHub Actions 可透過憑證 secrets 自動匯入 PFX、使用 Tauri signing config 並驗證簽章（見 `SIGNING.md`）
 - 本機當機紀錄與去識別化診斷預覽／匯出（可先檢查再寫檔）
 - 代理設定先落盤再套用；啟動時自動恢復上次異常退出留下的系統代理
@@ -39,7 +39,7 @@
 - IPv6／DNS 智慧診斷：除路由外會測試實際 IPv6 連線，直接比對 DNS 解析出口與代理出口 IP，檢查 DoH／DoT 衝突與 IPv6 優先問題；重複錯誤會合併成單一診斷事件
 - 一鍵網路修復：關閉 IPv6、切換備用 DNS、恢復自動 DNS、清除 DNS 快取並重新載入核心
 - IPv6 自動偵測：沒有預設 IPv6 路由時關閉核心 IPv6，避免反覆出現 unreachable network 日誌
-- 版本發佈工具：`python scripts/release.py 0.8.0` 同步版本並驗證跨後端契約
+- 版本發佈工具：`python scripts/release.py 0.8.1` 同步版本並驗證跨後端契約
 - 托盤常駐、關窗不退出、單實例
 - Windows Job Object 綁定 mihomo：主程序被強制終止時核心由系統一併結束
 - NSIS 安裝／卸載前檢查 `core\mihomo.exe`，避免核心鎖檔造成覆寫失敗
@@ -92,8 +92,8 @@ python app.py
 推送 `v*` tag 即由 GitHub Actions 自動編譯、打包並建立 Release（含 `KumoRoute-win-x64.zip` 與 `SHA256SUMS.txt`）：
 
 ```powershell
-git tag v0.8.0
-git push origin v0.8.0
+git tag v0.8.1
+git push origin v0.8.1
 ```
 
 下載站按鈕指向 `releases/latest/download/KumoRoute-win-x64.zip`（見 `site/app.js`）。
