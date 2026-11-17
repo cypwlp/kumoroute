@@ -17,6 +17,7 @@ FILES = [
     "site/index.html",
     "site/en/index.html",
     "site/zh-cn/index.html",
+    "site/llms.txt",
     "tests/test_stats_export.py",
     "tests/test_update.py",
     "tauri/Cargo.toml",
