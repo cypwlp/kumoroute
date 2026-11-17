@@ -106,6 +106,7 @@ Pages：Settings → Pages → Source 選「GitHub Actions」，推送後自動�
 - 頁面全部下載連結都寫死在 HTML（`app.js` 只做 URL 覆寫），JS 被攔截也能下載。
 - `site/404.html` 為 GitHub Pages 錯誤頁；各頁以 `<meta http-equiv="Content-Security-Policy">` 限制來源（Pages 無法送 response header）。
 - 三語靜態頁面：`site/`（繁中，`x-default`）、`site/zh-cn/`（简中）、`site/en/`（English）；三者的 `hreflang` 與 `sitemap.xml` 必須同步修改，子目錄用相對路径（`../assets/`）以同時相容 GitHub Pages 子路径與 Cloudflare 根域名。
+- CSS 內聯：`site/style.css` 是唯一來源，改完執行 `python scripts/inline_css.py`，它會把壓縮後的 CSS 內聯到六個頁面、寫回 `_headers`，並用 `sha256` 寫進 CSP（不用 `unsafe-inline`）。部署 workflow 會跑 `--check`，忘記重生就擋下部署。
 - `python scripts/release.py <version>` 會同步版本字串（含三個語言的頁面與快取參數）並刷新 `site/sitemap.xml` 的 `<lastmod>`。
 
 ## 部署與鏡像
@@ -136,6 +137,7 @@ python -m http.server 8000 --directory site
 # 另一個視窗：Edge 或 Chrome 開著 --headless=new --remote-debugging-port=9333
 node scripts/measure.mjs http://127.0.0.1:8000/index.html "JSON.stringify([...document.images].map(i=>[i.currentSrc,i.naturalWidth]))"
 VIEWPORT=390x844 OUT=.tmp/shots/mobile.png node scripts/shot.mjs http://127.0.0.1:8000/index.html
+node scripts/audit.mjs http://127.0.0.1:8000/index.html mobile   # FCP/LCP/CLS（4x CPU + Slow 4G）
 ```
 
 CI 會在 Windows、Linux、macOS 執行 Rust 單元測試與實際核心自測；`Dependency security` workflow 會執行 RustSec、pip-audit 與 CycloneDX SBOM。Release 也會附上 SPDX SBOM。
