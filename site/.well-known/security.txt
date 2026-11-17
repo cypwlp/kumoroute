@@ -1,0 +1,6 @@
+Contact: https://github.com/cypwlp/kumoroute/security/advisories/new
+Contact: https://github.com/cypwlp/kumoroute/issues
+Expires: 2027-11-16T00:00:00.000Z
+Preferred-Languages: en, zh-Hant, zh-Hans
+Canonical: https://cypwlp.github.io/kumoroute/.well-known/security.txt
+Policy: https://github.com/cypwlp/kumoroute/blob/main/SECURITY.md

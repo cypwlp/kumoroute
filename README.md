@@ -129,6 +129,15 @@ cargo run --manifest-path tauri/Cargo.toml -- --core-self-test
 python -m unittest discover -s tests -p "test_*.py" -v
 ```
 
+下載站排版檢查（無需額外套件，Node 20+ 內建 WebSocket）：
+
+```powershell
+python -m http.server 8000 --directory site
+# 另一個視窗：Edge 或 Chrome 開著 --headless=new --remote-debugging-port=9333
+node scripts/measure.mjs http://127.0.0.1:8000/index.html "JSON.stringify([...document.images].map(i=>[i.currentSrc,i.naturalWidth]))"
+VIEWPORT=390x844 OUT=.tmp/shots/mobile.png node scripts/shot.mjs http://127.0.0.1:8000/index.html
+```
+
 CI 會在 Windows、Linux、macOS 執行 Rust 單元測試與實際核心自測；`Dependency security` workflow 會執行 RustSec、pip-audit 與 CycloneDX SBOM。Release 也會附上 SPDX SBOM。
 
 診斷資料只在本機產生；預覽內容會遮蔽 URL、IP、日誌端點及 token／password 等敏感欄位，確認後才寫入檔案。
