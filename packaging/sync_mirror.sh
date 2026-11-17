@@ -42,7 +42,12 @@ fi
 echo "release artifacts synced"
 
 for path in downloads/release.json downloads/SHA256SUMS.txt downloads/KumoRoute-win-x64-setup.exe; do
-  code=$(curl -s -m 20 -o /dev/null -w '%{http_code}' "$URL$path")
+  code=""
+  for _ in 1 2 3 4 5; do
+    code=$(curl -s -m 20 -o /dev/null -w '%{http_code}' "$URL$path")
+    [ "$code" = "200" ] && break
+    sleep 3
+  done
   [ "$code" = "200" ] || { echo "mirror check failed: $path -> $code" >&2; exit 1; }
 done
 echo "mirror ready: ${URL}downloads/release.json"
