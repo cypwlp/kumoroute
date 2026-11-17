@@ -211,3 +211,15 @@ h3, .feature-card p, .download-card p, .faq-grid details p { text-wrap: pretty; 
     .hero-copy h1 { view-transition-name: headline; }
   }
 }
+
+/* --- legal pages -------------------------------------------------------- */
+.legal-page { max-width: 820px; margin: 0 auto; padding: 56px 26px 76px; }
+.legal-page h1 { font-size: clamp(28px, 4vw, 40px); margin-bottom: 6px; }
+.legal-page h2 { font-size: 19px; margin: 32px 0 8px; padding-top: 18px; border-top: 1px solid var(--line); }
+.legal-page p, .legal-page li { color: var(--muted); font-size: 14px; line-height: 1.85; }
+.legal-page ul { padding-left: 21px; margin: 8px 0; }
+.legal-page li { list-style: disc; margin: 4px 0; }
+.legal-page code { padding: 2px 6px; border-radius: 5px; background: rgba(255,255,255,.06); font-size: .92em; }
+.legal-page a { color: #8fb2ff; text-decoration: underline; text-underline-offset: 3px; }
+.legal-note { margin: 18px 0 4px; padding: 12px 15px; border-left: 2px solid var(--accent); background: rgba(91,140,255,.07); border-radius: 0 9px 9px 0; font-size: 12.5px !important; }
+.legal-nav { flex: 0 1 auto; margin-left: auto; }

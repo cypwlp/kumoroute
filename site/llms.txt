@@ -30,6 +30,6 @@ Key facts:
 
 - Source: https://github.com/cypwlp/kumoroute
 - License: https://github.com/cypwlp/kumoroute/blob/main/LICENSE
-- Privacy: https://cypwlp.github.io/kumoroute/privacy.html
-- Terms: https://cypwlp.github.io/kumoroute/terms.html
+- Privacy: https://cypwlp.github.io/kumoroute/en/privacy.html (English), https://cypwlp.github.io/kumoroute/zh-cn/privacy.html (简体中文), https://cypwlp.github.io/kumoroute/privacy.html (繁體中文, governing text)
+- Terms: https://cypwlp.github.io/kumoroute/en/terms.html (English), https://cypwlp.github.io/kumoroute/zh-cn/terms.html (简体中文), https://cypwlp.github.io/kumoroute/terms.html (繁體中文, governing text)
 - Security policy: https://github.com/cypwlp/kumoroute/blob/main/SECURITY.md
