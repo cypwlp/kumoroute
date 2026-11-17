@@ -25,8 +25,10 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v7
-      - name: Verify inlined CSS is up to date
-        run: python3 scripts/inline_css.py --check
+      - name: Verify generated site files are up to date
+        run: |
+          python3 scripts/inline_css.py --check
+          python3 scripts/gen_feedback_pages.py --check
       - uses: actions/configure-pages@v5
       - uses: actions/upload-pages-artifact@v3
         with:

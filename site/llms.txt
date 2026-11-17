@@ -33,3 +33,5 @@ Key facts:
 - Privacy: https://cypwlp.github.io/kumoroute/en/privacy.html (English), https://cypwlp.github.io/kumoroute/zh-cn/privacy.html (简体中文), https://cypwlp.github.io/kumoroute/privacy.html (繁體中文, governing text)
 - Terms: https://cypwlp.github.io/kumoroute/en/terms.html (English), https://cypwlp.github.io/kumoroute/zh-cn/terms.html (简体中文), https://cypwlp.github.io/kumoroute/terms.html (繁體中文, governing text)
 - Security policy: https://github.com/cypwlp/kumoroute/blob/main/SECURITY.md
+- Feedback (no backend; reports go to public GitHub Issues): https://cypwlp.github.io/kumoroute/feedback.html
+- Security vulnerabilities (private): https://github.com/cypwlp/kumoroute/security/advisories/new

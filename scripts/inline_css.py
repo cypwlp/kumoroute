@@ -49,6 +49,19 @@ def apply_csp(text: str, hash_value: str) -> str:
     return STYLE_SRC_RE.sub(f"style-src 'self' {hash_value}", text)
 
 
+def inline_page(text: str) -> str:
+    """Inline the current CSS and pin its CSP hash in an arbitrary page string."""
+    css = minify(CSS.read_text(encoding="utf-8"))
+    block = STYLE_OPEN + css + "</style>"
+    if STYLE_RE.search(text):
+        text = STYLE_RE.sub(lambda _: block, text, count=1)
+    else:
+        text, n = LINK_RE.subn("\n" + block, text, count=1)
+        if n == 0:
+            raise SystemExit("page has no stylesheet link to inline")
+    return apply_csp(text, csp_hash(css))
+
+
 def render() -> tuple[str, str, dict[Path, str]]:
     css = minify(CSS.read_text(encoding="utf-8"))
     block = STYLE_OPEN + css + "</style>"

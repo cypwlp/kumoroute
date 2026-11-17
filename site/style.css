@@ -223,3 +223,24 @@ h3, .feature-card p, .download-card p, .faq-grid details p { text-wrap: pretty; 
 .legal-page a { color: #8fb2ff; text-decoration: underline; text-underline-offset: 3px; }
 .legal-note { margin: 18px 0 4px; padding: 12px 15px; border-left: 2px solid var(--accent); background: rgba(91,140,255,.07); border-radius: 0 9px 9px 0; font-size: 12.5px !important; }
 .legal-nav { flex: 0 1 auto; margin-left: auto; }
+
+/* --- feedback pages ------------------------------------------------------ */
+.feedback-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 12px; margin: 12px 0 8px; }
+.feedback-card { display: flex; flex-direction: column; gap: 6px; min-height: 134px; padding: 17px; border: 1px solid var(--line); border-radius: 14px; background: var(--card); transition: border-color .16s, transform .16s; }
+.feedback-card:hover { border-color: var(--accent); transform: translateY(-2px); }
+.feedback-card .feature-icon { margin-bottom: 4px; font-size: 20px; }
+.feedback-card b { font-size: 14px; }
+.feedback-card > span:last-child { color: var(--muted); font-size: 12px; line-height: 1.5; }
+.feedback-steps { padding-left: 21px; margin: 6px 0; }
+.feedback-steps li { list-style: decimal; margin: 6px 0; }
+.report-template { width: 100%; margin-top: 8px; padding: 14px; resize: vertical; border: 1px solid var(--line2); border-radius: 12px; background: #0a111b; color: #cbd6e8; font: 12px/1.7 ui-monospace, SFMono-Regular, Consolas, monospace; }
+.report-template:focus { outline: 2px solid var(--accent); outline-offset: 2px; }
+.feedback-actions { display: flex; align-items: center; gap: 12px; margin-top: 10px; }
+.copy-status { color: var(--green); font-size: 12px; }
+@media (max-width: 960px) { .feedback-grid { grid-template-columns: 1fr; } }
+
+/* Card titles/descriptions are not separate links; cancel the legal-page link styling. */
+.legal-page .feedback-card,
+.legal-page .feedback-card b,
+.legal-page .feedback-card span { color: inherit; text-decoration: none; }
+.legal-page .feedback-card > span:last-child { color: var(--muted); }

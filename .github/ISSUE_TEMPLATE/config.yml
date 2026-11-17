@@ -1,0 +1,11 @@
+blank_issues_enabled: true
+contact_links:
+  - name: 安全性問題（私下回報）
+    url: https://github.com/cypwlp/kumoroute/security/advisories/new
+    about: 漏洞請不要公開張貼，使用 GitHub Security Advisory 私下回報。
+  - name: 常見問題
+    url: https://cypwlp.github.io/kumoroute/#faq
+    about: 送出前先看官方網站的常見問題，可能已有解答。
+  - name: 回報範本與說明
+    url: https://cypwlp.github.io/kumoroute/feedback.html
+    about: 三語回報頁面，可一鍵帶入範本。

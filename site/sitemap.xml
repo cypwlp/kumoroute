@@ -96,4 +96,34 @@
     <xhtml:link rel="alternate" hreflang="en" href="https://cypwlp.github.io/kumoroute/en/terms.html"/>
     <xhtml:link rel="alternate" hreflang="x-default" href="https://cypwlp.github.io/kumoroute/terms.html"/>
   </url>
+  <url>
+    <loc>https://cypwlp.github.io/kumoroute/feedback.html</loc>
+    <lastmod>2026-11-17</lastmod>
+    <changefreq>yearly</changefreq>
+    <priority>0.5</priority>
+    <xhtml:link rel="alternate" hreflang="zh-Hant" href="https://cypwlp.github.io/kumoroute/feedback.html"/>
+    <xhtml:link rel="alternate" hreflang="zh-Hans" href="https://cypwlp.github.io/kumoroute/zh-cn/feedback.html"/>
+    <xhtml:link rel="alternate" hreflang="en" href="https://cypwlp.github.io/kumoroute/en/feedback.html"/>
+    <xhtml:link rel="alternate" hreflang="x-default" href="https://cypwlp.github.io/kumoroute/feedback.html"/>
+  </url>
+  <url>
+    <loc>https://cypwlp.github.io/kumoroute/zh-cn/feedback.html</loc>
+    <lastmod>2026-11-17</lastmod>
+    <changefreq>yearly</changefreq>
+    <priority>0.5</priority>
+    <xhtml:link rel="alternate" hreflang="zh-Hant" href="https://cypwlp.github.io/kumoroute/feedback.html"/>
+    <xhtml:link rel="alternate" hreflang="zh-Hans" href="https://cypwlp.github.io/kumoroute/zh-cn/feedback.html"/>
+    <xhtml:link rel="alternate" hreflang="en" href="https://cypwlp.github.io/kumoroute/en/feedback.html"/>
+    <xhtml:link rel="alternate" hreflang="x-default" href="https://cypwlp.github.io/kumoroute/feedback.html"/>
+  </url>
+  <url>
+    <loc>https://cypwlp.github.io/kumoroute/en/feedback.html</loc>
+    <lastmod>2026-11-17</lastmod>
+    <changefreq>yearly</changefreq>
+    <priority>0.5</priority>
+    <xhtml:link rel="alternate" hreflang="zh-Hant" href="https://cypwlp.github.io/kumoroute/feedback.html"/>
+    <xhtml:link rel="alternate" hreflang="zh-Hans" href="https://cypwlp.github.io/kumoroute/zh-cn/feedback.html"/>
+    <xhtml:link rel="alternate" hreflang="en" href="https://cypwlp.github.io/kumoroute/en/feedback.html"/>
+    <xhtml:link rel="alternate" hreflang="x-default" href="https://cypwlp.github.io/kumoroute/feedback.html"/>
+  </url>
 </urlset>

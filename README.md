@@ -107,6 +107,7 @@ Pages：Settings → Pages → Source 選「GitHub Actions」，推送後自動�
 - `site/404.html` 為 GitHub Pages 錯誤頁；各頁以 `<meta http-equiv="Content-Security-Policy">` 限制來源（Pages 無法送 response header）。
 - 三語靜態頁面：`site/`（繁中，`x-default`）、`site/zh-cn/`（简中）、`site/en/`（English）；三者的 `hreflang` 與 `sitemap.xml` 必須同步修改，子目錄用相對路径（`../assets/`）以同時相容 GitHub Pages 子路径與 Cloudflare 根域名。
 - 法務頁同样有三語版本：`privacy.html` / `terms.html` 與兩個子目錄下的同名頁；翻譯頁頂端註明「繁中原文為準」，修改任一版本時其餘兩個語言也必須同步。
+- 回報入口：`feedback.html` 與兩個子目錄下的同名頁由 `scripts/gen_feedback_pages.py` 產生（三語 + hreflang + 預填 GitHub Issue 連結）；改完執行 `python scripts/gen_feedback_pages.py`，部署 workflow 會檢查是否與原始碼同步。网站本身不收集任何資料，不會有後端或數據上傳。
 - CSS 內聯：`site/style.css` 是唯一來源，改完執行 `python scripts/inline_css.py`，它會把壓縮後的 CSS 內聯到六個頁面、寫回 `_headers`，並用 `sha256` 寫進 CSP（不用 `unsafe-inline`）。部署 workflow 會跑 `--check`，忘記重生就擋下部署。
 - `python scripts/release.py <version>` 會同步版本字串（含三個語言的頁面與快取參數）並刷新 `site/sitemap.xml` 的 `<lastmod>`。
 

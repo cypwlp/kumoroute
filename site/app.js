@@ -28,3 +28,26 @@ Object.entries(ASSETS).forEach(([key, file]) => {
   ].filter(Boolean));
   elements.forEach((el) => { el.href = DL_BASE + file; });
 });
+
+// Feedback pages: copy the report template (manual select/copy also works).
+const copyButton = document.getElementById("copy-template");
+if (copyButton) {
+  const field = document.getElementById("report-template");
+  const status = document.getElementById("copy-status");
+  copyButton.addEventListener("click", async () => {
+    try {
+      if (navigator.clipboard && navigator.clipboard.writeText) {
+        await navigator.clipboard.writeText(field.value);
+      } else {
+        field.focus();
+        field.select();
+        if (!document.execCommand("copy")) throw new Error("copy failed");
+      }
+      status.textContent = copyButton.dataset.copied || "Copied";
+    } catch (_) {
+      field.focus();
+      field.select();
+      status.textContent = copyButton.dataset.select || "Selected - press Ctrl+C";
+    }
+  });
+}
