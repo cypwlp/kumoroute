@@ -179,3 +179,35 @@ h3, .feature-card p, .download-card p, .faq-grid details p { text-wrap: pretty; 
     animation-duration: .01ms !important;
   }
 }
+
+/* --- skip link, exclusive FAQ accordion, shared-element transitions ----- */
+.skip {
+  position: absolute;
+  left: 12px;
+  top: -48px;
+  z-index: 60;
+  padding: 9px 14px;
+  border-radius: 10px;
+  background: #16233a;
+  border: 1px solid var(--accent);
+  font-size: 13px;
+  transition: top .16s;
+}
+.skip:focus { top: 12px; }
+
+@supports (interpolate-size: allow-keywords) {
+  :root { interpolate-size: allow-keywords; }
+  .faq-grid details::details-content {
+    block-size: 0;
+    overflow: hidden;
+    transition: block-size .22s ease, content-visibility .22s allow-discrete;
+  }
+  .faq-grid details[open]::details-content { block-size: auto; }
+}
+
+@media (prefers-reduced-motion: no-preference) {
+  @supports (view-transition-name: hero) {
+    .app-frame { view-transition-name: hero; }
+    .hero-copy h1 { view-transition-name: headline; }
+  }
+}

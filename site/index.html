@@ -36,16 +36,17 @@
 <link rel="stylesheet" href="style.css?v=0.8.1">
 </head>
 <body>
+<a class="skip" href="#main">跳至主要內容</a>
 <header class="nav">
   <div class="nav-inner">
     <a class="brand" href="#top"><img src="assets/icon.png" alt="KumoRoute" width="256" height="256" decoding="async"><span>KumoRoute</span></a>
-    <nav class="nav-links"><a href="#download">下載</a><a href="#features">功能</a><a href="#workflow">使用方式</a><a href="#screens">介面</a><a href="#faq">常見問題</a></nav>
-    <div class="lang-switch" aria-label="語言"><a href="./" hreflang="zh-Hant" lang="zh-Hant" aria-current="true">繁中</a><a href="zh-cn/" hreflang="zh-Hans" lang="zh-Hans">简中</a><a href="en/" hreflang="en" lang="en">EN</a></div>
+    <nav class="nav-links" aria-label="主導覽"><a href="#download">下載</a><a href="#features">功能</a><a href="#workflow">使用方式</a><a href="#screens">介面</a><a href="#faq">常見問題</a></nav>
+    <nav class="lang-switch" aria-label="語言"><a href="./" hreflang="zh-Hant" lang="zh-Hant" aria-current="true">繁中</a><a href="zh-cn/" hreflang="zh-Hans" lang="zh-Hans">简中</a><a href="en/" hreflang="en" lang="en">EN</a></nav>
     <a class="btn ghost small" id="github-top" href="#" target="_blank" rel="noopener">GitHub</a>
   </div>
 </header>
 
-<main>
+<main id="main" tabindex="-1">
   <section class="hero" id="top">
     <div class="hero-copy">
       <div class="badge">v0.8.1 · Windows / Linux / macOS</div>
@@ -91,15 +92,15 @@
   <section class="section faq-section" id="faq">
     <div class="section-head"><div><span class="eyebrow">FAQ</span><h2>常見問題</h2></div><p>只保留下載前真正需要知道的資訊。</p></div>
     <div class="faq-grid">
-      <details><summary>Windows 顯示「已保護您的電腦」？</summary><p>這是未簽名程式的 SmartScreen 提示。專案開源，可自行檢查原始碼；設定簽章 secrets 後，Release 會自動產生 Authenticode 簽章。</p></details>
-      <details><summary>更新需要先刪除舊版嗎？</summary><p>不需要。Windows 安裝版使用原地更新模式，只顯示精簡進度並自動重啟；ZIP 版同樣會備份、覆蓋並套用更新，失敗時可還原上一版。設定、訂閱與 VPN 憑證都保存在使用者資料夾。</p></details>
-      <details><summary>需要自己準備節點嗎？</summary><p>是。KumoRoute 只提供客戶端，不包含或販售節點與訂閱服務。請自備合法的 Clash／Mihomo 配置。</p></details>
-      <details><summary>資料會上傳到哪裡？</summary><p>不會。設定、訂閱、日誌與統計保存在本機（%APPDATA%\\KumoRoute），沒有帳號系統或背景上傳。</p></details>
-      <details><summary>支援哪些平台？</summary><p>v0.8.1 提供 Windows（安裝包／免安裝）、Linux（AppImage／deb）與 macOS（Universal dmg）。手機版尚未提供。</p></details>
-      <details><summary>VPN 和系統代理怎麼選？</summary><p>VPN 頁提供只用代理、只用 VPN、兩者共存。連線成功後會實際發送 HTTP 請求驗證；若 VPN 建立但網路不可用，會自動斷線並恢復原本代理。</p></details>
-      <details><summary>備份會包含 VPN 密碼嗎？</summary><p>不會。JSON 備份包含設定、遠端訂閱與本機 YAML；Windows VPN 憑證仍只存在系統認證管理員。還原前會先建立安全備份。</p></details>
-      <details><summary>節點逾時怎麼辦？</summary><p>使用重測或整組測速。代理頁會顯示成功率、抖動與最近失敗原因，並自動排除連續兩次逾時的節點。</p></details>
-      <details><summary>可以從舊版 MyClash 升級嗎？</summary><p>可以。首次啟動會自動遷移舊資料，憑證與設定不會因更名而遺失。</p></details>
+      <details name="faq"><summary>Windows 顯示「已保護您的電腦」？</summary><p>這是未簽名程式的 SmartScreen 提示。專案開源，可自行檢查原始碼；設定簽章 secrets 後，Release 會自動產生 Authenticode 簽章。</p></details>
+      <details name="faq"><summary>更新需要先刪除舊版嗎？</summary><p>不需要。Windows 安裝版使用原地更新模式，只顯示精簡進度並自動重啟；ZIP 版同樣會備份、覆蓋並套用更新，失敗時可還原上一版。設定、訂閱與 VPN 憑證都保存在使用者資料夾。</p></details>
+      <details name="faq"><summary>需要自己準備節點嗎？</summary><p>是。KumoRoute 只提供客戶端，不包含或販售節點與訂閱服務。請自備合法的 Clash／Mihomo 配置。</p></details>
+      <details name="faq"><summary>資料會上傳到哪裡？</summary><p>不會。設定、訂閱、日誌與統計保存在本機（%APPDATA%\\KumoRoute），沒有帳號系統或背景上傳。</p></details>
+      <details name="faq"><summary>支援哪些平台？</summary><p>v0.8.1 提供 Windows（安裝包／免安裝）、Linux（AppImage／deb）與 macOS（Universal dmg）。手機版尚未提供。</p></details>
+      <details name="faq"><summary>VPN 和系統代理怎麼選？</summary><p>VPN 頁提供只用代理、只用 VPN、兩者共存。連線成功後會實際發送 HTTP 請求驗證；若 VPN 建立但網路不可用，會自動斷線並恢復原本代理。</p></details>
+      <details name="faq"><summary>備份會包含 VPN 密碼嗎？</summary><p>不會。JSON 備份包含設定、遠端訂閱與本機 YAML；Windows VPN 憑證仍只存在系統認證管理員。還原前會先建立安全備份。</p></details>
+      <details name="faq"><summary>節點逾時怎麼辦？</summary><p>使用重測或整組測速。代理頁會顯示成功率、抖動與最近失敗原因，並自動排除連續兩次逾時的節點。</p></details>
+      <details name="faq"><summary>可以從舊版 MyClash 升級嗎？</summary><p>可以。首次啟動會自動遷移舊資料，憑證與設定不會因更名而遺失。</p></details>
     </div>
   </section>
 

@@ -36,16 +36,17 @@
 <link rel="stylesheet" href="../style.css?v=0.8.1">
 </head>
 <body>
+<a class="skip" href="#main">跳至主要内容</a>
 <header class="nav">
   <div class="nav-inner">
     <a class="brand" href="../"><img src="../assets/icon.png" alt="KumoRoute" width="256" height="256" decoding="async"><span>KumoRoute</span></a>
-    <nav class="nav-links"><a href="#download">下载</a><a href="#features">功能</a><a href="#workflow">使用方式</a><a href="#screens">界面</a><a href="#faq">常见问题</a></nav>
-    <div class="lang-switch" aria-label="语言"><a href="../" hreflang="zh-Hant" lang="zh-Hant">繁中</a><a href="./" hreflang="zh-Hans" lang="zh-Hans" aria-current="true">简中</a><a href="../en/" hreflang="en" lang="en">EN</a></div>
+    <nav class="nav-links" aria-label="主导航"><a href="#download">下载</a><a href="#features">功能</a><a href="#workflow">使用方式</a><a href="#screens">界面</a><a href="#faq">常见问题</a></nav>
+    <nav class="lang-switch" aria-label="语言"><a href="../" hreflang="zh-Hant" lang="zh-Hant">繁中</a><a href="./" hreflang="zh-Hans" lang="zh-Hans" aria-current="true">简中</a><a href="../en/" hreflang="en" lang="en">EN</a></nav>
     <a class="btn ghost small" id="github-top" href="https://github.com/cypwlp/kumoroute" target="_blank" rel="noopener">GitHub</a>
   </div>
 </header>
 
-<main>
+<main id="main" tabindex="-1">
   <section class="hero" id="top">
     <div class="hero-copy">
       <div class="badge">v0.8.1 · Windows / Linux / macOS</div>
@@ -91,15 +92,15 @@
   <section class="section faq-section" id="faq">
     <div class="section-head"><div><span class="eyebrow">FAQ</span><h2>常见问题</h2></div><p>只保留下载前真正需要知道的信息。</p></div>
     <div class="faq-grid">
-      <details><summary>Windows 显示“已保护你的电脑”？</summary><p>这是未签名程序的 SmartScreen 提示。项目开源，可自行检查源代码；设置签名 secrets 后，Release 会自动生成 Authenticode 签名。</p></details>
-      <details><summary>更新前需要先删除旧版吗？</summary><p>不需要。Windows 安装版使用原地更新模式，只显示精简进度并自动重启；ZIP 版同样会备份、覆盖并应用更新，失败时可还原上一版。设置、订阅与 VPN 证书都保存在用户文件夹。</p></details>
-      <details><summary>需要自己准备节点吗？</summary><p>是。KumoRoute 只提供客户端，不包含也不销售节点与订阅服务。请自备合法的 Clash／Mihomo 配置。</p></details>
-      <details><summary>数据会上传到哪？</summary><p>不会上传。设置、订阅、日志与统计保存在本机（%APPDATA%\KumoRoute），没有账号系统或后台上传。</p></details>
-      <details><summary>支持哪些平台？</summary><p>v0.8.1 提供 Windows（安装包／免安装）、Linux（AppImage／deb）与 macOS（Universal dmg）。手机版尚未提供。</p></details>
-      <details><summary>VPN 和系统代理怎么选？</summary><p>VPN 页面提供只用代理、只用 VPN、两者共存。连接成功后会实际发送 HTTP 请求验证；若 VPN 已建立但网络不可用，会自动断开并恢复原代理。</p></details>
-      <details><summary>备份会包含 VPN 密码吗？</summary><p>不会。JSON 备份包含设置、远程订阅与本机 YAML；Windows VPN 证书仍只保存在系统凭据管理器。还原前会先建立安全备份。</p></details>
-      <details><summary>节点超时怎么办？</summary><p>使用重测或整组测速。代理页面会显示成功率、抖动与最近失败原因，并自动排除连续两次超时的节点。</p></details>
-      <details><summary>可以从旧版 MyClash 升级吗？</summary><p>可以。首次启动会自动迁移旧数据，证书与设置不会因更名而丢失。</p></details>
+      <details name="faq"><summary>Windows 显示“已保护你的电脑”？</summary><p>这是未签名程序的 SmartScreen 提示。项目开源，可自行检查源代码；设置签名 secrets 后，Release 会自动生成 Authenticode 签名。</p></details>
+      <details name="faq"><summary>更新前需要先删除旧版吗？</summary><p>不需要。Windows 安装版使用原地更新模式，只显示精简进度并自动重启；ZIP 版同样会备份、覆盖并应用更新，失败时可还原上一版。设置、订阅与 VPN 证书都保存在用户文件夹。</p></details>
+      <details name="faq"><summary>需要自己准备节点吗？</summary><p>是。KumoRoute 只提供客户端，不包含也不销售节点与订阅服务。请自备合法的 Clash／Mihomo 配置。</p></details>
+      <details name="faq"><summary>数据会上传到哪？</summary><p>不会上传。设置、订阅、日志与统计保存在本机（%APPDATA%\KumoRoute），没有账号系统或后台上传。</p></details>
+      <details name="faq"><summary>支持哪些平台？</summary><p>v0.8.1 提供 Windows（安装包／免安装）、Linux（AppImage／deb）与 macOS（Universal dmg）。手机版尚未提供。</p></details>
+      <details name="faq"><summary>VPN 和系统代理怎么选？</summary><p>VPN 页面提供只用代理、只用 VPN、两者共存。连接成功后会实际发送 HTTP 请求验证；若 VPN 已建立但网络不可用，会自动断开并恢复原代理。</p></details>
+      <details name="faq"><summary>备份会包含 VPN 密码吗？</summary><p>不会。JSON 备份包含设置、远程订阅与本机 YAML；Windows VPN 证书仍只保存在系统凭据管理器。还原前会先建立安全备份。</p></details>
+      <details name="faq"><summary>节点超时怎么办？</summary><p>使用重测或整组测速。代理页面会显示成功率、抖动与最近失败原因，并自动排除连续两次超时的节点。</p></details>
+      <details name="faq"><summary>可以从旧版 MyClash 升级吗？</summary><p>可以。首次启动会自动迁移旧数据，证书与设置不会因更名而丢失。</p></details>
     </div>
   </section>
 

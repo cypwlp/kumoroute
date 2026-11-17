@@ -36,16 +36,17 @@
 <link rel="stylesheet" href="../style.css?v=0.8.1">
 </head>
 <body>
+<a class="skip" href="#main">Skip to main content</a>
 <header class="nav">
   <div class="nav-inner">
     <a class="brand" href="../"><img src="../assets/icon.png" alt="KumoRoute" width="256" height="256" decoding="async"><span>KumoRoute</span></a>
-    <nav class="nav-links"><a href="#download">Download</a><a href="#features">Features</a><a href="#workflow">How it works</a><a href="#screens">Interface</a><a href="#faq">FAQ</a></nav>
-    <div class="lang-switch" aria-label="Language"><a href="../" hreflang="zh-Hant" lang="zh-Hant">繁中</a><a href="../zh-cn/" hreflang="zh-Hans" lang="zh-Hans">简中</a><a href="./" hreflang="en" lang="en" aria-current="true">EN</a></div>
+    <nav class="nav-links" aria-label="Main"><a href="#download">Download</a><a href="#features">Features</a><a href="#workflow">How it works</a><a href="#screens">Interface</a><a href="#faq">FAQ</a></nav>
+    <nav class="lang-switch" aria-label="Language"><a href="../" hreflang="zh-Hant" lang="zh-Hant">繁中</a><a href="../zh-cn/" hreflang="zh-Hans" lang="zh-Hans">简中</a><a href="./" hreflang="en" lang="en" aria-current="true">EN</a></nav>
     <a class="btn ghost small" id="github-top" href="https://github.com/cypwlp/kumoroute" target="_blank" rel="noopener">GitHub</a>
   </div>
 </header>
 
-<main>
+<main id="main" tabindex="-1">
   <section class="hero" id="top">
     <div class="hero-copy">
       <div class="badge">v0.8.1 · Windows / Linux / macOS</div>
@@ -91,15 +92,15 @@
   <section class="section faq-section" id="faq">
     <div class="section-head"><div><span class="eyebrow">FAQ</span><h2>Frequently asked</h2></div><p>Only what you need to know before downloading.</p></div>
     <div class="faq-grid">
-      <details><summary>Why does Windows show a SmartScreen warning?</summary><p>That is the SmartScreen prompt for an unsigned binary. The project is open source, so you can review the code yourself; once signing secrets are configured, releases are Authenticode-signed automatically.</p></details>
-      <details><summary>Do I have to uninstall the old version first?</summary><p>No. The Windows installer updates in place with a compact progress indicator and an automatic restart. The portable build backs up, replaces and applies the update the same way, and restores the previous build if anything fails. Settings, subscriptions and VPN credentials stay in your user profile.</p></details>
-      <details><summary>Do I need to bring my own nodes?</summary><p>Yes. KumoRoute only provides the client; it does not include or sell nodes or subscription services. Bring your own lawful Clash/Mihomo configuration.</p></details>
-      <details><summary>Where is my data uploaded?</summary><p>Nowhere. Settings, subscriptions, logs and statistics stay on the local machine (%APPDATA%\KumoRoute). There is no account system and no background upload.</p></details>
-      <details><summary>Which platforms are supported?</summary><p>v0.8.1 ships Windows (installer and portable), Linux (AppImage and deb) and macOS (universal dmg). No mobile build yet.</p></details>
-      <details><summary>VPN or system proxy?</summary><p>The VPN page offers proxy only, VPN only and both together. After connecting, KumoRoute sends a real HTTP request to verify connectivity; if the tunnel is up but the network is unusable, it disconnects and restores the previous proxy.</p></details>
-      <details><summary>Do backups include the VPN password?</summary><p>No. JSON backups contain settings, remote subscriptions and local YAML files; Windows VPN credentials stay in the system credential manager. A safety backup is taken before restoring.</p></details>
-      <details><summary>What if a node times out?</summary><p>Retest it or run the whole group test. The proxies page shows success rate, jitter and the last failure reason, and nodes that time out twice in a row are excluded automatically.</p></details>
-      <details><summary>Can I upgrade from the older MyClash build?</summary><p>Yes. On first launch your old data is migrated, so credentials and settings survive the rename.</p></details>
+      <details name="faq"><summary>Why does Windows show a SmartScreen warning?</summary><p>That is the SmartScreen prompt for an unsigned binary. The project is open source, so you can review the code yourself; once signing secrets are configured, releases are Authenticode-signed automatically.</p></details>
+      <details name="faq"><summary>Do I have to uninstall the old version first?</summary><p>No. The Windows installer updates in place with a compact progress indicator and an automatic restart. The portable build backs up, replaces and applies the update the same way, and restores the previous build if anything fails. Settings, subscriptions and VPN credentials stay in your user profile.</p></details>
+      <details name="faq"><summary>Do I need to bring my own nodes?</summary><p>Yes. KumoRoute only provides the client; it does not include or sell nodes or subscription services. Bring your own lawful Clash/Mihomo configuration.</p></details>
+      <details name="faq"><summary>Where is my data uploaded?</summary><p>Nowhere. Settings, subscriptions, logs and statistics stay on the local machine (%APPDATA%\KumoRoute). There is no account system and no background upload.</p></details>
+      <details name="faq"><summary>Which platforms are supported?</summary><p>v0.8.1 ships Windows (installer and portable), Linux (AppImage and deb) and macOS (universal dmg). No mobile build yet.</p></details>
+      <details name="faq"><summary>VPN or system proxy?</summary><p>The VPN page offers proxy only, VPN only and both together. After connecting, KumoRoute sends a real HTTP request to verify connectivity; if the tunnel is up but the network is unusable, it disconnects and restores the previous proxy.</p></details>
+      <details name="faq"><summary>Do backups include the VPN password?</summary><p>No. JSON backups contain settings, remote subscriptions and local YAML files; Windows VPN credentials stay in the system credential manager. A safety backup is taken before restoring.</p></details>
+      <details name="faq"><summary>What if a node times out?</summary><p>Retest it or run the whole group test. The proxies page shows success rate, jitter and the last failure reason, and nodes that time out twice in a row are excluded automatically.</p></details>
+      <details name="faq"><summary>Can I upgrade from the older MyClash build?</summary><p>Yes. On first launch your old data is migrated, so credentials and settings survive the rename.</p></details>
     </div>
   </section>
 

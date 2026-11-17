@@ -1,7 +1,9 @@
 <?xml version="1.0" encoding="UTF-8"?>
-<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9" xmlns:xhtml="http://www.w3.org/1999/xhtml">
+<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9" xmlns:xhtml="http://www.w3.org/1999/xhtml" xmlns:image="http://www.google.com/schemas/sitemap-image/1.1">
   <url>
     <loc>https://cypwlp.github.io/kumoroute/</loc>
+    <image:image><image:loc>https://cypwlp.github.io/kumoroute/assets/og.jpg</image:loc><image:title>KumoRoute 桌面介面</image:title></image:image>
+    <image:image><image:loc>https://cypwlp.github.io/kumoroute/assets/screenshot-overview-1600.avif</image:loc><image:title>KumoRoute 概覽</image:title></image:image>
     <lastmod>2026-11-16</lastmod>
     <changefreq>weekly</changefreq>
     <priority>1.0</priority>
@@ -12,6 +14,8 @@
   </url>
   <url>
     <loc>https://cypwlp.github.io/kumoroute/zh-cn/</loc>
+    <image:image><image:loc>https://cypwlp.github.io/kumoroute/assets/og.jpg</image:loc><image:title>KumoRoute 桌面界面</image:title></image:image>
+    <image:image><image:loc>https://cypwlp.github.io/kumoroute/assets/screenshot-overview-1600.avif</image:loc><image:title>KumoRoute 概览</image:title></image:image>
     <lastmod>2026-11-16</lastmod>
     <changefreq>weekly</changefreq>
     <priority>0.9</priority>
@@ -22,6 +26,8 @@
   </url>
   <url>
     <loc>https://cypwlp.github.io/kumoroute/en/</loc>
+    <image:image><image:loc>https://cypwlp.github.io/kumoroute/assets/og.jpg</image:loc><image:title>KumoRoute desktop interface</image:title></image:image>
+    <image:image><image:loc>https://cypwlp.github.io/kumoroute/assets/screenshot-overview-1600.avif</image:loc><image:title>KumoRoute overview</image:title></image:image>
     <lastmod>2026-11-16</lastmod>
     <changefreq>weekly</changefreq>
     <priority>0.9</priority>
