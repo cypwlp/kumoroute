@@ -14,7 +14,7 @@
       <img src="icon.png" alt="KumoRoute" class="brand-icon">
       <div>
         <div class="brand-name">KumoRoute</div>
-        <div class="brand-ver" id="app-version">v0.8.2</div>
+        <div class="brand-ver" id="app-version">v0.8.3</div>
       </div>
     </div>
 
@@ -482,6 +482,7 @@
           <button class="btn ghost small" data-open-url="https://cypwlp.github.io/kumoroute/privacy.html">隱私政策</button>
           <button class="btn ghost small" data-open-url="https://cypwlp.github.io/kumoroute/terms.html">服務條款</button>
           <button class="btn ghost small" id="btn-export-diagnostics">預覽／匯出診斷資料</button>
+          <button class="btn ghost small" id="btn-report-issue">回報問題</button>
         </div>
         <p class="hint disclaimer">KumoRoute 僅提供代理工具的圖形化管理，不包含、不販售任何節點或訂閱服務。
         請自行準備合法的代理配置，並遵守所在國家與地區的法律法規。</p>
@@ -536,6 +537,26 @@
         <button class="btn primary" id="btn-confirm-export-diagnostics">確認匯出</button>
         <button class="btn ghost" id="btn-cancel-diagnostics">取消</button>
       </div>
+    </div>
+  </div>
+
+  <div id="report-modal" class="modal hidden" role="dialog" aria-modal="true" aria-labelledby="report-title">
+    <div class="modal-card">
+      <div class="modal-head">
+        <div>
+          <div class="card-title" id="report-title">回報問題</div>
+          <p class="hint" id="report-summary">下列資訊會自動帶入，其餘內容由你填寫。KumoRoute 不會自動上傳任何資料。</p>
+        </div>
+        <button class="modal-close" id="btn-close-report" aria-label="關閉">×</button>
+      </div>
+      <pre id="report-system" class="diagnostics-preview" tabindex="0" data-no-i18n></pre>
+      <textarea id="report-description" class="report-description" rows="6" placeholder="請描述發生了什麼、重現步驟與預期結果。請勿貼上訂閱連結、節點網址或 VPN 憑證。"></textarea>
+      <div class="modal-actions">
+        <button class="btn ghost" id="btn-copy-report">複製回報內容</button>
+        <button class="btn primary" id="btn-open-report">開啟 GitHub 回報</button>
+        <button class="btn ghost" id="btn-cancel-report">取消</button>
+      </div>
+      <p class="hint" id="report-note"></p>
     </div>
   </div>
 

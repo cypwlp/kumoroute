@@ -1,4 +1,6 @@
 import importlib.util
+import io
+import json
 import tempfile
 import unittest
 from pathlib import Path
@@ -14,11 +16,11 @@ class UpdateAssetTests(unittest.TestCase):
     def _release(self):
         return {
             "assets": [
-                {"name": "KumoRoute-win-x64-setup.exe", "browser_download_url": "https://github.com/cypwlp/kumoroute/releases/download/v0.8.2/KumoRoute-win-x64-setup.exe", "size": 23_000_000},
-                {"name": "KumoRoute-win-x64.zip", "browser_download_url": "https://github.com/cypwlp/kumoroute/releases/download/v0.8.2/KumoRoute-win-x64.zip", "size": 30_000_000},
-                {"name": "KumoRoute-macos-universal.dmg", "browser_download_url": "https://github.com/cypwlp/kumoroute/releases/download/v0.8.2/KumoRoute-macos-universal.dmg", "size": 54_000_000},
-                {"name": "KumoRoute-linux-x86_64.AppImage", "browser_download_url": "https://github.com/cypwlp/kumoroute/releases/download/v0.8.2/KumoRoute-linux-x86_64.AppImage", "size": 108_000_000},
-                {"name": "SHA256SUMS.txt", "browser_download_url": "https://github.com/cypwlp/kumoroute/releases/download/v0.8.2/SHA256SUMS.txt", "size": 600},
+                {"name": "KumoRoute-win-x64-setup.exe", "browser_download_url": "https://github.com/cypwlp/kumoroute/releases/download/v0.8.3/KumoRoute-win-x64-setup.exe", "size": 23_000_000},
+                {"name": "KumoRoute-win-x64.zip", "browser_download_url": "https://github.com/cypwlp/kumoroute/releases/download/v0.8.3/KumoRoute-win-x64.zip", "size": 30_000_000},
+                {"name": "KumoRoute-macos-universal.dmg", "browser_download_url": "https://github.com/cypwlp/kumoroute/releases/download/v0.8.3/KumoRoute-macos-universal.dmg", "size": 54_000_000},
+                {"name": "KumoRoute-linux-x86_64.AppImage", "browser_download_url": "https://github.com/cypwlp/kumoroute/releases/download/v0.8.3/KumoRoute-linux-x86_64.AppImage", "size": 108_000_000},
+                {"name": "SHA256SUMS.txt", "browser_download_url": "https://github.com/cypwlp/kumoroute/releases/download/v0.8.3/SHA256SUMS.txt", "size": 600},
             ]
         }
 
@@ -42,9 +44,27 @@ class UpdateAssetTests(unittest.TestCase):
     def test_checksum_parser_and_url_validation(self):
         digest = "a" * 64
         self.assertEqual(app.parse_sha256sums(f"{digest}  KumoRoute-win-x64-setup.exe\n", "KumoRoute-win-x64-setup.exe"), digest)
-        self.assertTrue(app.safe_update_url("https://github.com/cypwlp/kumoroute/releases/download/v0.8.2/file.exe"))
+        self.assertTrue(app.safe_update_url("https://github.com/cypwlp/kumoroute/releases/download/v0.8.3/file.exe"))
         self.assertFalse(app.safe_update_url("https://evil.example/file.exe"))
         self.assertFalse(app.safe_update_url("http://github.com/file.exe"))
+        self.assertTrue(app.safe_update_url("http://kumoroute.cypilu.cloud/downloads/KumoRoute-win-x64-setup.exe"))
+        self.assertFalse(app.safe_update_url("http://evil.example/file.exe"))
+
+    def test_check_update_falls_back_to_mirror(self):
+        mirrored = {
+            "tag_name": "v9.9.9",
+            "html_url": "https://github.com/cypwlp/kumoroute/releases/tag/v9.9.9",
+            "assets": [{"name": "KumoRoute-win-x64-setup.exe",
+                        "browser_download_url": "http://129.204.149.106/downloads/KumoRoute-win-x64-setup.exe",
+                        "size": 100}],
+        }
+        payload = io.BytesIO(json.dumps(mirrored).encode("utf-8"))
+        with mock.patch.object(app.urllib.request, "urlopen", side_effect=[OSError("github blocked"), payload]):
+            api = app.Api.__new__(app.Api)
+            info = api.check_update()
+        self.assertTrue(info["ok"])
+        self.assertEqual(info["latest"], "9.9.9")
+        self.assertEqual(info["asset"]["download_url"], mirrored["assets"][0]["browser_download_url"])
 
     def test_update_ui_has_install_action_and_checksum_argument(self):
         ui = (ROOT / "client" / "ui" / "app.js").read_text(encoding="utf-8")
@@ -67,7 +87,7 @@ class UpdateAssetTests(unittest.TestCase):
                  mock.patch.object(api, "_create_update_backup", return_value={"ok": True}), \
                  mock.patch.object(app.subprocess, "Popen") as popen, \
                  mock.patch.object(app.threading, "Thread") as thread:
-                result = api.run_update_installer(str(installer), "0.8.2")
+                result = api.run_update_installer(str(installer), "0.8.3")
         self.assertTrue(result["ok"], result)
         popen.assert_called_once()
         args = popen.call_args.args[0]

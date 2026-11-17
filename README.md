@@ -39,7 +39,7 @@
 - IPv6／DNS 智慧診斷：除路由外會測試實際 IPv6 連線，直接比對 DNS 解析出口與代理出口 IP，檢查 DoH／DoT 衝突與 IPv6 優先問題；重複錯誤會合併成單一診斷事件
 - 一鍵網路修復：關閉 IPv6、切換備用 DNS、恢復自動 DNS、清除 DNS 快取並重新載入核心
 - IPv6 自動偵測：沒有預設 IPv6 路由時關閉核心 IPv6，避免反覆出現 unreachable network 日誌
-- 版本發佈工具：`python scripts/release.py 0.8.2` 同步版本並驗證跨後端契約
+- 版本發佈工具：`python scripts/release.py 0.8.3` 同步版本並驗證跨後端契約
 - 托盤常駐、關窗不退出、單實例
 - Windows Job Object 綁定 mihomo：主程序被強制終止時核心由系統一併結束
 - NSIS 安裝／卸載前檢查 `core\mihomo.exe`，避免核心鎖檔造成覆寫失敗
@@ -93,8 +93,8 @@ python app.py
 推送 `v*` tag 即由 GitHub Actions 自動編譯、打包並建立 Release（含 `KumoRoute-win-x64.zip` 與 `SHA256SUMS.txt`）：
 
 ```powershell
-git tag v0.8.2
-git push origin v0.8.2
+git tag v0.8.3
+git push origin v0.8.3
 ```
 
 下載站按鈕指向 `releases/latest/download/KumoRoute-win-x64.zip`（見 `site/app.js`）。
@@ -116,8 +116,9 @@ Pages：Settings → Pages → Source 選「GitHub Actions」，推送後自動�
 - 主站：https://cypwlp.github.io/kumoroute/（GitHub Pages，push `site/**` 自動部署）
 - 第二站：Cloudflare Pages（`.github/workflows/deploy-cloudflare.yml`，需 CF secrets；提供真正的 HTTP 安全標頭與自訂域名）
 - 裸 IP 備援：http://129.204.149.106/（`bash packaging/deploy-tencent.sh`）
+- 大陸下載／更新鏡像：http://129.204.149.106/downloads/（`bash packaging/sync_mirror.sh` 會同步官網 + 五個安裝檔 + `release.json` + `SHA256SUMS.txt`）。App 更新會先試 GitHub，失敗自動改讀此鏡像；`kumoroute.cypilu.cloud` 域名會被 DNSPod 備案攔截頁接管，**請只用裸 IP**。
 - 程式碼鏡像：Gitee（`.github/workflows/mirror-gitee.yml`）。Gitee Pages 已於 2024 年停止服務，因此不提供 gitee.io 站點。
-- 自訂鏡像域名：`kumoroute.cypilu.cloud`、`kumoroute.cypilu.online`（騰訊雲主機需 ICP 備案才能穩定使用 HTTPS；改用 Cloudflare Pages 可免備案）
+- 自訂鏡像域名：`kumoroute.cypilu.cloud`、`kumoroute.cypilu.online`（GET 會被 DNSPod 備案攔截頁接管；騰訊雲 HTTPS 需 ICP 備案。Cloudflare Pages 可免備案但大陸連線不保證）
 
 完整設定步驟見 [docs/deploy.md](docs/deploy.md)。
 

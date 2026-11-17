@@ -30,7 +30,7 @@ import yaml
 
 APP_NAME = "KumoRoute"
 LEGACY_APP_NAME = "MyClash"
-APP_VERSION = "0.8.2"
+APP_VERSION = "0.8.3"
 CREATE_NO_WINDOW = 0x08000000
 SUB_UA = f"KumoRoute/{APP_VERSION}"
 TEST_URL = "https://cp.cloudflare.com/generate_204"
@@ -222,17 +222,23 @@ def update_asset_matches(filename: str, system: str) -> bool:
     return False
 
 
+MIRROR_RELEASE_URL = "http://129.204.149.106/downloads/release.json"
+
+
 def safe_update_url(url: str) -> bool:
     try:
         parsed = urllib.parse.urlsplit((url or "").strip())
     except ValueError:
         return False
-    return (
-        parsed.scheme.lower() == "https"
-        and parsed.hostname in {"github.com", "objects.githubusercontent.com", "release-assets.githubusercontent.com"}
-        and not parsed.username
-        and not parsed.password
-    )
+    host = (parsed.hostname or "").lower()
+    if parsed.scheme.lower() == "https":
+        trusted = host in {"github.com", "objects.githubusercontent.com", "release-assets.githubusercontent.com"}
+    elif parsed.scheme.lower() == "http":
+        # Mainland fallback is HTTP-only; integrity comes from SHA256SUMS.txt.
+        trusted = host in {"kumoroute.cypilu.cloud", "129.204.149.106"}
+    else:
+        trusted = False
+    return trusted and not parsed.username and not parsed.password
 
 
 def parse_sha256sums(text: str, filename: str) -> str | None:
@@ -1696,6 +1702,7 @@ class Api:
             return {"ok": False, "error": str(exc)}
 
     def check_update(self) -> dict:
+        release = None
         try:
             req = urllib.request.Request(
                 "https://api.github.com/repos/cypwlp/kumoroute/releases/latest",
@@ -1703,6 +1710,22 @@ class Api:
             )
             with urllib.request.urlopen(req, timeout=12) as r:
                 release = json.load(r)
+        except Exception:
+            release = None
+        if not isinstance(release, dict) or not release.get("tag_name"):
+            try:
+                with urllib.request.urlopen(
+                    urllib.request.Request(MIRROR_RELEASE_URL, headers={"User-Agent": SUB_UA}),
+                    timeout=8,
+                ) as r:
+                    mirrored = json.load(r)
+                if isinstance(mirrored, dict) and mirrored.get("tag_name"):
+                    release = mirrored
+            except Exception:
+                release = None
+        if not isinstance(release, dict) or not release.get("tag_name"):
+            return {"ok": False, "error": "檢查更新失敗：GitHub 與大陸鏡像皆無法連線"}
+        try:
             latest = str(release.get("tag_name") or "").lstrip("v")
             current = APP_VERSION.lstrip("v")
 

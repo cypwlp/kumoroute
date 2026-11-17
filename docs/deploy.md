@@ -7,7 +7,8 @@
 |---|---|---|---|
 | GitHub Pages → https://cypwlp.github.io/kumoroute/ | push `main`（`site/**`） | 無（Settings → Pages → Source: GitHub Actions） | 主站，`<meta http-equiv>` 形式的 CSP |
 | Cloudflare Pages | push `main`（`site/**`） | `CLOUDFLARE_API_TOKEN`、`CLOUDFLARE_ACCOUNT_ID`，選用 `CLOUDFLARE_PROJECT` | 真正的 HTTP 標頭（`site/_headers`），可自訂域名 |
-| 騰訊雲裸 IP → http://129.204.149.106/ | 手動 | SSH 金鑰 | `bash packaging/deploy-tencent.sh` |
+| 騰訊雲裸 IP → http://129.204.149.106/ | 手動 | SSH 金鑰 | `bash packaging/deploy-tencent.sh`（只同步官網） |
+| 騰訊雲下載鏡像 → http://129.204.149.106/downloads/ | 手動，每次發版後 | SSH 金鑰 | `bash packaging/sync_mirror.sh`（官網 + 安裝檔 + `release.json`） |
 | Gitee → 僅程式碼鏡像 | push `main` / tag | `GITEE_SSH_KEY`、`GITEE_REPO`，選用 `GITEE_SSH_KNOWN_HOSTS` | **不含網站**（見下） |
 
 ## Gitee Pages 已停止服務
@@ -47,3 +48,20 @@ GitHub → Gitee，且無法鏡像刪除。
 - 同步：`bash packaging/deploy-tencent.sh`（SSH 到 `ubuntu@129.204.149.106`，上傳 `site/` 到 `/var/www/kumoroute`）
 - nginx 站點：`/etc/nginx/sites-available/kumoroute`；Let's Encrypt 憑證已配置，待域名可合規對外服務後啟用
 - 只有 HTTP，適合當最後一道備援；不建議在此站直接提供大檔案下載
+
+
+## 大陸下載／更新鏡像
+
+`packaging/sync_mirror.sh` 會把 `site/` 與最新 Release 的五個安裝檔同步到騰訊雲 VM：
+
+1. 官網直接 tar 上傳（與 GitHub Pages 同一份內容）。
+2. 把 `packaging/mirror_fetch.sh` 上傳到 VM 並在背景執行；VM 透過代理下載Installation檔，
+   再**用 GitHub 官方 `SHA256SUMS.txt` 逐檔驗證**，通過後才放進 `/var/www/kumoroute/downloads/`。
+3. 產生 `release.json`（格式與 GitHub Releases API 相同），App 在 `api.github.com` 失敗時自動改讀它。
+4. 完成後检查 `http://129.204.149.106/downloads/release.json` 與 `SHA256SUMS.txt` 皆為 200。
+
+**只使用裸 IP**：`kumoroute.cypilu.cloud` / `.online` 的 GET 會被騰訊 DNSPod 的備案攔截頁接管
+（HEAD 看起來正常，GET 會 302 到 `dnspod.qcloud.com/static/webblock.html`），所以 App 與官網
+的下載連結都寫死 `129.204.149.106`。
+
+此鏡像為 HTTP，安全性依靠 SHA256SUMS.txt 校驗；若要 HTTPS 需要 ICP 備案，或改用 Cloudflare Pages。

@@ -27,4 +27,4 @@
   Cross-Origin-Resource-Policy: same-origin
   Permissions-Policy: geolocation=(), microphone=(), camera=(), payment=()
   Strict-Transport-Security: max-age=31536000; includeSubDomains
-  Content-Security-Policy: default-src 'self'; img-src 'self' data:; style-src 'self' 'sha256-sRN9JsYd1IdetxPk8uri4JVj9thYAP4vmvyIWB7QE3g='; script-src 'self' 'inline-speculation-rules'; connect-src 'self'; object-src 'none'; base-uri 'self'; form-action 'none'; frame-ancestors 'none'
+  Content-Security-Policy: default-src 'self'; img-src 'self' data:; style-src 'self' 'sha256-5Kjd6Hv1ZeUT0sB1XVu1yzSafM79+8hqAm3eexYx99c='; script-src 'self' 'inline-speculation-rules'; connect-src 'self'; object-src 'none'; base-uri 'self'; form-action 'none'; frame-ancestors 'none'

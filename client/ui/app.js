@@ -790,7 +790,7 @@ const demoCfg = {
   mixed_port: 7890,
   controller_port: 9090,
   core_version: "v1.19.33",
-  app_version: "0.8.2",
+  app_version: "0.8.3",
   data_dir: "C:\\Users\\…\\AppData\\Roaming\\KumoRoute",
   test_url: "https://cp.cloudflare.com/generate_204",
   profiles: [
@@ -3198,6 +3198,96 @@ function bindActions() {
   });
   $("#btn-close-diagnostics").addEventListener("click", closeDiagnostics);
   $("#btn-cancel-diagnostics").addEventListener("click", closeDiagnostics);
+
+  /* ---------- in-app issue report: no upload, just a prefilled handoff ---------- */
+  const reportModal = $("#report-modal");
+  const reportSystem = $("#report-system");
+  const reportDescription = $("#report-description");
+  let reportSummary = "";
+
+  const reportInfo = () => {
+    const version = state ? state.app_version : "—";
+    const core = state ? (state.core_version || "—") : "—";
+    const mode = (latestUpdate && latestUpdate.install_mode) ||
+      (state && state.install_mode) || "—";
+    return [
+      `KumoRoute: v${version}`,
+      `mihomo: ${core}`,
+      `模式: ${mode}`,
+      `語系: ${currentLocale()}`,
+      `平台: ${navigator.userAgent}`,
+      reportSummary ? `診斷摘要: ${reportSummary}` : "",
+    ].filter(Boolean).join("\n");
+  };
+
+  const buildReport = () => {
+    const body = [
+      "<!-- 請勿張貼訂閱連結、節點網址、IP 或 VPN 憑證 -->",
+      "**版本與環境**",
+      "```",
+      reportInfo(),
+      "```",
+      "",
+      "**發生什麼 / 重現步驟 / 預期結果**",
+      reportDescription.value.trim() || "（請在此填寫）",
+      "",
+      "**診斷資料**",
+      "（如需附上，請用「預覽／匯出診斷資料」產生去識別化檔案後手動附加）",
+    ].join("\n");
+    const title = `[Bug] v${state ? state.app_version : "?"} - `;
+    const url = "https://github.com/cypwlp/kumoroute/issues/new?" +
+      new URLSearchParams({ title, body, labels: "bug" }).toString();
+    return { url, body };
+  };
+
+  const closeReport = () => {
+    reportModal.classList.add("hidden");
+    reportDescription.value = "";
+    reportSummary = "";
+  };
+
+  $("#btn-report-issue").addEventListener("click", async () => {
+    reportSummary = "";
+    if (!demo) {
+      try {
+        const res = await api("diagnostics_preview");
+        if (res && res.ok) {
+          const s = res.summary || {};
+          reportSummary = `URL ${Number(s.urls || 0)}、IP ${Number(s.ips || 0)}、` +
+            `端點 ${Number(s.endpoints || 0)}、敏感欄位 ${Number(s.secrets || 0)}（已去識別化）`;
+        }
+      } catch (_) { /* diagnostics are optional */ }
+    }
+    reportSystem.textContent = reportInfo();
+    $("#report-note").textContent = demo
+      ? tr("DEMO 模式：僅預覽，不會開啟外部頁面。")
+      : tr("只會開啟瀏覽器並預填 GitHub 表單；不會自動送出或上傳任何資料。");
+    reportModal.classList.remove("hidden");
+    reportDescription.focus();
+  });
+  $("#btn-copy-report").addEventListener("click", async () => {
+    const { body } = buildReport();
+    try {
+      await navigator.clipboard.writeText(body);
+      toast(tr("回報內容已複製"), "ok");
+    } catch (_) {
+      reportDescription.value = body;
+      reportDescription.focus();
+      reportDescription.select();
+      toast(tr("已選取內容，請按 Ctrl+C"), "ok");
+    }
+  });
+  $("#btn-open-report").addEventListener("click", () => {
+    const { url } = buildReport();
+    if (demo) window.open(url, "_blank");
+    else api("open_url", url);
+    closeReport();
+  });
+  $("#btn-close-report").addEventListener("click", closeReport);
+  $("#btn-cancel-report").addEventListener("click", closeReport);
+  reportModal.addEventListener("click", (ev) => {
+    if (ev.target === reportModal) closeReport();
+  });
   $("#diagnostics-modal").addEventListener("click", (ev) => {
     if (ev.target === $("#diagnostics-modal")) closeDiagnostics();
   });

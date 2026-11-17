@@ -780,3 +780,11 @@ main::-webkit-scrollbar-thumb { background: var(--line2); border-radius: 8px; bo
   :root[data-theme="system"] .toast { box-shadow: 0 10px 30px rgba(29, 41, 57, 0.18); }
   :root[data-theme="system"] .modal-card { box-shadow: 0 22px 70px rgba(29, 41, 57, 0.24); }
 }
+
+/* In-app issue report: prefilled system info + user description. */
+#report-system { min-height: 100px; max-height: 26vh; margin-bottom: 10px; }
+.report-description { width: 100%; min-height: 110px; padding: 12px; margin-bottom: 12px; resize: vertical;
+  background: #070a0f; border: 1px solid var(--line); border-radius: 10px; color: var(--text);
+  font: inherit; font-size: 12.5px; line-height: 1.6; }
+.report-description:focus { outline: 2px solid var(--accent); outline-offset: 1px; }
+:root[data-theme="light"] .report-description { background: #f8fafc; color: #1e293b; }
