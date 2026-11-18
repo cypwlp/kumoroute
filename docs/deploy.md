@@ -65,3 +65,11 @@ GitHub → Gitee，且無法鏡像刪除。
 的下載連結都寫死 `129.204.149.106`。
 
 此鏡像為 HTTP，安全性依靠 SHA256SUMS.txt 校驗；若要 HTTPS 需要 ICP 備案，或改用 Cloudflare Pages。
+
+### 自動同步（已啟用）
+
+VM 上已安裝 `/usr/local/bin/kumoroute-mirror-fetch.sh` 與 `kumoroute-mirror-check.sh`，
+並有 crontab `0 */6 * * *`。檢查腳本會比對 GitHub `releases/latest` 與本機
+`release.json` 的 `tag_name`，不同才重新下載（並再次做 SHA256 驗證），
+日誌在 `~/kumoroute-mirror.log`。原始碼分別是 `packaging/mirror_fetch.sh` 與
+`packaging/mirror_cron.sh`，修改後要重新上傳到 VM 才會生效。

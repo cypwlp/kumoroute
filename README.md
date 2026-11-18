@@ -116,7 +116,7 @@ Pages：Settings → Pages → Source 選「GitHub Actions」，推送後自動�
 - 主站：https://cypwlp.github.io/kumoroute/（GitHub Pages，push `site/**` 自動部署）
 - 第二站：Cloudflare Pages（`.github/workflows/deploy-cloudflare.yml`，需 CF secrets；提供真正的 HTTP 安全標頭與自訂域名）
 - 裸 IP 備援：http://129.204.149.106/（`bash packaging/deploy-tencent.sh`）
-- 大陸下載／更新鏡像：http://129.204.149.106/downloads/（`bash packaging/sync_mirror.sh` 會同步官網 + 五個安裝檔 + `release.json` + `SHA256SUMS.txt`）。App 更新會先試 GitHub，失敗自動改讀此鏡像；`kumoroute.cypilu.cloud` 域名會被 DNSPod 備案攔截頁接管，**請只用裸 IP**。
+- 大陸下載／更新鏡像：http://129.204.149.106/downloads/（`bash packaging/sync_mirror.sh` 手動同步；VM 上另有每 6 小時的 cron 自動檢查新版）。App 更新會先試 GitHub，失敗自動改讀此鏡像；`kumoroute.cypilu.cloud` 域名會被 DNSPod 備案攔截頁接管，**請只用裸 IP**。
 - 程式碼鏡像：Gitee（`.github/workflows/mirror-gitee.yml`）。Gitee Pages 已於 2024 年停止服務，因此不提供 gitee.io 站點。
 - 自訂鏡像域名：`kumoroute.cypilu.cloud`、`kumoroute.cypilu.online`（GET 會被 DNSPod 備案攔截頁接管；騰訊雲 HTTPS 需 ICP 備案。Cloudflare Pages 可免備案但大陸連線不保證）
 
