@@ -44,6 +44,10 @@ await send("Emulation.setDeviceMetricsOverride", {
 });
 await send("Page.navigate", { url });
 await new Promise((r) => setTimeout(r, 2000));
+if (process.env.EVAL) {
+  await send("Runtime.evaluate", { expression: process.env.EVAL, awaitPromise: true });
+  await new Promise((r) => setTimeout(r, 500));
+}
 const shot = await send("Page.captureScreenshot", {
   format: "png",
   captureBeyondViewport: full,

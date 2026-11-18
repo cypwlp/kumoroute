@@ -100,7 +100,7 @@ function saveProxyStrategy() {
 }
 
 function loadPreferences() {
-  const defaults = { autoUpdateCheck: true, lastUpdateCheck: 0, lastUpdatePromptVersion: "", theme: "system", language: "system" };
+  const defaults = { autoUpdateCheck: true, lastUpdateCheck: 0, lastUpdatePromptVersion: "", theme: "system", fontSize: "normal", language: "system" };
   try {
     const raw = localStorage.getItem(PREFS_KEY);
     if (!raw) return defaults;
@@ -109,7 +109,8 @@ function loadPreferences() {
       autoUpdateCheck: parsed.autoUpdateCheck !== false,
       lastUpdateCheck: Number(parsed.lastUpdateCheck || 0),
       lastUpdatePromptVersion: typeof parsed.lastUpdatePromptVersion === "string" ? parsed.lastUpdatePromptVersion : "",
-      theme: ["system", "dark", "light"].includes(parsed.theme) ? parsed.theme : "system",
+      theme: ["system", "dark", "light", "contrast"].includes(parsed.theme) ? parsed.theme : "system",
+      fontSize: ["small", "normal", "large"].includes(parsed.fontSize) ? parsed.fontSize : "normal",
       language: ["system", "zh-Hant", "zh-Hans", "en"].includes(parsed.language) ? parsed.language : "system",
     };
   } catch (e) {
@@ -126,9 +127,15 @@ function tr(text) {
 }
 
 function applyTheme(theme) {
-  const value = ["system", "dark", "light"].includes(theme) ? theme : "system";
+  const value = ["system", "dark", "light", "contrast"].includes(theme) ? theme : "system";
   document.documentElement.dataset.theme = value;
-  document.documentElement.style.colorScheme = value === "light" ? "light" : value === "dark" ? "dark" : "light dark";
+  document.documentElement.style.colorScheme =
+    value === "light" ? "light" : value === "system" ? "light dark" : "dark";
+}
+
+function applyFontSize(size) {
+  const value = ["small", "normal", "large"].includes(size) ? size : "normal";
+  document.documentElement.dataset.fontSize = value;
 }
 
 function applyLanguage(language) {
@@ -790,7 +797,7 @@ const demoCfg = {
   mixed_port: 7890,
   controller_port: 9090,
   core_version: "v1.19.33",
-  app_version: "0.8.3",
+  app_version: "0.8.4",
   data_dir: "C:\\Users\\…\\AppData\\Roaming\\KumoRoute",
   test_url: "https://cp.cloudflare.com/generate_204",
   profiles: [
@@ -1025,8 +1032,10 @@ function renderAll() {
   $("#foot-proxy").textContent = "系統代理：" + (state.sys_proxy ? "開" : "關");
   $("#app-version").textContent = "v" + state.app_version;
   const themeSelect = $("#select-theme");
+  const fontSizeSelect = $("#select-font-size");
   const languageSelect = $("#select-language");
   if (themeSelect) themeSelect.value = prefs.theme || "system";
+  if (fontSizeSelect) fontSizeSelect.value = prefs.fontSize || "normal";
   if (languageSelect) languageSelect.value = prefs.language || "system";
 
   $("#st-dot").className = "dot big" + (state.running ? " on" : "");
@@ -3103,6 +3112,12 @@ function bindActions() {
     applyTheme(prefs.theme);
     redrawCharts();
   });
+  $("#select-font-size").addEventListener("change", (ev) => {
+    prefs.fontSize = ev.target.value;
+    savePreferences();
+    applyFontSize(prefs.fontSize);
+    redrawCharts();
+  });
   $("#select-language").addEventListener("change", async (ev) => {
     prefs.language = ev.target.value;
     savePreferences();
@@ -3370,6 +3385,7 @@ document.addEventListener("DOMContentLoaded", async () => {
   bindActions();
   installUiCrashHandlers();
   applyTheme(prefs.theme);
+  applyFontSize(prefs.fontSize);
   applyLanguage(prefs.language);
   if (window.KumoI18n) window.KumoI18n.observe();
   const systemTheme = window.matchMedia("(prefers-color-scheme: light)");

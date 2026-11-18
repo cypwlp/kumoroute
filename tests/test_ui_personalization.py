@@ -21,19 +21,24 @@ class UiPersonalizationTests(unittest.TestCase):
         self.assertLess(self.index.index("i18n.js"), self.index.index("app.js"))
 
     def test_settings_expose_theme_and_language_choices(self):
-        for value in ("system", "dark", "light"):
+        for value in ("system", "dark", "light", "contrast"):
             self.assertIn(f'id="select-theme"', self.index)
             self.assertIn(f'<option value="{value}">', self.index)
         for value in ("system", "zh-Hant", "zh-Hans", "en"):
             self.assertIn('id="select-language"', self.index)
             self.assertIn(f'<option value="{value}">', self.index)
+        for value in ("small", "normal", "large"):
+            self.assertIn('id="select-font-size"', self.index)
+            self.assertIn(f'<option value="{value}">', self.index)
 
     def test_preferences_validate_and_persist_personalization(self):
         self.assertIn("kumoroute.preferences.v1", self.app)
-        self.assertIn('theme: "system", language: "system"', self.app)
-        self.assertIn('["system", "dark", "light"].includes(parsed.theme)', self.app)
+        self.assertIn('theme: "system", fontSize: "normal", language: "system"', self.app)
+        self.assertIn('["system", "dark", "light", "contrast"].includes(parsed.theme)', self.app)
+        self.assertIn('["small", "normal", "large"].includes(parsed.fontSize)', self.app)
         self.assertIn('["system", "zh-Hant", "zh-Hans", "en"].includes(parsed.language)', self.app)
         self.assertIn('$("#select-theme").addEventListener("change"', self.app)
+        self.assertIn('$("#select-font-size").addEventListener("change"', self.app)
         self.assertIn('$("#select-language").addEventListener("change"', self.app)
 
     def test_system_theme_reads_preference_before_css(self):
@@ -42,6 +47,16 @@ class UiPersonalizationTests(unittest.TestCase):
         self.assertIn('@media (prefers-color-scheme: light)', self.css)
         self.assertIn(':root[data-theme="light"]', self.css)
         self.assertIn(':root[data-theme="system"]', self.css)
+
+    def test_contrast_theme_and_text_size_are_scoped(self):
+        self.assertIn('["system", "dark", "light", "contrast"].includes(prefs.theme)', self.theme_boot)
+        self.assertIn("dataset.fontSize", self.theme_boot)
+        self.assertIn(':root[data-theme="contrast"]', self.css)
+        self.assertIn('html[data-font-size="small"]', self.css)
+        self.assertIn('html[data-font-size="large"]', self.css)
+        self.assertIn("function applyFontSize(size)", self.app)
+        self.assertIn("font-size: 1rem", self.css)
+        self.assertNotIn("  font-size: 14px;\n  overflow: hidden;", self.css)
 
     def test_translation_engine_tracks_original_strings_for_round_trips(self):
         self.assertIn("const originals = new WeakMap()", self.i18n)
