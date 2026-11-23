@@ -303,6 +303,12 @@
           "markdownDescription": "Enables the record_ui_error command without any pre-configured scope."
         },
         {
+          "description": "Enables the reset_network command without any pre-configured scope.",
+          "type": "string",
+          "const": "allow-reset-network",
+          "markdownDescription": "Enables the reset_network command without any pre-configured scope."
+        },
+        {
           "description": "Enables the rollback_update command without any pre-configured scope.",
           "type": "string",
           "const": "allow-rollback-update",
@@ -607,6 +613,12 @@
           "type": "string",
           "const": "deny-record-ui-error",
           "markdownDescription": "Denies the record_ui_error command without any pre-configured scope."
+        },
+        {
+          "description": "Denies the reset_network command without any pre-configured scope.",
+          "type": "string",
+          "const": "deny-reset-network",
+          "markdownDescription": "Denies the reset_network command without any pre-configured scope."
         },
         {
           "description": "Denies the rollback_update command without any pre-configured scope.",

@@ -42,6 +42,7 @@ const COMMANDS: &[&str] = &[
     "set_network_mode",
     "network_diagnostics",
     "network_repair",
+    "reset_network",
     "vpn_open_settings",
     "record_ui_error",
     "diagnostics_preview",

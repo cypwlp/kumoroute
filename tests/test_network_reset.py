@@ -14,6 +14,8 @@ class NetworkResetTests(unittest.TestCase):
         cls.tauri = (ROOT / "tauri" / "src" / "commands.rs").read_text(encoding="utf-8")
         cls.main = (ROOT / "tauri" / "src" / "main.rs").read_text(encoding="utf-8")
         cls.python = (ROOT / "client" / "app.py").read_text(encoding="utf-8")
+        cls.caps = (ROOT / "tauri" / "capabilities" / "main.json").read_text(encoding="utf-8")
+        cls.build_rs = (ROOT / "tauri" / "build.rs").read_text(encoding="utf-8")
 
     def test_ui_exposes_reset_button_and_confirmation(self):
         self.assertIn('id="btn-reset-network"', self.index)
@@ -42,6 +44,27 @@ class NetworkResetTests(unittest.TestCase):
         self.assertIn("proxy::set_system_proxy", section)
         self.assertIn("proxy::recover_stale_proxy", section)
         self.assertNotIn("apply(0, \"\"", section)
+
+    def test_tauri_acl_allows_every_registered_command(self):
+        """Tauri v2 rejects unlisted commands with "not allowed by ACL"."""
+        import json
+
+        caps = json.loads(self.caps)
+        allowed = {
+            item[len("allow-") :].replace("-", "_")
+            for item in caps["permissions"]
+            if item.startswith("allow-")
+        }
+        block = self.main.split("generate_handler![", 1)[1].split("])", 1)[0]
+        commands = [part.split("::")[-1].strip() for part in block.split(",") if part.strip()]
+        self.assertIn("reset_network", commands)
+        self.assertEqual([c for c in commands if c not in allowed], [])
+
+        # tauri/build.rs declares the app manifest for codegen; a missing entry
+        # breaks the build (or, worse, the ACL at runtime).
+        manifest = self.build_rs.split("const COMMANDS: &[&str] = &[", 1)[1].split("];", 1)[0]
+        declared = {part.strip().strip('",') for part in manifest.splitlines() if part.strip()}
+        self.assertEqual([c for c in commands if c not in declared], [])
 
     def test_translations_cover_the_reset_flow(self):
         for text in ("一鍵重置網路", "重置中…", "網路已重置", "部分步驟未完成"):

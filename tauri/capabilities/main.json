@@ -61,6 +61,7 @@
     "allow-save-settings",
     "allow-open-data-dir",
     "allow-open-url",
-    "allow-quit-app"
+    "allow-quit-app",
+    "allow-reset-network"
   ]
 }
