@@ -30,7 +30,7 @@ import yaml
 
 APP_NAME = "KumoRoute"
 LEGACY_APP_NAME = "MyClash"
-APP_VERSION = "0.8.4"
+APP_VERSION = "0.8.5"
 CREATE_NO_WINDOW = 0x08000000
 SUB_UA = f"KumoRoute/{APP_VERSION}"
 TEST_URL = "https://cp.cloudflare.com/generate_204"
@@ -2593,6 +2593,96 @@ class Api:
                 except Exception:
                     pass
             return {"ok": False, "error": str(exc)}
+
+    def reset_network(self) -> dict:
+        """Give the machine back a clean network: undo only what KumoRoute changed."""
+        warnings: list[str] = []
+        disconnected: list[str] = []
+        if platform.system().lower() == "windows":
+            try:
+                listing = self.vpn_list()
+                for item in listing.get("connections") or []:
+                    if not item.get("connected"):
+                        continue
+                    name = str(item.get("name") or "")
+                    if not name:
+                        continue
+                    ok_disconnect, detail = _vpn_ras_disconnect(name)
+                    if ok_disconnect:
+                        disconnected.append(name)
+                    else:
+                        warnings.append(f"{name}：{detail}")
+            except Exception as exc:
+                warnings.append(f"讀取 VPN 連線失敗：{exc}")
+
+        proxy_note = "未變更"
+        proxy_restored = False
+        if is_system_proxy_on(self._store):
+            result = self.set_system_proxy(False)
+            if result.get("ok"):
+                proxy_note = "已還原為接管前的設定"
+                proxy_restored = True
+            else:
+                warnings.append(str(result.get("error") or "系統代理還原失敗"))
+                proxy_note = "還原失敗"
+        elif self._store.data.get("original_proxy"):
+            recovery = recover_stale_proxy(self._store) or {}
+            if recovery.get("restored"):
+                proxy_note = "已還原為接管前的設定"
+                proxy_restored = True
+            elif recovery.get("error"):
+                warnings.append(str(recovery["error"]))
+                proxy_note = "清理失敗"
+            else:
+                proxy_note = "已清除過期快照（目前代理非 KumoRoute 設定）"
+
+        self._store.data["dns_mode"] = "auto"
+        self._store.data["force_disable_ipv6"] = False
+        self._store.data["vpn_proxy_pending"] = False
+        self._store.data["network_mode"] = "coexist"
+        try:
+            self._store.save()
+        except Exception as exc:
+            warnings.append(f"保存設定失敗：{exc}")
+
+        reloaded = False
+        if self._core.is_up():
+            try:
+                reloaded, message = self._core.reload_runtime()
+                if not reloaded:
+                    warnings.append(f"核心重載失敗：{message}")
+            except Exception as exc:
+                warnings.append(f"核心重載失敗：{exc}")
+
+        flushed = False
+        try:
+            if platform.system().lower() == "windows":
+                flushed = subprocess.run(
+                    ["ipconfig.exe", "/flushdns"],
+                    capture_output=True, text=True, timeout=12, creationflags=CREATE_NO_WINDOW,
+                ).returncode == 0
+            elif platform.system().lower() == "darwin":
+                flushed = subprocess.run(
+                    ["dscacheutil", "-flushcache"], capture_output=True, text=True, timeout=12
+                ).returncode == 0
+            else:
+                flushed = subprocess.run(
+                    ["resolvectl", "flush-caches"], capture_output=True, text=True, timeout=12
+                ).returncode == 0
+        except Exception:
+            flushed = False
+
+        return {
+            "ok": not warnings,
+            "proxy": proxy_note,
+            "proxy_restored": proxy_restored,
+            "vpn_disconnected": disconnected,
+            "dns_flushed": flushed,
+            "core_reloaded": reloaded,
+            "dns_mode": "auto",
+            "ipv6_forced_off": False,
+            "warnings": warnings,
+        }
 
     def vpn_open_settings(self) -> dict:
         if platform.system().lower() != "windows":

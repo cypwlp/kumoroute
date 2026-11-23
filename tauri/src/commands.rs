@@ -2473,6 +2473,146 @@ pub fn network_repair(state: State<'_, Shared>, action: String) -> Value {
     json!({"ok": true, "action": action})
 }
 
+/// Flush the OS DNS cache. Returns false when no supported command succeeded.
+fn flush_dns_cache() -> bool {
+    #[cfg(windows)]
+    {
+        matches!(hidden_command("ipconfig.exe").arg("/flushdns").output(), Ok(o) if o.status.success())
+    }
+    #[cfg(target_os = "macos")]
+    {
+        let a = matches!(hidden_command("dscacheutil").arg("-flushcache").output(), Ok(o) if o.status.success());
+        let b = matches!(hidden_command("killall").args(["-HUP", "mDNSResponder"]).output(), Ok(o) if o.status.success());
+        a || b
+    }
+    #[cfg(all(unix, not(target_os = "macos")))]
+    {
+        matches!(hidden_command("resolvectl").arg("flush-caches").output(), Ok(o) if o.status.success())
+    }
+    #[cfg(not(any(windows, unix)))]
+    {
+        false
+    }
+}
+
+/// Disconnect every currently connected VPN profile (Windows only).
+fn disconnect_all_vpns() -> (Vec<String>, Vec<String>) {
+    #[cfg(windows)]
+    {
+        let connections = match vpn_snapshot() {
+            Ok((items, _)) => items,
+            Err(e) => return (Vec::new(), vec![format!("讀取 VPN 連線失敗：{e}")]),
+        };
+        let mut done = Vec::new();
+        let mut failures = Vec::new();
+        for item in connections {
+            if !item.get("connected").and_then(Value::as_bool).unwrap_or(false) {
+                continue;
+            }
+            let Some(name) = item.get("name").and_then(Value::as_str) else {
+                continue;
+            };
+            match hidden_command("rasdial.exe").args([name, "/disconnect"]).output() {
+                Ok(output) if output.status.success() => done.push(name.to_string()),
+                Ok(output) => failures.push(format!(
+                    "{name}：代碼 {}",
+                    output.status.code().unwrap_or(-1)
+                )),
+                Err(e) => failures.push(format!("{name}：{e}")),
+            }
+        }
+        (done, failures)
+    }
+    #[cfg(not(windows))]
+    {
+        (Vec::new(), Vec::new())
+    }
+}
+
+/// Settings a network reset must restore to their system-friendly defaults.
+fn reset_settings_defaults(data: &mut crate::state::Settings) {
+    data.dns_mode = "auto".into();
+    data.force_disable_ipv6 = false;
+    data.vpn_proxy_pending = false;
+    data.network_mode = "coexist".into();
+}
+
+/// One-click network reset: give the machine back a clean, working network.
+///
+/// Only touches what KumoRoute itself changed: it restores the proxy snapshot it
+/// captured, disconnects the VPN profiles that are currently up, returns DNS and
+/// IPv6 handling to the system defaults, flushes the resolver cache and reloads
+/// the core with the cleaned-up config. An external proxy that is not ours is
+/// left alone.
+#[tauri::command]
+pub fn reset_network(state: State<'_, Shared>) -> Value {
+    let (vpn_done, mut warnings) = disconnect_all_vpns();
+
+    let mut s = state.lock().unwrap_or_else(|e| e.into_inner());
+    let port = s.store.data.controller_port;
+    let core_up = core::is_up(port);
+
+    // 1) System proxy: restore what we captured, or clear a stale snapshot.
+    let mut proxy_note = "未變更";
+    let mut proxy_restored = false;
+    let mut proxy_ok = true;
+    if proxy::is_on(&s.store) {
+        match proxy::set_system_proxy(&mut s.store, false, core_up) {
+            Ok(_) => {
+                proxy_note = "已還原為接管前的設定";
+                proxy_restored = true;
+            }
+            Err(e) => {
+                proxy_ok = false;
+                warnings.push(format!("系統代理：{e}"));
+                proxy_note = "還原失敗";
+            }
+        }
+    } else if s.store.data.original_proxy.is_some() {
+        let recovery = proxy::recover_stale_proxy(&mut s.store);
+        if recovery.restored {
+            proxy_note = "已還原為接管前的設定";
+            proxy_restored = true;
+        } else if recovery.cleared_stale {
+            proxy_note = "已清除過期快照（目前代理非 KumoRoute 設定）";
+        } else if let Some(e) = recovery.error {
+            proxy_ok = false;
+            warnings.push(e);
+            proxy_note = "清理失敗";
+        }
+    }
+
+    // 2) DNS / IPv6 / mode back to system defaults, then reload the core.
+    reset_settings_defaults(&mut s.store.data);
+    let saved = s.store.save();
+    if let Err(e) = &saved {
+        warnings.push(format!("保存設定失敗：{e}"));
+    }
+    let mut reloaded = false;
+    if core_up {
+        match do_reload(&mut *s) {
+            Ok(()) => reloaded = true,
+            Err(e) => warnings.push(format!("核心重載失敗：{e}")),
+        }
+    }
+    drop(s);
+
+    let flushed = flush_dns_cache();
+
+    json!({
+        "ok": proxy_ok,
+        "error": if proxy_ok { Value::Null } else { Value::String(warnings.join("；")) },
+        "proxy": proxy_note,
+        "proxy_restored": proxy_restored,
+        "vpn_disconnected": vpn_done,
+        "dns_flushed": flushed,
+        "core_reloaded": reloaded,
+        "dns_mode": "auto",
+        "ipv6_forced_off": false,
+        "warnings": warnings,
+    })
+}
+
 #[tauri::command]
 pub fn vpn_forget_credentials(name: String) -> Value {
     if std::env::consts::OS != "windows" {
@@ -2824,11 +2964,11 @@ mod update_tests {
     fn release() -> Value {
         json!({
             "assets": [
-                {"name": "KumoRoute-win-x64-setup.exe", "browser_download_url": "https://github.com/cypwlp/kumoroute/releases/download/v0.8.4/KumoRoute-win-x64-setup.exe", "size": 23000000},
-                {"name": "KumoRoute-win-x64.zip", "browser_download_url": "https://github.com/cypwlp/kumoroute/releases/download/v0.8.4/KumoRoute-win-x64.zip", "size": 30000000},
-                {"name": "KumoRoute-macos-universal.dmg", "browser_download_url": "https://github.com/cypwlp/kumoroute/releases/download/v0.8.4/KumoRoute-macos-universal.dmg", "size": 54000000},
-                {"name": "KumoRoute-linux-x86_64.AppImage", "browser_download_url": "https://github.com/cypwlp/kumoroute/releases/download/v0.8.4/KumoRoute-linux-x86_64.AppImage", "size": 108000000},
-                {"name": "SHA256SUMS.txt", "browser_download_url": "https://github.com/cypwlp/kumoroute/releases/download/v0.8.4/SHA256SUMS.txt", "size": 600}
+                {"name": "KumoRoute-win-x64-setup.exe", "browser_download_url": "https://github.com/cypwlp/kumoroute/releases/download/v0.8.5/KumoRoute-win-x64-setup.exe", "size": 23000000},
+                {"name": "KumoRoute-win-x64.zip", "browser_download_url": "https://github.com/cypwlp/kumoroute/releases/download/v0.8.5/KumoRoute-win-x64.zip", "size": 30000000},
+                {"name": "KumoRoute-macos-universal.dmg", "browser_download_url": "https://github.com/cypwlp/kumoroute/releases/download/v0.8.5/KumoRoute-macos-universal.dmg", "size": 54000000},
+                {"name": "KumoRoute-linux-x86_64.AppImage", "browser_download_url": "https://github.com/cypwlp/kumoroute/releases/download/v0.8.5/KumoRoute-linux-x86_64.AppImage", "size": 108000000},
+                {"name": "SHA256SUMS.txt", "browser_download_url": "https://github.com/cypwlp/kumoroute/releases/download/v0.8.5/SHA256SUMS.txt", "size": 600}
             ]
         })
     }
@@ -2865,10 +3005,24 @@ mod update_tests {
         let digest = "a".repeat(64);
         let sums = format!("{digest}  KumoRoute-win-x64-setup.exe\n");
         assert_eq!(parse_sha256sums(&sums, "KumoRoute-win-x64-setup.exe"), Some(digest));
-        assert!(safe_update_url("https://github.com/cypwlp/kumoroute/releases/download/v0.8.4/file.exe"));
+        assert!(safe_update_url("https://github.com/cypwlp/kumoroute/releases/download/v0.8.5/file.exe"));
         assert!(safe_update_url("http://129.204.149.106/downloads/KumoRoute-win-x64-setup.exe"));
         assert!(!safe_update_url("https://evil.example/file.exe"));
         assert!(!safe_update_url("http://github.com/file.exe"));
         assert!(!safe_update_url("http://evil.example/file.exe"));
+    }
+
+    #[test]
+    fn reset_defaults_clear_dns_ipv6_and_vpn_state() {
+        let mut data = crate::state::Settings::default();
+        data.dns_mode = "backup".into();
+        data.force_disable_ipv6 = true;
+        data.vpn_proxy_pending = true;
+        data.network_mode = "vpn".into();
+        reset_settings_defaults(&mut data);
+        assert_eq!(data.dns_mode, "auto");
+        assert!(!data.force_disable_ipv6);
+        assert!(!data.vpn_proxy_pending);
+        assert_eq!(data.network_mode, "coexist");
     }
 }

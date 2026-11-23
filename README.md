@@ -18,6 +18,7 @@
 - 節點品質策略：固定節點／自動選擇／最低延遲；連續兩次逾時會自動排除，策略與最近 10 次測速結果會保存在本機
 - 群組測速支援最多 6 個節點並行、顯示進度並可中途取消
 - 介面個人化：跟隨系統／深色／淺色／高對比主題，字型大小（小／標準／大），繁體中文／简体中文／English 即時切換並保存偏好；自訂配置與節點名稱不被翻譯
+- 一鍵重置網路：設定頁一顆按鈕即斷開所有 VPN、還原並關閉系統代理、DNS／IPv6 回到系統預設、清除 DNS 快取並重載核心；只收拾 KumoRoute 自己改過的設定，不動外部代理
 - 節點選擇、整組測速、模式切換（規則 / 全局 / 直連）
 - 即時上下行速度、連線數、日誌
 - 本機流量統計：今日、近 7 日趨勢、近 30 日累計、峰值連線與速度
@@ -39,7 +40,7 @@
 - IPv6／DNS 智慧診斷：除路由外會測試實際 IPv6 連線，直接比對 DNS 解析出口與代理出口 IP，檢查 DoH／DoT 衝突與 IPv6 優先問題；重複錯誤會合併成單一診斷事件
 - 一鍵網路修復：關閉 IPv6、切換備用 DNS、恢復自動 DNS、清除 DNS 快取並重新載入核心
 - IPv6 自動偵測：沒有預設 IPv6 路由時關閉核心 IPv6，避免反覆出現 unreachable network 日誌
-- 版本發佈工具：`python scripts/release.py 0.8.4` 同步版本並驗證跨後端契約
+- 版本發佈工具：`python scripts/release.py 0.8.5` 同步版本並驗證跨後端契約
 - 托盤常駐、關窗不退出、單實例
 - Windows Job Object 綁定 mihomo：主程序被強制終止時核心由系統一併結束
 - NSIS 安裝／卸載前檢查 `core\mihomo.exe`，避免核心鎖檔造成覆寫失敗
@@ -93,8 +94,8 @@ python app.py
 推送 `v*` tag 即由 GitHub Actions 自動編譯、打包並建立 Release（含 `KumoRoute-win-x64.zip` 與 `SHA256SUMS.txt`）：
 
 ```powershell
-git tag v0.8.4
-git push origin v0.8.4
+git tag v0.8.5
+git push origin v0.8.5
 ```
 
 下載站按鈕指向 `releases/latest/download/KumoRoute-win-x64.zip`（見 `site/app.js`）。

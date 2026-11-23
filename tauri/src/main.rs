@@ -132,6 +132,7 @@ fn main() {
             commands::set_network_mode,
             commands::network_diagnostics,
             commands::network_repair,
+            commands::reset_network,
             commands::vpn_open_settings,
             commands::record_ui_error,
             commands::diagnostics_preview,

@@ -761,6 +761,7 @@ const TAURI_SIG = {
   set_network_mode: ["mode"],
   network_diagnostics: [],
   network_repair: ["action"],
+  reset_network: [],
   vpn_add: ["name", "server", "tunnelType"],
   vpn_edit: ["name", "server", "tunnelType"],
   vpn_delete: ["name"],
@@ -797,7 +798,7 @@ const demoCfg = {
   mixed_port: 7890,
   controller_port: 9090,
   core_version: "v1.19.33",
-  app_version: "0.8.4",
+  app_version: "0.8.5",
   data_dir: "C:\\Users\\…\\AppData\\Roaming\\KumoRoute",
   test_url: "https://cp.cloudflare.com/generate_204",
   profiles: [
@@ -978,6 +979,9 @@ async function demoApi(fn, ...args) {
     }
     case "network_diagnostics": return { ok: true, ipv6_route: false, ipv6_connectivity: false, ipv6_preferred: true, dns_ok: true, dns_servers: ["192.168.1.1"], dns_resolver_ip: "203.0.113.8", proxy_egress_ip: demoCfg.sys_proxy ? "198.51.100.24" : "", dns_leak_confirmed: false, doh_templates: 0, dot_templates: 0, dns_encryption_conflict: false, dns_leak_suspected: false, proxy_on: demoCfg.sys_proxy, network_mode: demoCfg.networkMode, issues: [{ type: "ipv6", count: 3, message: "IPv6 連線不可達" }] };
     case "network_repair": return { ok: true, action: String(args[0] || "") };
+    case "reset_network":
+      demoCfg.sys_proxy = false; demoCfg.vpnConnected = false; demoCfg.networkMode = "coexist";
+      return { ok: true, proxy: "已還原為接管前的設定", vpn_disconnected: ["範例 VPN"], dns_flushed: true, core_reloaded: true, warnings: [] };
     case "install_update": return { ok: true, path: "C:\\Users\\…\\Downloads\\" + String(args[1] || "KumoRoute-update.exe") };
     case "start_update_download":
       demoCfg.updateDownload = { active: true, phase: "downloading", received: 0, total: 30442200, percent: 0, path: null, error: null };
@@ -2694,6 +2698,38 @@ async function runNetworkDiagnostics() {
   }
 }
 
+async function resetNetwork(btn) {
+  if (!btn) return;
+  if (!confirm(tr("這會斷開所有 VPN 連線、關閉並還原系統代理、把 DNS 與 IPv6 設回系統預設，然後重載核心。要繼續嗎？"))) return;
+  btn.disabled = true;
+  const original = btn.textContent;
+  btn.textContent = tr("重置中…");
+  try {
+    const res = demo ? await demoApi("reset_network") : await api("reset_network");
+    if (!res || !res.ok) {
+      const warnings = (res && res.warnings) || [];
+      toast((res && res.error) || warnings.join("；") || "網路重置失敗", "error");
+    } else {
+      const parts = [];
+      const vpnCount = (res.vpn_disconnected || []).length;
+      if (vpnCount) parts.push(`${tr("已斷開 VPN 連線")}: ${vpnCount}`);
+      if (res.proxy_restored) parts.push(tr("系統代理已還原"));
+      if (res.dns_flushed) parts.push(tr("DNS 快取已清除"));
+      if (res.core_reloaded) parts.push(tr("核心已重載"));
+      toast("網路已重置", "ok", parts.join(" · ") || undefined);
+      const warnings = res.warnings || [];
+      if (warnings.length) toast("部分步驟未完成", "error", warnings.join("；"));
+    }
+    await refreshState();
+    await runNetworkDiagnostics();
+  } catch (e) {
+    toast(String(e), "error");
+  } finally {
+    btn.disabled = false;
+    btn.textContent = original;
+  }
+}
+
 async function repairNetwork(action, btn) {
   if (!btn) return;
   btn.disabled = true;
@@ -3370,6 +3406,7 @@ function bindActions() {
   $("#btn-repair-dns").addEventListener("click", (ev) => repairNetwork("dns", ev.currentTarget));
   $("#btn-repair-dns-system").addEventListener("click", (ev) => repairNetwork("dns-system", ev.currentTarget));
   $("#btn-flush-dns").addEventListener("click", (ev) => repairNetwork("flush", ev.currentTarget));
+  $("#btn-reset-network").addEventListener("click", (ev) => resetNetwork(ev.currentTarget));
 
   $$("[data-open-url]").forEach((b) => b.addEventListener("click", () => {
     const url = b.dataset.openUrl;
