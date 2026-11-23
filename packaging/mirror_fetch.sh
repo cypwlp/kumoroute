@@ -16,9 +16,16 @@ NAMES=(
 mkdir -p "$DIR"
 echo START > "$STATUS"
 
-# Small trusted file straight from GitHub (works fine from the VM).
-curl -fsSL --retry 5 --connect-timeout 15 "$BASE/SHA256SUMS.txt" -o "$DIR/github-sums.txt" \
-  || { echo FAIL_SUMS > "$STATUS"; exit 1; }
+# Prefer the checksum file pushed over SSH by sync_mirror.sh (trusted hop);
+# fall back to fetching it here when running unattended from cron.
+if [ -s /tmp/kumoroute-sums.txt ]; then
+  cp /tmp/kumoroute-sums.txt "$DIR/github-sums.txt"
+  echo "sums: pushed over ssh"
+else
+  curl -fsSL --retry 5 --connect-timeout 15 -m 60 "$BASE/SHA256SUMS.txt" -o "$DIR/github-sums.txt" \
+    || { echo FAIL_SUMS > "$STATUS"; exit 1; }
+  echo "sums: fetched on vm"
+fi
 
 for name in "${NAMES[@]}"; do
   for attempt in 1 2 3; do

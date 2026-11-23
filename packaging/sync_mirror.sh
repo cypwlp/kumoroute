@@ -21,8 +21,17 @@ tar -czf - -C "$ROOT/site" . | command ssh "${SSH_OPTS[@]}" "$HOST" \
    sudo chown -R root:root /var/www/kumoroute && rm -rf /tmp/kumoroute-site"
 echo "site synced"
 
-# 2) Upload the fetcher, run it in the background, then wait for completion.
-#    The VM downloads through a proxy but verifies against GitHub checksums.
+# 2) Pull the checksum file here (this host reaches GitHub reliably) and push it
+#    over SSH, so the VM never trusts a proxy for verification data.
+SUMS=$(mktemp)
+trap 'rm -f "$SUMS"' EXIT
+curl -fsSL --retry 5 --connect-timeout 15 -m 90 \
+  "https://github.com/cypwlp/kumoroute/releases/latest/download/SHA256SUMS.txt" -o "$SUMS"
+command ssh "${SSH_OPTS[@]}" "$HOST" 'cat > /tmp/kumoroute-sums.txt' < "$SUMS"
+echo "checksums pushed"
+
+# 3) Upload the fetcher, run it in the background, then wait for completion.
+#    The VM downloads through a proxy but verifies against those checksums.
 ssh 'rm -rf /tmp/kumoroute-assets /tmp/mirror-status.txt /tmp/mirror.log' || true
 ssh 'cat > /tmp/mirror.sh' < "$ROOT/packaging/mirror_fetch.sh"
 ssh 'nohup bash /tmp/mirror.sh > /tmp/mirror.log 2>&1 < /dev/null & echo started' >/dev/null
