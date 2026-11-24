@@ -73,3 +73,49 @@ class NetworkResetTests(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class ReconcileAndEgressTests(unittest.TestCase):
+    """Startup reconcile, egress readout and the relogin warning."""
+
+    @classmethod
+    def setUpClass(cls):
+        cls.app = (UI / "app.js").read_text(encoding="utf-8")
+        cls.index = (UI / "index.html").read_text(encoding="utf-8")
+        cls.i18n = (UI / "i18n.js").read_text(encoding="utf-8")
+        cls.rs = (ROOT / "tauri" / "src" / "commands.rs").read_text(encoding="utf-8")
+        cls.proxy_rs = (ROOT / "tauri" / "src" / "proxy.rs").read_text(encoding="utf-8")
+        cls.main = (ROOT / "tauri" / "src" / "main.rs").read_text(encoding="utf-8")
+        cls.python = (ROOT / "client" / "app.py").read_text(encoding="utf-8")
+
+    def test_reconcile_runs_at_startup_and_on_demand(self):
+        self.assertIn("pub fn reconcile_network", self.rs)
+        self.assertIn("pub fn reconcile_now", self.rs)
+        self.assertIn("reconcile_now(&mut s)", self.main)
+        self.assertIn('id="btn-reconcile"', self.index)
+        self.assertIn('$("#btn-reconcile").addEventListener', self.app)
+        self.assertIn("reconcileNetwork(true)", self.app)
+
+    def test_vpn_mode_turns_the_proxy_off(self):
+        section = self.rs.split("fn apply_network_mode")[1].split("pub fn reconcile_now")[0]
+        self.assertIn('"vpn" =>', section)
+        self.assertIn("proxy::disable_verified", section)
+        self.assertIn("any_proxy_on", self.proxy_rs)
+
+    def test_disable_is_verified_and_reports_relogin(self):
+        self.assertIn("pub fn disable_verified", self.proxy_rs)
+        self.assertIn("needs_relogin", self.rs)
+        self.assertIn("需要重新登入", self.rs)
+        self.assertIn("needs_relogin", self.python)
+
+    def test_egress_readout_is_wired(self):
+        self.assertIn("pub fn detect_egress", self.rs)
+        self.assertIn('id="egress-line"', self.index)
+        self.assertIn("function refreshEgress", self.app)
+        for label in ("經系統代理", "經 VPN", "直接連線"):
+            self.assertIn(f'"{label}"', self.i18n)
+        self.assertIn("def detect_egress", self.python)
+
+    def test_relogin_banner_locale_strings_exist(self):
+        self.assertIn('id="proxy-banner"', self.index)
+        self.assertIn("Windows 仍在保留系統代理設定", self.i18n)

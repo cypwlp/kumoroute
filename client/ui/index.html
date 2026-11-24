@@ -14,7 +14,7 @@
       <img src="icon.png" alt="KumoRoute" class="brand-icon">
       <div>
         <div class="brand-name">KumoRoute</div>
-        <div class="brand-ver" id="app-version">v0.8.6</div>
+        <div class="brand-ver" id="app-version">v0.8.7</div>
       </div>
     </div>
 
@@ -85,6 +85,12 @@
               </label>
             </div>
           </div>
+          <div class="egress-row">
+            <span class="label">目前出口</span>
+            <span id="egress-line" class="egress-line">偵測中…</span>
+            <button class="btn ghost small" id="btn-reconcile">重新對賬</button>
+          </div>
+          <div id="proxy-banner" class="proxy-banner hidden" role="status"></div>
           <div class="mode-row">
             <span class="label">代理模式</span>
             <div class="segmented" id="mode-seg">

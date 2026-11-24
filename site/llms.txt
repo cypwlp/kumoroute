@@ -10,7 +10,7 @@ Key facts:
 - No account, no telemetry, no ads. Settings, subscriptions, logs and stats stay local (%APPDATA%\KumoRoute on Windows).
 - KumoRoute is a client only: it does not provide or sell proxy nodes or subscriptions.
 - Languages in the app: Traditional Chinese, Simplified Chinese, English.
-- Current version: 0.8.6.
+- Current version: 0.8.7.
 
 ## Download
 

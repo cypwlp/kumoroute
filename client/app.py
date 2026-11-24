@@ -30,7 +30,7 @@ import yaml
 
 APP_NAME = "KumoRoute"
 LEGACY_APP_NAME = "MyClash"
-APP_VERSION = "0.8.6"
+APP_VERSION = "0.8.7"
 CREATE_NO_WINDOW = 0x08000000
 SUB_UA = f"KumoRoute/{APP_VERSION}"
 TEST_URL = "https://cp.cloudflare.com/generate_204"
@@ -223,6 +223,28 @@ def update_asset_matches(filename: str, system: str) -> bool:
 
 
 MIRROR_RELEASE_URL = "http://129.204.149.106/downloads/release.json"
+
+
+def _fetch_trace(proxy_url: str | None, timeout: int = 8) -> tuple[str, str] | None:
+    """Return (ip, country) from Cloudflare's trace endpoint."""
+    try:
+        if proxy_url:
+            handler = urllib.request.ProxyHandler({"http": proxy_url, "https": proxy_url})
+            opener = urllib.request.build_opener(handler)
+        else:
+            opener = urllib.request.build_opener(urllib.request.ProxyHandler({}))
+        req = urllib.request.Request("https://1.1.1.1/cdn-cgi/trace", headers={"User-Agent": SUB_UA})
+        with opener.open(req, timeout=timeout) as response:
+            body = response.read().decode("utf-8", "replace")
+    except Exception:
+        return None
+    ip = loc = ""
+    for line in body.splitlines():
+        if line.startswith("ip="):
+            ip = line[3:].strip()
+        elif line.startswith("loc="):
+            loc = line[3:].strip()
+    return (ip, loc) if ip else None
 
 
 def safe_update_url(url: str) -> bool:
@@ -2593,6 +2615,71 @@ class Api:
                 except Exception:
                     pass
             return {"ok": False, "error": str(exc)}
+
+    def _any_proxy_on(self) -> bool:
+        try:
+            return int(get_system_proxy().get("enable", 0)) == 1
+        except Exception:
+            return False
+
+    def _vpn_connected(self) -> bool:
+        try:
+            listing = self.vpn_list()
+            return any(item.get("connected") for item in listing.get("connections") or [])
+        except Exception:
+            return False
+
+    def detect_egress(self) -> dict:
+        """Report the outbound path users actually see right now."""
+        port = int(self._store.data.get("mixed_port", 7890))
+        proxy_on = self._any_proxy_on()
+        started = time.monotonic()
+        attempts = [(("proxy", f"http://127.0.0.1:{port}") if proxy_on else ("direct", None))]
+        if proxy_on:
+            attempts.append(("direct", None))
+        for kind, proxy_url in attempts:
+            trace = _fetch_trace(proxy_url, timeout=8)
+            if trace:
+                ip, loc = trace
+                via = "proxy" if kind == "proxy" else ("vpn" if self._vpn_connected() else "direct")
+                return {
+                    "ok": True,
+                    "ip": ip,
+                    "country": loc,
+                    "via": via,
+                    "latency_ms": int((time.monotonic() - started) * 1000),
+                }
+        return {"ok": False, "error": "無法取得出口資訊", "via": "unknown"}
+
+    def reconcile_network(self) -> dict:
+        """Make the OS match the selected takeover mode."""
+        mode = str(self._store.data.get("network_mode", "coexist"))
+        changed = False
+        needs_relogin = False
+        error = ""
+        if mode == "vpn" and self._any_proxy_on():
+            result = self.set_system_proxy(False)
+            changed = True
+            if not result.get("ok"):
+                error = str(result.get("error") or "")
+            needs_relogin = self._any_proxy_on()
+            if needs_relogin:
+                error = "Windows 仍在保留系統代理設定，需要重新登入才會生效"
+        elif mode == "proxy" and not is_system_proxy_on(self._store):
+            result = self.set_system_proxy(True)
+            changed = True
+            if not result.get("ok"):
+                error = str(result.get("error") or "")
+        sys_proxy = self._any_proxy_on()
+        return {
+            "ok": not error,
+            "mode": mode,
+            "changed": changed,
+            "needs_relogin": needs_relogin,
+            "sys_proxy": sys_proxy,
+            "proxy_matches_mode": not ((mode == "vpn" and sys_proxy) or (mode == "proxy" and not sys_proxy)),
+            "error": error,
+        }
 
     def reset_network(self) -> dict:
         """Give the machine back a clean network: undo only what KumoRoute changed."""

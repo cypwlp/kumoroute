@@ -424,6 +424,137 @@ fn probe_http(proxy_url: Option<&str>, timeout_secs: u64) -> Value {
     }
 }
 
+/// Which outbound path is actually in use right now.
+///
+/// Browsers follow the WinINET proxy, so when it is still enabled we measure the
+/// egress through mihomo (that is the path users see); otherwise we measure the
+/// plain system route and label it VPN or direct.
+#[tauri::command]
+pub fn detect_egress(state: State<'_, Shared>) -> Value {
+    let (port, proxy_on) = {
+        let s = state.lock().unwrap_or_else(|e| e.into_inner());
+        (s.store.data.mixed_port, proxy::any_proxy_on())
+    };
+    let started = Instant::now();
+    let paths: Vec<(&str, Option<String>)> = if proxy_on {
+        vec![
+            ("proxy", Some(format!("http://127.0.0.1:{port}"))),
+            ("direct", None),
+        ]
+    } else {
+        vec![("direct", None)]
+    };
+    for (kind, proxy_url) in paths {
+        if let Some(trace) = fetch_trace(proxy_url.as_deref(), 8) {
+            let vpn_up = vpn_is_connected();
+            let via = if kind == "proxy" {
+                "proxy"
+            } else if vpn_up {
+                "vpn"
+            } else {
+                "direct"
+            };
+            return json!({
+                "ok": true,
+                "ip": trace.0,
+                "country": trace.1,
+                "via": via,
+                "latency_ms": started.elapsed().as_millis() as u64,
+            });
+        }
+    }
+    json!({"ok": false, "error": "無法取得出口資訊", "via": "unknown"})
+}
+
+fn fetch_trace(proxy_url: Option<&str>, timeout_secs: u64) -> Option<(String, String)> {
+    let mut builder = ureq::AgentBuilder::new().timeout(Duration::from_secs(timeout_secs));
+    if let Some(proxy) = proxy_url {
+        builder = builder.proxy(ureq::Proxy::new(proxy).ok()?);
+    }
+    let body = builder.build().get("https://1.1.1.1/cdn-cgi/trace").call().ok()?.into_string().ok()?;
+    let mut ip = String::new();
+    let mut loc = String::new();
+    for line in body.lines() {
+        if let Some(value) = line.strip_prefix("ip=") {
+            ip = value.trim().to_string();
+        } else if let Some(value) = line.strip_prefix("loc=") {
+            loc = value.trim().to_string();
+        }
+    }
+    if ip.is_empty() {
+        return None;
+    }
+    Some((ip, loc))
+}
+
+#[cfg(windows)]
+fn vpn_is_connected() -> bool {
+    vpn_snapshot()
+        .map(|(items, _)| {
+            items
+                .iter()
+                .any(|item| item.get("connected").and_then(Value::as_bool).unwrap_or(false))
+        })
+        .unwrap_or(false)
+}
+
+#[cfg(not(windows))]
+fn vpn_is_connected() -> bool {
+    false
+}
+
+/// Make the OS match the selected takeover mode and report what really happened.
+fn apply_network_mode(s: &mut AppState) -> Value {
+    let mode = s.store.data.network_mode.clone();
+    let port = s.store.data.controller_port;
+    let core_up = core::is_up(port);
+    let mut needs_relogin = false;
+    let mut changed = false;
+    let mut error = String::new();
+
+    match mode.as_str() {
+        "vpn" => {
+            if proxy::is_on(&s.store) || proxy::any_proxy_on() {
+                match proxy::disable_verified(&mut s.store, core_up) {
+                    Ok(off) => {
+                        changed = true;
+                        needs_relogin = !off;
+                        if !off {
+                            error = "Windows 仍在保留系統代理設定，需要重新登入才會生效".into();
+                        }
+                    }
+                    Err(e) => error = e,
+                }
+            }
+        }
+        // Proxy mode is not forced on purpose: a user who switched the proxy off
+        // by hand should not have it re-enabled behind their back on next launch.
+        _ => {}
+    }
+
+    let sys_proxy = proxy::any_proxy_on();
+    json!({
+        "ok": error.is_empty(),
+        "mode": mode,
+        "changed": changed,
+        "needs_relogin": needs_relogin,
+        "sys_proxy": sys_proxy,
+        "proxy_matches_mode": !(mode == "vpn" && sys_proxy) && !(mode == "proxy" && !sys_proxy),
+        "error": error,
+    })
+}
+
+/// Reconcile helper shared by the command and the Tauri startup path.
+pub fn reconcile_now(s: &mut AppState) -> Value {
+    apply_network_mode(s)
+}
+
+#[tauri::command]
+pub fn reconcile_network(state: State<'_, Shared>) -> Value {
+    let mut s = state.lock().unwrap_or_else(|e| e.into_inner());
+    apply_network_mode(&mut s)
+}
+
 fn vpn_validation_should_rollback(validation: &Value, baseline: &Value, proxy_disabled: bool) -> bool {
     let validation_ok = validation.get("ok").and_then(Value::as_bool).unwrap_or(false);
     let baseline_ok = baseline.get("ok").and_then(Value::as_bool).unwrap_or(false);
@@ -844,7 +975,24 @@ pub fn set_system_proxy(state: State<'_, Shared>, enabled: bool) -> Value {
                 }
                 return json!({"ok": true, "sys_proxy": on, "validation": validation});
             }
-            json!({"ok": true, "sys_proxy": on})
+            if on {
+                // Windows kept the WinINET copy of the proxy: be explicit about it.
+                let still_on = proxy::any_proxy_on();
+                return json!({
+                    "ok": true,
+                    "sys_proxy": still_on,
+                    "needs_relogin": false,
+                });
+            }
+            let needs_relogin = proxy::any_proxy_on();
+            json!({
+                "ok": true,
+                "sys_proxy": needs_relogin,
+                "needs_relogin": needs_relogin,
+                "warning": if needs_relogin {
+                    "Windows 仍在保留系統代理設定，需要重新登入（或重開機）才會生效。"
+                } else { "" },
+            })
         }
         Err(e) => json!({"ok": false, "error": e, "sys_proxy": false}),
     }
@@ -2964,11 +3112,11 @@ mod update_tests {
     fn release() -> Value {
         json!({
             "assets": [
-                {"name": "KumoRoute-win-x64-setup.exe", "browser_download_url": "https://github.com/cypwlp/kumoroute/releases/download/v0.8.6/KumoRoute-win-x64-setup.exe", "size": 23000000},
-                {"name": "KumoRoute-win-x64.zip", "browser_download_url": "https://github.com/cypwlp/kumoroute/releases/download/v0.8.6/KumoRoute-win-x64.zip", "size": 30000000},
-                {"name": "KumoRoute-macos-universal.dmg", "browser_download_url": "https://github.com/cypwlp/kumoroute/releases/download/v0.8.6/KumoRoute-macos-universal.dmg", "size": 54000000},
-                {"name": "KumoRoute-linux-x86_64.AppImage", "browser_download_url": "https://github.com/cypwlp/kumoroute/releases/download/v0.8.6/KumoRoute-linux-x86_64.AppImage", "size": 108000000},
-                {"name": "SHA256SUMS.txt", "browser_download_url": "https://github.com/cypwlp/kumoroute/releases/download/v0.8.6/SHA256SUMS.txt", "size": 600}
+                {"name": "KumoRoute-win-x64-setup.exe", "browser_download_url": "https://github.com/cypwlp/kumoroute/releases/download/v0.8.7/KumoRoute-win-x64-setup.exe", "size": 23000000},
+                {"name": "KumoRoute-win-x64.zip", "browser_download_url": "https://github.com/cypwlp/kumoroute/releases/download/v0.8.7/KumoRoute-win-x64.zip", "size": 30000000},
+                {"name": "KumoRoute-macos-universal.dmg", "browser_download_url": "https://github.com/cypwlp/kumoroute/releases/download/v0.8.7/KumoRoute-macos-universal.dmg", "size": 54000000},
+                {"name": "KumoRoute-linux-x86_64.AppImage", "browser_download_url": "https://github.com/cypwlp/kumoroute/releases/download/v0.8.7/KumoRoute-linux-x86_64.AppImage", "size": 108000000},
+                {"name": "SHA256SUMS.txt", "browser_download_url": "https://github.com/cypwlp/kumoroute/releases/download/v0.8.7/SHA256SUMS.txt", "size": 600}
             ]
         })
     }
@@ -3005,7 +3153,7 @@ mod update_tests {
         let digest = "a".repeat(64);
         let sums = format!("{digest}  KumoRoute-win-x64-setup.exe\n");
         assert_eq!(parse_sha256sums(&sums, "KumoRoute-win-x64-setup.exe"), Some(digest));
-        assert!(safe_update_url("https://github.com/cypwlp/kumoroute/releases/download/v0.8.6/file.exe"));
+        assert!(safe_update_url("https://github.com/cypwlp/kumoroute/releases/download/v0.8.7/file.exe"));
         assert!(safe_update_url("http://129.204.149.106/downloads/KumoRoute-win-x64-setup.exe"));
         assert!(!safe_update_url("https://evil.example/file.exe"));
         assert!(!safe_update_url("http://github.com/file.exe"));

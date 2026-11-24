@@ -62,6 +62,8 @@
     "allow-open-data-dir",
     "allow-open-url",
     "allow-quit-app",
-    "allow-reset-network"
+    "allow-reset-network",
+    "allow-reconcile-network",
+    "allow-detect-egress"
   ]
 }

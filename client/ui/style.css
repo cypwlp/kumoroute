@@ -826,3 +826,11 @@ html[data-font-size="large"] { font-size: 16px; }
 :root[data-theme="contrast"] .btn.ghost { border-color: #fff; color: #fff; }
 :root[data-theme="contrast"] .usage-alert { background: #000; color: #ffff00; border: 1px solid #ffff00; }
 :root[data-theme="contrast"] .toast { background: #000; border: 1px solid #fff; }
+
+/* Egress readout + reconcile banner on the overview page. */
+.egress-row { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; margin-top: 12px; font-size: 0.86rem; }
+.egress-line { color: var(--muted); }
+.egress-line b { color: var(--text); font-weight: 600; }
+.egress-row .btn { padding: 4px 10px; font-size: 0.79rem; }
+.proxy-banner { margin-top: 12px; padding: 10px 13px; border-radius: 10px; border: 1px solid rgba(255, 200, 87, 0.45); background: rgba(255, 200, 87, 0.08); color: var(--yellow); font-size: 0.83rem; line-height: 1.55; }
+.proxy-banner.info { border-color: rgba(91, 140, 255, 0.4); background: rgba(91, 140, 255, 0.08); color: #a9c4ff; }

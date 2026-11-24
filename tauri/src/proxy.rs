@@ -312,6 +312,28 @@ pub fn is_on(_store: &Store) -> bool {
     cur.enable == 1 && cur.server.contains("127.0.0.1:")
 }
 
+/// True when any system proxy is enabled, whoever configured it.
+pub fn any_proxy_on() -> bool {
+    get_system_proxy().enable == 1
+}
+
+/// Turn the system proxy off and verify that Windows really applied it.
+///
+/// Windows keeps a WinINET copy of the proxy settings in memory; when that copy
+/// still says "proxy on", it can be written back to the registry seconds later
+/// and only a new logon clears it. Callers must surface that to the user instead
+/// of pretending the toggle worked.
+pub fn disable_verified(store: &mut Store, core_up: bool) -> Result<bool, String> {
+    set_system_proxy(store, false, core_up)?;
+    for _ in 0..5 {
+        if !any_proxy_on() {
+            return Ok(true);
+        }
+        std::thread::sleep(std::time::Duration::from_millis(200));
+    }
+    Ok(false)
+}
+
 pub fn set_system_proxy(store: &mut Store, enabled: bool, core_up: bool) -> Result<bool, String> {
     if enabled {
         if !core_up {

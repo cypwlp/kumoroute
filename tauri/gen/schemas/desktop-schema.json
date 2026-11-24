@@ -201,6 +201,12 @@
           "markdownDescription": "Enables the delete_profile command without any pre-configured scope."
         },
         {
+          "description": "Enables the detect_egress command without any pre-configured scope.",
+          "type": "string",
+          "const": "allow-detect-egress",
+          "markdownDescription": "Enables the detect_egress command without any pre-configured scope."
+        },
+        {
           "description": "Enables the diagnostics_preview command without any pre-configured scope.",
           "type": "string",
           "const": "allow-diagnostics-preview",
@@ -295,6 +301,12 @@
           "type": "string",
           "const": "allow-quit-app",
           "markdownDescription": "Enables the quit_app command without any pre-configured scope."
+        },
+        {
+          "description": "Enables the reconcile_network command without any pre-configured scope.",
+          "type": "string",
+          "const": "allow-reconcile-network",
+          "markdownDescription": "Enables the reconcile_network command without any pre-configured scope."
         },
         {
           "description": "Enables the record_ui_error command without any pre-configured scope.",
@@ -513,6 +525,12 @@
           "markdownDescription": "Denies the delete_profile command without any pre-configured scope."
         },
         {
+          "description": "Denies the detect_egress command without any pre-configured scope.",
+          "type": "string",
+          "const": "deny-detect-egress",
+          "markdownDescription": "Denies the detect_egress command without any pre-configured scope."
+        },
+        {
           "description": "Denies the diagnostics_preview command without any pre-configured scope.",
           "type": "string",
           "const": "deny-diagnostics-preview",
@@ -607,6 +625,12 @@
           "type": "string",
           "const": "deny-quit-app",
           "markdownDescription": "Denies the quit_app command without any pre-configured scope."
+        },
+        {
+          "description": "Denies the reconcile_network command without any pre-configured scope.",
+          "type": "string",
+          "const": "deny-reconcile-network",
+          "markdownDescription": "Denies the reconcile_network command without any pre-configured scope."
         },
         {
           "description": "Denies the record_ui_error command without any pre-configured scope.",

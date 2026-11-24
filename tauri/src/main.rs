@@ -7,6 +7,8 @@ mod state;
 
 use std::sync::Mutex;
 
+use serde_json::Value;
+
 use tauri::menu::{Menu, MenuItem};
 use tauri::tray::{MouseButton, MouseButtonState, TrayIconBuilder, TrayIconEvent};
 use tauri::{Manager, RunEvent, WindowEvent};
@@ -133,6 +135,8 @@ fn main() {
             commands::network_diagnostics,
             commands::network_repair,
             commands::reset_network,
+            commands::reconcile_network,
+            commands::detect_egress,
             commands::vpn_open_settings,
             commands::record_ui_error,
             commands::diagnostics_preview,
@@ -156,6 +160,16 @@ fn main() {
                     recovery.restored, recovery.cleared_stale, recovery.error
                 ));
                 s.proxy_recovery = Some(recovery);
+            }
+            // Make the OS match the saved takeover mode before any UI shows up.
+            let reconciled = commands::reconcile_now(&mut s);
+            if reconciled.get("changed").and_then(Value::as_bool).unwrap_or(false) {
+                state::app_log(&format!(
+                    "startup reconcile: mode={} sys_proxy={} needs_relogin={}",
+                    reconciled.get("mode").and_then(Value::as_str).unwrap_or(""),
+                    reconciled.get("sys_proxy").and_then(Value::as_bool).unwrap_or(false),
+                    reconciled.get("needs_relogin").and_then(Value::as_bool).unwrap_or(false),
+                ));
             }
             let port = s.store.data.controller_port;
             if let Ok(rt) = s.profiles.build_runtime(&s.store) {

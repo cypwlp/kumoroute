@@ -762,6 +762,8 @@ const TAURI_SIG = {
   network_diagnostics: [],
   network_repair: ["action"],
   reset_network: [],
+  reconcile_network: [],
+  detect_egress: [],
   vpn_add: ["name", "server", "tunnelType"],
   vpn_edit: ["name", "server", "tunnelType"],
   vpn_delete: ["name"],
@@ -798,7 +800,7 @@ const demoCfg = {
   mixed_port: 7890,
   controller_port: 9090,
   core_version: "v1.19.33",
-  app_version: "0.8.6",
+  app_version: "0.8.7",
   data_dir: "C:\\Users\\…\\AppData\\Roaming\\KumoRoute",
   test_url: "https://cp.cloudflare.com/generate_204",
   profiles: [
@@ -979,6 +981,10 @@ async function demoApi(fn, ...args) {
     }
     case "network_diagnostics": return { ok: true, ipv6_route: false, ipv6_connectivity: false, ipv6_preferred: true, dns_ok: true, dns_servers: ["192.168.1.1"], dns_resolver_ip: "203.0.113.8", proxy_egress_ip: demoCfg.sys_proxy ? "198.51.100.24" : "", dns_leak_confirmed: false, doh_templates: 0, dot_templates: 0, dns_encryption_conflict: false, dns_leak_suspected: false, proxy_on: demoCfg.sys_proxy, network_mode: demoCfg.networkMode, issues: [{ type: "ipv6", count: 3, message: "IPv6 連線不可達" }] };
     case "network_repair": return { ok: true, action: String(args[0] || "") };
+    case "reconcile_network": return { ok: true, mode: demoCfg.networkMode, changed: false, needs_relogin: false, sys_proxy: demoCfg.sys_proxy, proxy_matches_mode: true, error: "" };
+    case "detect_egress": return demoCfg.sys_proxy
+      ? { ok: true, ip: "103.172.183.80", country: "SG", via: "proxy", latency_ms: 210 }
+      : { ok: true, ip: "203.210.192.36", country: "VN", via: "vpn", latency_ms: 180 };
     case "reset_network":
       demoCfg.sys_proxy = false; demoCfg.vpnConnected = false; demoCfg.networkMode = "coexist";
       return { ok: true, proxy: "已還原為接管前的設定", vpn_disconnected: ["範例 VPN"], dns_flushed: true, core_reloaded: true, warnings: [] };
@@ -1020,6 +1026,76 @@ async function refreshState() {
     checkUsageLimits();
   } catch (e) {
     console.error(e);
+  }
+}
+
+let egressInfo = null;
+let egressBusy = false;
+let lastEgressAt = 0;
+
+function viaLabel(via) {
+  if (via === "proxy") return tr("經系統代理");
+  if (via === "vpn") return tr("經 VPN");
+  if (via === "direct") return tr("直接連線");
+  return tr("未知");
+}
+
+function renderEgress() {
+  const line = $("#egress-line");
+  if (!line) return;
+  if (!egressInfo) { line.textContent = tr("偵測中…"); return; }
+  if (!egressInfo.ok) { line.textContent = egressInfo.error || tr("無法取得出口資訊"); return; }
+  const ip = egressInfo.ip || "—";
+  const loc = (egressInfo.country || "").toUpperCase() || "—";
+  line.replaceChildren();
+  const ipNode = document.createElement("b");
+  ipNode.textContent = ip;
+  line.append(ipNode, document.createTextNode(` · ${loc}（${viaLabel(egressInfo.via)}）`));
+}
+
+async function refreshEgress(force) {
+  if (egressBusy) return;
+  if (!force && Date.now() - lastEgressAt < 30_000) return;
+  egressBusy = true;
+  try {
+    const res = demo ? await demoApi("detect_egress") : await api("detect_egress");
+    egressInfo = res || { ok: false, error: "無法取得出口資訊" };
+    lastEgressAt = Date.now();
+    renderEgress();
+  } catch (e) {
+    egressInfo = { ok: false, error: String(e) };
+    renderEgress();
+  } finally {
+    egressBusy = false;
+  }
+}
+
+function showProxyBanner(text, kind) {
+  const banner = $("#proxy-banner");
+  if (!banner) return;
+  if (!text) { banner.classList.add("hidden"); banner.textContent = ""; return; }
+  banner.textContent = text;
+  banner.classList.toggle("info", kind === "info");
+  banner.classList.remove("hidden");
+}
+
+async function reconcileNetwork(silent) {
+  try {
+    const res = demo ? await demoApi("reconcile_network") : await api("reconcile_network");
+    if (res && res.needs_relogin) {
+      showProxyBanner(tr("Windows 仍在保留系統代理設定，需要重新登入（或重開機）才會真正關閉。"));
+    } else if (res && !res.ok && res.error) {
+      showProxyBanner(String(res.error));
+    } else {
+      showProxyBanner("");
+      if (!silent) toast(tr("已重新對賬接管方式"), "ok");
+    }
+    await refreshState();
+    await refreshEgress(true);
+    return res;
+  } catch (e) {
+    if (!silent) toast(String(e), "error");
+    return null;
   }
 }
 
@@ -2819,8 +2895,15 @@ function bindActions() {
       }
       const res = await api("set_system_proxy", on);
       if (res && res.ok === false) toast(res.error || "系統代理設定失敗", "error");
-      else toast(on ? "系統代理已開啟" : "系統代理已關閉", "ok");
+      else if (!on && res && res.needs_relogin) {
+        toast("系統代理已關閉，但 Windows 尚未套用", "error");
+        showProxyBanner(tr("Windows 仍在保留系統代理設定，需要重新登入（或重開機）才會真正關閉。"));
+      } else {
+        toast(on ? "系統代理已開啟" : "系統代理已關閉", "ok");
+        showProxyBanner("");
+      }
       await refreshState();
+      await refreshEgress(true);
     } catch (e) { toast(String(e), "error"); }
     finally { ev.target.disabled = false; }
   });
@@ -3389,6 +3472,7 @@ function bindActions() {
       $$(".network-mode-btn").forEach((item) => { item.disabled = true; });
       try {
         const res = demo ? await demoApi("set_network_mode", mode) : await api("set_network_mode", mode);
+      if (!demo) await reconcileNetwork(true);
         if (!res || !res.ok) toast((res && res.error) || "切換網路模式失敗", "error");
         else toast("網路接管模式已更新", "ok");
         await refreshState();
@@ -3407,6 +3491,11 @@ function bindActions() {
   $("#btn-repair-dns-system").addEventListener("click", (ev) => repairNetwork("dns-system", ev.currentTarget));
   $("#btn-flush-dns").addEventListener("click", (ev) => repairNetwork("flush", ev.currentTarget));
   $("#btn-reset-network").addEventListener("click", (ev) => resetNetwork(ev.currentTarget));
+  $("#btn-reconcile").addEventListener("click", async (ev) => {
+    ev.currentTarget.disabled = true;
+    await reconcileNetwork(false);
+    ev.currentTarget.disabled = false;
+  });
 
   $$("[data-open-url]").forEach((b) => b.addEventListener("click", () => {
     const url = b.dataset.openUrl;
@@ -3423,6 +3512,7 @@ document.addEventListener("DOMContentLoaded", async () => {
   installUiCrashHandlers();
   applyTheme(prefs.theme);
   applyFontSize(prefs.fontSize);
+  demo = !((window.pywebview && window.pywebview.api) || (window.__TAURI__ && window.__TAURI__.core));
   applyLanguage(prefs.language);
   if (window.KumoI18n) window.KumoI18n.observe();
   const systemTheme = window.matchMedia("(prefers-color-scheme: light)");
@@ -3432,7 +3522,6 @@ document.addEventListener("DOMContentLoaded", async () => {
   if (systemTheme.addEventListener) systemTheme.addEventListener("change", onSystemThemeChange);
   else if (systemTheme.addListener) systemTheme.addListener(onSystemThemeChange);
   await waitBridge();
-  demo = !((window.pywebview && window.pywebview.api) || (window.__TAURI__ && window.__TAURI__.core));
   if (demo) {
     if (!new URLSearchParams(location.search).has("preview")) {
       $("#demo-banner").classList.remove("hidden");
@@ -3443,6 +3532,8 @@ document.addEventListener("DOMContentLoaded", async () => {
   }
 
   await refreshState();
+  reconcileNetwork(true).catch(() => {});
+  refreshEgress(true).catch(() => {});
   initSubscriptionAutoUpdate();
   if (page === "proxies") await refreshGroups();
   if (page === "vpn") await refreshVpn();
@@ -3456,6 +3547,7 @@ document.addEventListener("DOMContentLoaded", async () => {
 
   setInterval(tickLive, 1000);
   setInterval(refreshState, 5000);
+  setInterval(() => refreshEgress(false), 60_000);
   setInterval(() => { if (page === "logs") refreshLogs(); }, 2000);
   setInterval(() => { if (page === "proxies" && state && state.running) refreshGroups(); }, 6000);
   setInterval(autoRetestStaleActive, 30_000);
