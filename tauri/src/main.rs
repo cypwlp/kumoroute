@@ -177,6 +177,30 @@ fn main() {
                     state::app_log(&format!("initial core start failed: {e}"));
                 }
             }
+            drop(s);
+
+            // Windows (and some browsers) can re-enable the system proxy from a
+            // stale cache a few seconds after it was turned off. While the user
+            // asked for "VPN only", keep asserting that state instead of letting
+            // the machine silently drift back to proxying through mihomo.
+            let handle = app.handle().clone();
+            std::thread::spawn(move || loop {
+                std::thread::sleep(std::time::Duration::from_secs(15));
+                let shared = handle.state::<commands::Shared>();
+                let mut s = match shared.lock() {
+                    Ok(v) => v,
+                    Err(e) => e.into_inner(),
+                };
+                if s.store.data.network_mode != "vpn" || !proxy::any_proxy_on() {
+                    continue;
+                }
+                let port = s.store.data.controller_port;
+                match proxy::set_system_proxy(&mut s.store, false, core::is_up(port)) {
+                    Ok(off) if off => state::app_log("proxy guard: still proxied after disable"),
+                    Ok(_) => state::app_log("proxy guard: system proxy re-disabled (vpn mode)"),
+                    Err(e) => state::app_log(&format!("proxy guard: disable failed: {e}")),
+                }
+            });
             Ok(())
         })
         .on_window_event(|window, event| {

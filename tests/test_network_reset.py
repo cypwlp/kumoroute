@@ -119,3 +119,34 @@ class ReconcileAndEgressTests(unittest.TestCase):
     def test_relogin_banner_locale_strings_exist(self):
         self.assertIn('id="proxy-banner"', self.index)
         self.assertIn("Windows 仍在保留系統代理設定", self.i18n)
+
+
+class SystemProxyTruthTests(unittest.TestCase):
+    """The proxy state must be read from WinINET, not just the registry values."""
+
+    @classmethod
+    def setUpClass(cls):
+        cls.proxy_rs = (ROOT / "tauri" / "src" / "proxy.rs").read_text(encoding="utf-8")
+        cls.main = (ROOT / "tauri" / "src" / "main.rs").read_text(encoding="utf-8")
+        cls.python = (ROOT / "client" / "app.py").read_text(encoding="utf-8")
+
+    def test_reads_per_connection_options_not_only_registry(self):
+        self.assertIn("INTERNET_OPTION_PER_CONNECTION_OPTION", self.proxy_rs)
+        self.assertIn("pub fn active_connections", self.proxy_rs)
+        self.assertIn("RasEnumConnectionsW", self.proxy_rs)
+        self.assertIn("pub fn effective_proxy_on", self.proxy_rs)
+        self.assertIn("imp::effective_proxy_on()", self.proxy_rs)
+
+    def test_apply_updates_every_connection(self):
+        body = self.proxy_rs.split("pub fn apply(enable: u32")[1].split("fn refresh()")[0]
+        self.assertIn("active_connections()", body)
+        self.assertIn("set_options(", body)
+
+    def test_vpn_mode_has_a_guard_loop(self):
+        self.assertIn("proxy guard", self.main)
+        self.assertIn("network_mode != \"vpn\"", self.main)
+        self.assertIn("any_proxy_on()", self.main)
+
+    def test_python_fallback_has_same_helpers(self):
+        self.assertIn("def _any_proxy_on", self.python)
+        self.assertIn("def reconcile_network", self.python)

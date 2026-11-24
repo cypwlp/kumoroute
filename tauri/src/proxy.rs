@@ -13,14 +13,137 @@ fn split_host_port(server: &str) -> (String, u16) {
 
 #[cfg(windows)]
 mod imp {
+    use std::ffi::c_void;
+
     use winreg::enums::{HKEY_CURRENT_USER, KEY_READ, KEY_SET_VALUE};
     use winreg::RegKey;
 
     use crate::state::ProxySnapshot;
+    use windows::core::PWSTR;
+    use windows::Win32::NetworkManagement::Rras::{RasEnumConnectionsW, RASCONNW};
+    use windows::Win32::Networking::WinInet::{
+        InternetQueryOptionW, InternetSetOptionW, INTERNET_OPTION_PER_CONNECTION_OPTION,
+        INTERNET_OPTION_REFRESH, INTERNET_PER_CONN_FLAGS,
+        INTERNET_PER_CONN_OPTIONW, INTERNET_PER_CONN_OPTIONW_0, INTERNET_PER_CONN_OPTION_LISTW,
+        INTERNET_PER_CONN_PROXY_BYPASS, INTERNET_PER_CONN_PROXY_SERVER, PROXY_TYPE_DIRECT,
+        PROXY_TYPE_PROXY,
+    };
 
     const INTERNET_SETTINGS: &str = r"Software\Microsoft\Windows\CurrentVersion\Internet Settings";
 
-    pub fn get_system_proxy() -> ProxySnapshot {
+    fn wide(value: &str) -> Vec<u16> {
+        value.encode_utf16().chain(std::iter::once(0)).collect()
+    }
+
+    /// WinINET stores proxy settings per *connection*: the LAN entry plus one for
+    /// every active RAS/VPN dial-up. Browsers follow whichever connection they
+    /// route over, so looking at the LAN entry (or the registry values) alone
+    /// misses the VPN case entirely.
+    pub fn active_connections() -> Vec<Option<String>> {
+        let mut list: Vec<Option<String>> = vec![None];
+        let mut size: u32 = 0;
+        let mut count: u32 = 0;
+        unsafe {
+            if RasEnumConnectionsW(None, &mut size, &mut count) == 0 && size > 0 {
+                let entries = size as usize / std::mem::size_of::<RASCONNW>() + 1;
+                let mut buffer: Vec<RASCONNW> = vec![RASCONNW::default(); entries];
+                buffer[0].dwSize = std::mem::size_of::<RASCONNW>() as u32;
+                let mut size = size;
+                if RasEnumConnectionsW(Some(buffer.as_mut_ptr()), &mut size, &mut count) == 0 {
+                    for entry in buffer.iter().take(count as usize) {
+                        let name = entry.szEntryName;
+                        let end = name.iter().position(|c| *c == 0).unwrap_or(name.len());
+                        if let Ok(text) = String::from_utf16(&name[..end]) {
+                            if !text.is_empty() {
+                                list.push(Some(text));
+                            }
+                        }
+                    }
+                }
+            }
+        }
+        list
+    }
+
+    pub fn query_flags(connection: Option<&str>) -> Option<u32> {
+        let mut name = connection.map(wide);
+        let mut option = INTERNET_PER_CONN_OPTIONW {
+            dwOption: INTERNET_PER_CONN_FLAGS,
+            Value: INTERNET_PER_CONN_OPTIONW_0 { dwValue: 0 },
+        };
+        let mut list = INTERNET_PER_CONN_OPTION_LISTW {
+            dwSize: std::mem::size_of::<INTERNET_PER_CONN_OPTION_LISTW>() as u32,
+            pszConnection: name
+                .as_mut()
+                .map(|value| PWSTR(value.as_mut_ptr()))
+                .unwrap_or(PWSTR::null()),
+            dwOptionCount: 1,
+            dwOptionError: 0,
+            pOptions: &mut option,
+        };
+        let mut size = std::mem::size_of::<INTERNET_PER_CONN_OPTION_LISTW>() as u32;
+        unsafe {
+            InternetQueryOptionW(
+                None,
+                INTERNET_OPTION_PER_CONNECTION_OPTION,
+                Some(&mut list as *mut _ as *mut c_void),
+                &mut size,
+            )
+            .ok()?;
+            Some(option.Value.dwValue)
+        }
+    }
+
+    pub fn set_options(connection: Option<&str>, proxied: bool, server: &str) -> Result<(), String> {
+        let mut name = connection.map(wide);
+        let mut server_text = wide(server);
+        let mut bypass = wide(super::PROXY_OVERRIDE);
+        let flags = if proxied {
+            PROXY_TYPE_DIRECT | PROXY_TYPE_PROXY
+        } else {
+            PROXY_TYPE_DIRECT
+        };
+        let mut options = [
+            INTERNET_PER_CONN_OPTIONW {
+                dwOption: INTERNET_PER_CONN_FLAGS,
+                Value: INTERNET_PER_CONN_OPTIONW_0 { dwValue: flags },
+            },
+            INTERNET_PER_CONN_OPTIONW {
+                dwOption: INTERNET_PER_CONN_PROXY_SERVER,
+                Value: INTERNET_PER_CONN_OPTIONW_0 {
+                    pszValue: PWSTR(server_text.as_mut_ptr()),
+                },
+            },
+            INTERNET_PER_CONN_OPTIONW {
+                dwOption: INTERNET_PER_CONN_PROXY_BYPASS,
+                Value: INTERNET_PER_CONN_OPTIONW_0 {
+                    pszValue: PWSTR(bypass.as_mut_ptr()),
+                },
+            },
+        ];
+        let list = INTERNET_PER_CONN_OPTION_LISTW {
+            dwSize: std::mem::size_of::<INTERNET_PER_CONN_OPTION_LISTW>() as u32,
+            pszConnection: name
+                .as_mut()
+                .map(|value| PWSTR(value.as_mut_ptr()))
+                .unwrap_or(PWSTR::null()),
+            dwOptionCount: options.len() as u32,
+            dwOptionError: 0,
+            pOptions: options.as_mut_ptr(),
+        };
+        let size = std::mem::size_of::<INTERNET_PER_CONN_OPTION_LISTW>() as u32;
+        unsafe {
+            InternetSetOptionW(
+                None,
+                INTERNET_OPTION_PER_CONNECTION_OPTION,
+                Some(&list as *const _ as *const c_void),
+                size,
+            )
+            .map_err(|e| e.to_string())
+        }
+    }
+
+    fn registry_snapshot() -> ProxySnapshot {
         let hkcu = RegKey::predef(HKEY_CURRENT_USER);
         let Ok(key) = hkcu.open_subkey_with_flags(INTERNET_SETTINGS, KEY_READ) else {
             return ProxySnapshot::default();
@@ -32,6 +155,31 @@ mod imp {
         }
     }
 
+    pub fn get_system_proxy() -> ProxySnapshot {
+        let snap = registry_snapshot();
+        let lan_proxied = query_flags(None)
+            .map(|flags| flags & PROXY_TYPE_PROXY != 0)
+            .unwrap_or(false);
+        ProxySnapshot {
+            enable: if lan_proxied || snap.enable == 1 { 1 } else { 0 },
+            ..snap
+        }
+    }
+
+    /// True when *any* connection WinINET knows about is still proxied.
+    pub fn effective_proxy_on() -> bool {
+        let mut any = false;
+        for connection in active_connections() {
+            if let Some(flags) = query_flags(connection.as_deref()) {
+                if flags & PROXY_TYPE_PROXY != 0 {
+                    any = true;
+                }
+            }
+        }
+        let snap = registry_snapshot();
+        any || (snap.enable == 1 && !snap.server.is_empty())
+    }
+
     pub fn apply(enable: u32, server: &str, override_list: &str) -> Result<(), String> {
         let hkcu = RegKey::predef(HKEY_CURRENT_USER);
         let key = hkcu
@@ -40,16 +188,30 @@ mod imp {
         key.set_value("ProxyEnable", &enable).map_err(|e| e.to_string())?;
         key.set_value("ProxyServer", &server).map_err(|e| e.to_string())?;
         key.set_value("ProxyOverride", &override_list).map_err(|e| e.to_string())?;
+        drop(key);
+
+        let proxied = enable == 1;
+        let mut errors = Vec::new();
+        for connection in active_connections() {
+            if let Err(e) = set_options(connection.as_deref(), proxied, server) {
+                errors.push(format!("{:?}: {e}", connection));
+            }
+        }
         refresh();
-        Ok(())
+        if errors.is_empty() {
+            Ok(())
+        } else {
+            Err(errors.join("；"))
+        }
     }
 
+    /// Broadcast the change without asking WinINET to re-persist its own cache.
+    ///
+    /// Calling INTERNET_OPTION_SETTINGS_CHANGED makes WinINET write its in-memory
+    /// configuration back to the registry; when that cache still holds a proxy it
+    /// silently undoes the change we just made, so only REFRESH is used here.
     fn refresh() {
-        use windows::Win32::Networking::WinInet::{
-            InternetSetOptionW, INTERNET_OPTION_REFRESH, INTERNET_OPTION_SETTINGS_CHANGED,
-        };
         unsafe {
-            let _ = InternetSetOptionW(None, INTERNET_OPTION_SETTINGS_CHANGED, None, 0);
             let _ = InternetSetOptionW(None, INTERNET_OPTION_REFRESH, None, 0);
         }
     }
@@ -313,8 +475,19 @@ pub fn is_on(_store: &Store) -> bool {
 }
 
 /// True when any system proxy is enabled, whoever configured it.
+///
+/// On Windows this asks WinINET about every connection (LAN and each active
+/// RAS/VPN dial-up) instead of trusting `ProxyEnable` alone: Windows can keep a
+/// per-connection proxy that the registry values do not show.
 pub fn any_proxy_on() -> bool {
-    get_system_proxy().enable == 1
+    #[cfg(windows)]
+    {
+        imp::effective_proxy_on()
+    }
+    #[cfg(not(windows))]
+    {
+        get_system_proxy().enable == 1
+    }
 }
 
 /// Turn the system proxy off and verify that Windows really applied it.
@@ -416,6 +589,51 @@ mod tests {
             recovery_action(None, &snapshot(1, "127.0.0.1:7890"), "127.0.0.1:7890"),
             RecoveryAction::None
         );
+    }
+
+    /// Live-machine check: disables the proxy through WinINET and asserts the
+    /// effective state really changed. Ignored by default because it touches the
+    /// host; run with `cargo test -- --ignored live_disable_proxy`.
+    #[test]
+    #[ignore]
+    fn live_dump_proxy() {
+        #[cfg(windows)]
+        {
+            for connection in imp::active_connections() {
+                let flags = imp::query_flags(connection.as_deref());
+                println!("conn={:?} flags={:?}", connection, flags);
+            }
+            println!("registry={:?}", get_system_proxy());
+            let _ = apply(0, "", PROXY_OVERRIDE);
+            std::thread::sleep(std::time::Duration::from_millis(300));
+            println!("--- after apply(0) ---");
+            for connection in imp::active_connections() {
+                let flags = imp::query_flags(connection.as_deref());
+                println!("conn={:?} flags={:?}", connection, flags);
+            }
+            println!("registry={:?}", get_system_proxy());
+            println!("effective={}", imp::effective_proxy_on());
+        }
+    }
+
+    #[test]
+    #[ignore]
+    fn live_disable_proxy() {
+        apply(0, "", PROXY_OVERRIDE).expect("apply failed");
+        std::thread::sleep(std::time::Duration::from_millis(600));
+        assert!(!any_proxy_on(), "WinINET still reports a proxy after apply(0)");
+        for connection in {
+            #[cfg(windows)]
+            {
+                imp::active_connections()
+            }
+            #[cfg(not(windows))]
+            {
+                Vec::new()
+            }
+        } {
+            let _ = connection;
+        }
     }
 
     #[test]
