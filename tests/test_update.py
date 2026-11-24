@@ -59,8 +59,8 @@ class UpdateAssetTests(unittest.TestCase):
                         "size": 100}],
         }
         payload = io.BytesIO(json.dumps(mirrored).encode("utf-8"))
-        with mock.patch.object(app.urllib.request, "urlopen", side_effect=[OSError("github blocked"), payload]):
-            api = app.Api.__new__(app.Api)
+        api = app.Api.__new__(app.Api)
+        with mock.patch.object(app.platform, "system", return_value="Windows"),              mock.patch.object(app.urllib.request, "urlopen", side_effect=[OSError("github blocked"), payload]):
             info = api.check_update()
         self.assertTrue(info["ok"])
         self.assertEqual(info["latest"], "9.9.9")
