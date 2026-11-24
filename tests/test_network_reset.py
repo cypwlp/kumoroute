@@ -150,3 +150,26 @@ class SystemProxyTruthTests(unittest.TestCase):
     def test_python_fallback_has_same_helpers(self):
         self.assertIn("def _any_proxy_on", self.python)
         self.assertIn("def reconcile_network", self.python)
+
+
+class VpnModeEgressTests(unittest.TestCase):
+    """VPN mode must never let traffic leave through a proxy node."""
+
+    @classmethod
+    def setUpClass(cls):
+        cls.state = (ROOT / "tauri" / "src" / "state.rs").read_text(encoding="utf-8")
+        cls.commands = (ROOT / "tauri" / "src" / "commands.rs").read_text(encoding="utf-8")
+        cls.proxy = (ROOT / "tauri" / "src" / "proxy.rs").read_text(encoding="utf-8")
+
+    def test_vpn_mode_pins_the_core_to_direct(self):
+        self.assertIn('store.data.network_mode == "vpn"', self.state)
+        self.assertIn('"direct".to_string()', self.state)
+
+    def test_mode_change_reloads_the_core(self):
+        body = self.commands.split("pub fn set_network_mode")[1].split("pub fn network_diagnostics")[0]
+        self.assertIn("do_reload(&mut *s)", body)
+
+    def test_proxy_apply_no_longer_refreshes_wininet(self):
+        # REFRESH made WinINET re-persist its stale cache and undid the change.
+        self.assertNotIn("INTERNET_OPTION_REFRESH", self.proxy)
+        self.assertNotIn("INTERNET_OPTION_SETTINGS_CHANGED", self.proxy)

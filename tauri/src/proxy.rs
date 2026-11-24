@@ -19,11 +19,13 @@ mod imp {
     use winreg::RegKey;
 
     use crate::state::ProxySnapshot;
-    use windows::core::PWSTR;
-    use windows::Win32::NetworkManagement::Rras::{RasEnumConnectionsW, RASCONNW};
+    use windows::core::{PCWSTR, PWSTR};
+    use windows::Win32::NetworkManagement::Rras::{
+        RasEnumConnectionsW, RasEnumEntriesW, RASCONNW, RASENTRYNAMEW,
+    };
     use windows::Win32::Networking::WinInet::{
         InternetQueryOptionW, InternetSetOptionW, INTERNET_OPTION_PER_CONNECTION_OPTION,
-        INTERNET_OPTION_REFRESH, INTERNET_PER_CONN_FLAGS,
+        INTERNET_PER_CONN_FLAGS,
         INTERNET_PER_CONN_OPTIONW, INTERNET_PER_CONN_OPTIONW_0, INTERNET_PER_CONN_OPTION_LISTW,
         INTERNET_PER_CONN_PROXY_BYPASS, INTERNET_PER_CONN_PROXY_SERVER, PROXY_TYPE_DIRECT,
         PROXY_TYPE_PROXY,
@@ -55,6 +57,39 @@ mod imp {
                         let end = name.iter().position(|c| *c == 0).unwrap_or(name.len());
                         if let Ok(text) = String::from_utf16(&name[..end]) {
                             if !text.is_empty() {
+                                list.push(Some(text));
+                            }
+                        }
+                    }
+                }
+            }
+        }
+        // Also include phonebook entries: WinINET keeps a proxy configuration for
+        // every dial-up/VPN profile, and a profile that is currently routing the
+        // default gateway is not always returned by RasEnumConnectionsW.
+        let mut size: u32 = 0;
+        let mut count: u32 = 0;
+        unsafe {
+            if RasEnumEntriesW(PCWSTR::null(), PCWSTR::null(), None, &mut size, &mut count) == 0
+                && size > 0
+            {
+                let entries = size as usize / std::mem::size_of::<RASENTRYNAMEW>() + 1;
+                let mut buffer: Vec<RASENTRYNAMEW> = vec![RASENTRYNAMEW::default(); entries];
+                buffer[0].dwSize = std::mem::size_of::<RASENTRYNAMEW>() as u32;
+                let mut size = size;
+                if RasEnumEntriesW(
+                    PCWSTR::null(),
+                    PCWSTR::null(),
+                    Some(buffer.as_mut_ptr()),
+                    &mut size,
+                    &mut count,
+                ) == 0
+                {
+                    for entry in buffer.iter().take(count as usize) {
+                        let name = entry.szEntryName;
+                        let end = name.iter().position(|c| *c == 0).unwrap_or(name.len());
+                        if let Ok(text) = String::from_utf16(&name[..end]) {
+                            if !text.is_empty() && !list.contains(&Some(text.clone())) {
                                 list.push(Some(text));
                             }
                         }
@@ -197,7 +232,6 @@ mod imp {
                 errors.push(format!("{:?}: {e}", connection));
             }
         }
-        refresh();
         if errors.is_empty() {
             Ok(())
         } else {
@@ -205,16 +239,6 @@ mod imp {
         }
     }
 
-    /// Broadcast the change without asking WinINET to re-persist its own cache.
-    ///
-    /// Calling INTERNET_OPTION_SETTINGS_CHANGED makes WinINET write its in-memory
-    /// configuration back to the registry; when that cache still holds a proxy it
-    /// silently undoes the change we just made, so only REFRESH is used here.
-    fn refresh() {
-        unsafe {
-            let _ = InternetSetOptionW(None, INTERNET_OPTION_REFRESH, None, 0);
-        }
-    }
 }
 
 #[cfg(target_os = "linux")]

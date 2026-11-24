@@ -8,7 +8,7 @@ use serde::{Deserialize, Serialize};
 
 pub const APP_NAME: &str = "KumoRoute";
 pub const LEGACY_APP_NAME: &str = "MyClash";
-pub const APP_VERSION: &str = "0.8.8";
+pub const APP_VERSION: &str = "0.8.9";
 pub const SUB_UA: &str = concat!("KumoRoute/", env!("CARGO_PKG_VERSION"));
 pub const TEST_URL: &str = "https://cp.cloudflare.com/generate_204";
 
@@ -588,7 +588,15 @@ impl Profiles {
             format!("127.0.0.1:{}", store.data.controller_port).into(),
         );
         set(m, "secret", "".into());
-        set(m, "mode", store.data.mode.clone().into());
+        // "VPN only" means nothing may leave through a proxy node: if a browser
+        // still reaches the mixed port (Windows can restore its proxy setting),
+        // the core must send that traffic straight out instead of via a node.
+        let core_mode = if store.data.network_mode == "vpn" {
+            "direct".to_string()
+        } else {
+            store.data.mode.clone()
+        };
+        set(m, "mode", core_mode.into());
         set(m, "log-level", "info".into());
         if !m.contains_key(serde_yaml::Value::String("unified-delay".into())) {
             set(m, "unified-delay", true.into());
